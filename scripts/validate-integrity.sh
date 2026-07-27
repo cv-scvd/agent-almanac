@@ -527,26 +527,39 @@ fi
 
 # B11: CLI audit (optional, only if CLI is available)
 echo "--- B11: CLI audit ---"
-if command -v node >/dev/null 2>&1 && [ -f "cli/index.js" ]; then
+if ! command -v node >/dev/null 2>&1 || [ ! -f "cli/index.js" ]; then
+  echo "SKIP: CLI not available (node or cli/index.js missing)"
+elif [ ! -d "node_modules/commander" ]; then
+  # validate-integrity.yml checks out without `npm ci`, so the CLI cannot even
+  # load here: node exits 1 with ERR_MODULE_NOT_FOUND before printing anything.
+  # The previous `|| true` discarded that exit code and grepped the loader
+  # error for a lowercase "error" it does not contain, so this check reported
+  # "OK: CLI audit passed" against a CLI that never ran -- in CI, always
+  # (#373). Skip honestly instead. The audit itself is covered in
+  # ci-node-cli.yml, which does install dependencies and whose test:cli asserts
+  # on the Claude Code section directly.
+  echo "SKIP: CLI dependencies not installed (run 'npm ci' to exercise B11)"
+else
   # The reporter prints findings as "  ERR  <msg>" (cli/lib/reporter.js), and
-  # the crash path prepends "Audit failed: " via auditAll(). Neither string
-  # contains a lowercase "error", so the previous `grep -q "error"` could never
-  # fire: this check reported OK for as long as the claude-code audit was
-  # throwing (#365, #373). Match the markers the reporter actually emits, and
-  # treat a non-zero exit as a failure too. Still warn-only -- making the audit
-  # itself signal through its exit status is #439.
+  # the crash path prepends "Audit failed: " via auditAll(). Neither contains a
+  # lowercase "error", which is why the old pattern never fired locally either
+  # while the claude-code audit was throwing (#365). Match the markers the
+  # reporter actually emits, and treat a non-zero exit as a failure too.
+  # Warn-only, as before: making `audit` signal through its exit status is #439.
   audit_pattern='(^|[[:space:]])ERR([[:space:]]|$)|Audit failed'
   cli_rc=0
   cli_out=$(node cli/index.js audit 2>&1) || cli_rc=$?
-  if [ "$cli_rc" -ne 0 ] || echo "$cli_out" | grep -qE "$audit_pattern"; then
+  if [ "$cli_rc" -ne 0 ] || printf '%s\n' "$cli_out" | grep -qE "$audit_pattern"; then
     echo "WARN: CLI audit reported errors (exit $cli_rc):"
-    echo "$cli_out" | grep -E "$audit_pattern" | sed 's/^/  /'
+    # A non-zero exit with no matching line means the CLI died before printing
+    # an audit at all; fall back to the tail so the failure is diagnosable.
+    # Without the fallback the empty grep aborts the script under pipefail.
+    printf '%s\n' "$cli_out" | grep -E "$audit_pattern" | sed 's/^/  /' \
+      || printf '%s\n' "$cli_out" | tail -5 | sed 's/^/  /'
     warn_count=$((warn_count + 1))
   else
     echo "OK: CLI audit passed"
   fi
-else
-  echo "SKIP: CLI not available (node or cli/index.js missing)"
 fi
 
 # B12: Global discovery-hub coverage (warn-only; #324/#325)
