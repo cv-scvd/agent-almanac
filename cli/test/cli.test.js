@@ -254,6 +254,7 @@ describe('adapter audits detect broken symlinks', () => {
   const tmpRoot = resolve(ROOT, '.tmp-test-audit');
   const fakeHome = resolve(tmpRoot, 'home');
   const realSkill = resolve(ROOT, 'skills/commit-changes');
+  const realAgent = resolve(ROOT, 'agents/code-reviewer.md');
   let savedHome;
 
   // path: where the adapter looks, relative to its own base (project or home).
@@ -262,7 +263,13 @@ describe('adapter audits detect broken symlinks', () => {
     { name: 'cursor', base: 'project', dir: '.cursor/skills', ok: '1 items installed', err: '1 broken skill symlinks', audit: (d) => new CursorAdapter().audit(d) },
     { name: 'gemini', base: 'project', dir: '.gemini/skills', ok: '1 skills installed', err: '1 broken skill symlinks', audit: (d) => new GeminiAdapter().audit(d) },
     { name: 'vibe', base: 'project', dir: '.vibe/skills', ok: '1 items installed', err: '1 broken skill symlinks', audit: (d) => new VibeAdapter().audit(d, 'project') },
-    { name: 'hermes', base: 'home', dir: '.hermes/skills/general', ok: '1 items installed', err: '1 broken links', audit: () => new HermesAdapter().audit() },
+    // hermes symlinks agents as well as skills, from two independent
+    // expressions (hermes.js:88 and :97). Covering only the skills dir would
+    // leave the agent branch dead under test — reverting it would stay green
+    // while a dangling ~/.hermes/agents/<id>.md audited clean, which is the
+    // #438 defect surviving in the content type this adapter's "broken links"
+    // wording exists to describe.
+    { name: 'hermes', base: 'home', dir: '.hermes/skills/general', agentDir: '.hermes/agents', ok: '2 items installed', err: '2 broken links', audit: () => new HermesAdapter().audit() },
     { name: 'openclaw', base: 'home', dir: '.openclaw/workspace', ok: '1 skills in workspace', err: '1 broken skill symlinks', audit: () => new OpenClawAdapter().audit(ROOT, 'project') },
   ];
 
@@ -276,6 +283,12 @@ describe('adapter audits detect broken symlinks', () => {
       mkdirSync(skillsDir, { recursive: true });
       symlinkSync(realSkill, resolve(skillsDir, 'good-skill'));
       symlinkSync(resolve(tmpRoot, 'no-such-target'), resolve(skillsDir, 'ghost-skill'));
+      if (c.agentDir) {
+        const agentsDir = resolve(fakeHome, c.agentDir);
+        mkdirSync(agentsDir, { recursive: true });
+        symlinkSync(realAgent, resolve(agentsDir, 'good-agent.md'));
+        symlinkSync(resolve(tmpRoot, 'no-such-agent.md'), resolve(agentsDir, 'ghost-agent.md'));
+      }
     }
     // os.homedir() reads $HOME on POSIX, which is how the home-based adapters
     // are steered at the fixture. Restored in after().
