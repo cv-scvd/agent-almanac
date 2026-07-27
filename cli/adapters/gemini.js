@@ -51,7 +51,8 @@ export class GeminiAdapter extends FrameworkAdapter {
     const dir = this._skillsDir(projectDir);
     if (existsSync(dir)) {
       for (const name of readdirSync(dir)) {
-        items.push({ id: name, type: 'skill', path: resolve(dir, name) });
+        const fullPath = resolve(dir, name);
+        items.push({ id: name, type: 'skill', path: fullPath, broken: !existsSync(fullPath) });
       }
     }
     return items;
@@ -59,11 +60,13 @@ export class GeminiAdapter extends FrameworkAdapter {
 
   async audit(projectDir) {
     const installed = await this.listInstalled(projectDir);
+    const broken = installed.filter(i => i.broken);
+    const valid = installed.filter(i => !i.broken);
     return {
       framework: GeminiAdapter.displayName,
-      ok: installed.length > 0 ? [`${installed.length} skills installed`] : [],
+      ok: valid.length > 0 ? [`${valid.length} skills installed`] : [],
       warnings: installed.length === 0 ? ['No Gemini skills installed'] : [],
-      errors: [],
+      errors: broken.length > 0 ? [`${broken.length} broken skill symlinks`] : [],
     };
   }
 }

@@ -100,14 +100,17 @@ system_prompt_id = "${item.id}"
     const skillsDir = this._skillsBase(projectDir, scope);
     if (existsSync(skillsDir)) {
       for (const name of readdirSync(skillsDir)) {
-        items.push({ id: name, type: 'skill', path: resolve(skillsDir, name) });
+        const fullPath = resolve(skillsDir, name);
+        // existsSync follows the link, so it is false for a dangling symlink.
+        items.push({ id: name, type: 'skill', path: fullPath, broken: !existsSync(fullPath) });
       }
     }
     const agentsDir = this._agentsBase();
     if (existsSync(agentsDir)) {
       for (const name of readdirSync(agentsDir)) {
         if (name.endsWith('.toml')) {
-          items.push({ id: name.replace(/\.toml$/, ''), type: 'agent', path: resolve(agentsDir, name) });
+          // Agent .toml files are generated in place, not linked — they cannot dangle.
+          items.push({ id: name.replace(/\.toml$/, ''), type: 'agent', path: resolve(agentsDir, name), broken: false });
         }
       }
     }
@@ -116,11 +119,15 @@ system_prompt_id = "${item.id}"
 
   async audit(projectDir, scope) {
     const installed = await this.listInstalled(projectDir, scope);
+    // Only skills are symlinked; agent .toml files are generated in place and
+    // are flagged broken:false, so they can never be counted here.
+    const broken = installed.filter(i => i.broken);
+    const valid = installed.filter(i => !i.broken);
     return {
       framework: VibeAdapter.displayName,
-      ok: installed.length > 0 ? [`${installed.length} items installed`] : [],
+      ok: valid.length > 0 ? [`${valid.length} items installed`] : [],
       warnings: installed.length === 0 ? ['No Vibe content installed'] : [],
-      errors: [],
+      errors: broken.length > 0 ? [`${broken.length} broken skill symlinks`] : [],
     };
   }
 }

@@ -73,7 +73,12 @@ export class CopilotAdapter extends FrameworkAdapter {
     const skillsDir = this._skillsDir(projectDir);
     if (existsSync(skillsDir)) {
       for (const name of readdirSync(skillsDir)) {
-        items.push({ id: name, type: 'skill', path: resolve(skillsDir, name) });
+        const fullPath = resolve(skillsDir, name);
+        // existsSync follows the link, so it is false for a dangling symlink.
+        // Real (copied) skill directories resolve, so they are never flagged.
+        let broken = false;
+        try { broken = !existsSync(fullPath); } catch { broken = true; }
+        items.push({ id: name, type: 'skill', path: fullPath, broken });
       }
     }
     return items;
@@ -81,11 +86,13 @@ export class CopilotAdapter extends FrameworkAdapter {
 
   async audit(projectDir) {
     const installed = await this.listInstalled(projectDir);
+    const broken = installed.filter(i => i.broken);
+    const valid = installed.filter(i => !i.broken);
     return {
       framework: CopilotAdapter.displayName,
-      ok: installed.length > 0 ? [`${installed.length} skills installed`] : [],
+      ok: valid.length > 0 ? [`${valid.length} skills installed`] : [],
       warnings: installed.length === 0 ? ['No Copilot skills installed'] : [],
-      errors: [],
+      errors: broken.length > 0 ? [`${broken.length} broken skill symlinks`] : [],
     };
   }
 }

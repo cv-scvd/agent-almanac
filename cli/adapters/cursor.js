@@ -83,14 +83,17 @@ export class CursorAdapter extends FrameworkAdapter {
     const skillsDir = resolve(projectDir, '.cursor/skills');
     if (existsSync(skillsDir)) {
       for (const name of readdirSync(skillsDir)) {
-        items.push({ id: name, type: 'skill', path: resolve(skillsDir, name), format: 'skills' });
+        const fullPath = resolve(skillsDir, name);
+        // existsSync follows the link — false for a broken symlink.
+        items.push({ id: name, type: 'skill', path: fullPath, format: 'skills', broken: !existsSync(fullPath) });
       }
     }
     const rulesDir = resolve(projectDir, '.cursor/rules');
     if (existsSync(rulesDir)) {
       for (const name of readdirSync(rulesDir)) {
         if (name.endsWith('.mdc')) {
-          items.push({ id: name.replace(/\.mdc$/, ''), type: 'skill', path: resolve(rulesDir, name), format: 'mdc' });
+          // Legacy .mdc rules are written files, not links — they cannot dangle.
+          items.push({ id: name.replace(/\.mdc$/, ''), type: 'skill', path: resolve(rulesDir, name), format: 'mdc', broken: false });
         }
       }
     }
@@ -99,11 +102,13 @@ export class CursorAdapter extends FrameworkAdapter {
 
   async audit(projectDir) {
     const installed = await this.listInstalled(projectDir);
+    const broken = installed.filter(i => i.broken).length;
+    const valid = installed.length - broken;
     return {
       framework: CursorAdapter.displayName,
-      ok: installed.length > 0 ? [`${installed.length} items installed`] : [],
+      ok: valid > 0 ? [`${valid} items installed`] : [],
       warnings: installed.length === 0 ? ['No Cursor content installed'] : [],
-      errors: [],
+      errors: broken > 0 ? [`${broken} broken skill symlinks`] : [],
     };
   }
 }
