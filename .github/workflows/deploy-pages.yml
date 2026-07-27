@@ -42,6 +42,18 @@ jobs:
         working-directory: viz
         run: npm ci
 
+      # This workflow triggers on the _registry.yml paths, but nothing in the
+      # build read them, so registry-only pushes redeployed the previously
+      # committed skills.json unchanged (#363). build-data.js regenerates it
+      # from the skills/agents/teams registries; vite then copies publicDir
+      # into dist. Only the data step belongs here -- the icon manifests are
+      # inputs to the R renderers in build.sh and are never fetched at runtime.
+      # data/workflow.mmd IS runtime-fetched but is R-generated and committed
+      # by hand; see the Viz Deploy Model section in CLAUDE.md.
+      - name: Generate viz data from registries
+        working-directory: viz
+        run: npm run build-data
+
       - name: Build
         working-directory: viz
         run: npm run build

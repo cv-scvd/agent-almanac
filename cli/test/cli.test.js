@@ -12,6 +12,7 @@ import { existsSync, mkdirSync, rmSync, readlinkSync, readFileSync, writeFileSyn
 import { resolve } from 'path';
 
 // Direct imports for unit tests.
+import { ClaudeCodeAdapter } from '../adapters/claude-code.js';
 import { renderSprite, composite, canRenderPixelArt } from '../lib/pixel-renderer.js';
 import {
   CAMPFIRE_BURNING, CAMPFIRE_EMBERS, CAMPFIRE_COLD,
@@ -26,6 +27,31 @@ const ROOT = process.cwd();
 
 function run(args) {
   return execSync(`${CLI} ${args}`, { cwd: ROOT, encoding: 'utf8', timeout: 10000 });
+}
+
+/**
+ * Extract one framework's block from `audit` output (#373).
+ *
+ * Sections are a flush-left `<Framework>:` header followed by indented
+ * `  OK|WARN|ERR  ...` entries, so the block runs to the next flush-left
+ * line. Asserting against the whole output instead lets a passing sibling
+ * section satisfy a match meant for this one.
+ *
+ * ANSI is stripped first: printAudit renders the header with chalk.bold and
+ * the markers with colours, so under FORCE_COLOR the header arrives as
+ * `\x1b[1mClaude Code:\x1b[22m`. Matching that literally would miss the
+ * section and return '' -- which fails the OK assertion on a healthy repo
+ * and, worse, makes the paired ERR check pass vacuously. Callers should
+ * still assert the section is non-empty before asserting on its contents.
+ */
+function auditSection(out, framework) {
+  // eslint-disable-next-line no-control-regex
+  const lines = out.replace(/\x1b\[[0-9;]*m/g, '').split('\n');
+  const start = lines.findIndex((line) => line.trim() === `${framework}:`);
+  if (start === -1) return '';
+  const rest = lines.slice(start + 1);
+  const end = rest.findIndex((line) => /^\S/.test(line));
+  return (end === -1 ? rest : rest.slice(0, end)).join('\n');
 }
 
 // ── Registry-derived expectations (#307) ─────────────────────────
@@ -159,10 +185,46 @@ describe('install', () => {
 // ── Audit ────────────────────────────────────────────────────────
 
 describe('audit', () => {
+  // One spawn shared by every output assertion below. `audit` takes ~3-9s on
+  // a WSL/NTFS checkout against run()'s 10s execSync cap, so giving each
+  // assertion its own subprocess made the suite flake on ETIMEDOUT -- and
+  // package.json wires this file as prepublishOnly, so a flake blocks release.
+  let out;
+  before(() => {
+    out = run('audit');
+  });
+
   it('reports Claude Code health', () => {
-    const out = run('audit');
     assert.match(out, /Claude Code/);
     assert.match(out, /skills installed/);
+  });
+
+  // The assertion above passed for weeks while the Claude Code audit was
+  // crashing (#365): `/Claude Code/` matches only the section header, and
+  // `/skills installed/` is satisfied by the Universal (.agents/) section
+  // printed above it. The three below close that gap (#373). They matter
+  // because auditAll() converts an adapter throw into an errors[] entry
+  // (cli/lib/installer.js) and the command still exits 0 — the printed
+  // output is the only signal a failure happened at all.
+
+  it('reports no adapter failure for any framework', () => {
+    assert.doesNotMatch(out, /Audit failed/);
+  });
+
+  it('reports installed skills inside the Claude Code section', () => {
+    const section = auditSection(out, 'Claude Code');
+    // Guard first: an empty section would make the ERR check below pass
+    // vacuously, which is the same class of false green this test exists
+    // to remove.
+    assert.notEqual(section, '', 'no Claude Code section found in audit output');
+    assert.match(section, /^\s+OK\s+\d+ skills installed$/m);
+    assert.doesNotMatch(section, /ERR/);
+  });
+
+  it('audits the claude-code adapter directly without throwing', async () => {
+    const result = await new ClaudeCodeAdapter().audit(ROOT, 'project');
+    assert.deepEqual(result.errors, []);
+    assert.ok(result.ok.some((line) => /skills installed/.test(line)));
   });
 });
 
