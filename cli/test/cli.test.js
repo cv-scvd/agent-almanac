@@ -8,11 +8,17 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execSync } from 'child_process';
-import { existsSync, mkdirSync, rmSync, readlinkSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, rmSync, readlinkSync, readFileSync, writeFileSync, symlinkSync } from 'fs';
 import { resolve } from 'path';
 
 // Direct imports for unit tests.
 import { ClaudeCodeAdapter } from '../adapters/claude-code.js';
+import { CopilotAdapter } from '../adapters/copilot.js';
+import { CursorAdapter } from '../adapters/cursor.js';
+import { GeminiAdapter } from '../adapters/gemini.js';
+import { HermesAdapter } from '../adapters/hermes.js';
+import { OpenClawAdapter } from '../adapters/openclaw.js';
+import { VibeAdapter } from '../adapters/vibe.js';
 import { renderSprite, composite, canRenderPixelArt } from '../lib/pixel-renderer.js';
 import {
   CAMPFIRE_BURNING, CAMPFIRE_EMBERS, CAMPFIRE_COLD,
@@ -226,6 +232,83 @@ describe('audit', () => {
     assert.deepEqual(result.errors, []);
     assert.ok(result.ok.some((line) => /skills installed/.test(line)));
   });
+});
+
+// ── Adapter audits: broken symlink detection (#438) ──────────────
+//
+// Every adapter that installs content as a symlink must report a dangling one
+// as an error. Before #438, six of them counted a broken symlink as installed
+// and returned `errors: []`, so a half-destroyed install audited clean.
+//
+// Each case builds one valid and one dangling symlink and asserts the exact
+// error string, so a regression to `errors: []` fails rather than degrading
+// quietly. The wording differs per adapter by design and follows what each
+// installs: "broken skill symlinks" where only skills are linked, "broken
+// links" for hermes, which links agents too.
+//
+// `hermes` and `openclaw` resolve their target from `homedir()` rather than a
+// project dir, so HOME is redirected into the fixture for the whole block.
+// That also pins `vibe`, whose agents dir is home-based — without it, a real
+// ~/.vibe/agents on the dev machine would leak .toml entries into the counts.
+describe('adapter audits detect broken symlinks', () => {
+  const tmpRoot = resolve(ROOT, '.tmp-test-audit');
+  const fakeHome = resolve(tmpRoot, 'home');
+  const realSkill = resolve(ROOT, 'skills/commit-changes');
+  const realAgent = resolve(ROOT, 'agents/code-reviewer.md');
+  let savedHome;
+
+  // path: where the adapter looks, relative to its own base (project or home).
+  const cases = [
+    { name: 'copilot', base: 'project', dir: '.github/skills', ok: '1 skills installed', err: '1 broken skill symlinks', audit: (d) => new CopilotAdapter().audit(d) },
+    { name: 'cursor', base: 'project', dir: '.cursor/skills', ok: '1 items installed', err: '1 broken skill symlinks', audit: (d) => new CursorAdapter().audit(d) },
+    { name: 'gemini', base: 'project', dir: '.gemini/skills', ok: '1 skills installed', err: '1 broken skill symlinks', audit: (d) => new GeminiAdapter().audit(d) },
+    { name: 'vibe', base: 'project', dir: '.vibe/skills', ok: '1 items installed', err: '1 broken skill symlinks', audit: (d) => new VibeAdapter().audit(d, 'project') },
+    // hermes symlinks agents as well as skills, from two independent
+    // expressions (hermes.js:88 and :97). Covering only the skills dir would
+    // leave the agent branch dead under test — reverting it would stay green
+    // while a dangling ~/.hermes/agents/<id>.md audited clean, which is the
+    // #438 defect surviving in the content type this adapter's "broken links"
+    // wording exists to describe.
+    { name: 'hermes', base: 'home', dir: '.hermes/skills/general', agentDir: '.hermes/agents', ok: '2 items installed', err: '2 broken links', audit: () => new HermesAdapter().audit() },
+    { name: 'openclaw', base: 'home', dir: '.openclaw/workspace', ok: '1 skills in workspace', err: '1 broken skill symlinks', audit: () => new OpenClawAdapter().audit(ROOT, 'project') },
+  ];
+
+  const dirFor = (c) => (c.base === 'home' ? resolve(fakeHome, c.dir) : resolve(tmpRoot, c.name, c.dir));
+
+  before(() => {
+    rmSync(tmpRoot, { recursive: true, force: true }); // leftover from a crashed run
+    mkdirSync(fakeHome, { recursive: true });
+    for (const c of cases) {
+      const skillsDir = dirFor(c);
+      mkdirSync(skillsDir, { recursive: true });
+      symlinkSync(realSkill, resolve(skillsDir, 'good-skill'));
+      symlinkSync(resolve(tmpRoot, 'no-such-target'), resolve(skillsDir, 'ghost-skill'));
+      if (c.agentDir) {
+        const agentsDir = resolve(fakeHome, c.agentDir);
+        mkdirSync(agentsDir, { recursive: true });
+        symlinkSync(realAgent, resolve(agentsDir, 'good-agent.md'));
+        symlinkSync(resolve(tmpRoot, 'no-such-agent.md'), resolve(agentsDir, 'ghost-agent.md'));
+      }
+    }
+    // os.homedir() reads $HOME on POSIX, which is how the home-based adapters
+    // are steered at the fixture. Restored in after().
+    savedHome = process.env.HOME;
+    process.env.HOME = fakeHome;
+  });
+
+  after(() => {
+    if (savedHome === undefined) delete process.env.HOME;
+    else process.env.HOME = savedHome;
+    rmSync(tmpRoot, { recursive: true, force: true });
+  });
+
+  for (const c of cases) {
+    it(`${c.name}: reports a dangling symlink as an error`, async () => {
+      const result = await c.audit(resolve(tmpRoot, c.name));
+      assert.deepEqual(result.errors, [c.err]);
+      assert.deepEqual(result.ok, [c.ok]);
+    });
+  }
 });
 
 // ── Init ─────────────────────────────────────────────────────────

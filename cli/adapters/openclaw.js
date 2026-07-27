@@ -95,7 +95,9 @@ export class OpenClawAdapter extends FrameworkAdapter {
     if (existsSync(wsDir)) {
       for (const name of readdirSync(wsDir)) {
         if (name === 'AGENTS.md') continue;
-        items.push({ id: name, type: 'skill', path: resolve(wsDir, name) });
+        const fullPath = resolve(wsDir, name);
+        // existsSync follows the link — false for a broken symlink.
+        items.push({ id: name, type: 'skill', path: fullPath, broken: !existsSync(fullPath) });
       }
     }
     return items;
@@ -103,11 +105,13 @@ export class OpenClawAdapter extends FrameworkAdapter {
 
   async audit(projectDir, scope) {
     const installed = await this.listInstalled(projectDir, scope);
+    const broken = installed.filter(i => i.broken).length;
+    const valid = installed.length - broken;
     return {
       framework: OpenClawAdapter.displayName,
-      ok: installed.length > 0 ? [`${installed.length} skills in workspace`] : [],
+      ok: valid > 0 ? [`${valid} skills in workspace`] : [],
       warnings: installed.length === 0 ? ['No skills in ~/.openclaw/workspace/'] : [],
-      errors: [],
+      errors: broken > 0 ? [`${broken} broken skill symlinks`] : [],
     };
   }
 }

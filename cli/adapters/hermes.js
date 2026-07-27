@@ -84,7 +84,8 @@ export class HermesAdapter extends FrameworkAdapter {
         const domainDir = resolve(base, domain);
         try {
           for (const name of readdirSync(domainDir)) {
-            items.push({ id: name, type: 'skill', domain, path: resolve(domainDir, name) });
+            const fullPath = resolve(domainDir, name);
+            items.push({ id: name, type: 'skill', domain, path: fullPath, broken: !existsSync(fullPath) });
           }
         } catch { /* not a directory */ }
       }
@@ -92,7 +93,8 @@ export class HermesAdapter extends FrameworkAdapter {
     const agentsBase = this._agentsBase();
     if (existsSync(agentsBase)) {
       for (const name of readdirSync(agentsBase)) {
-        items.push({ id: name.replace(/\.md$/, ''), type: 'agent', path: resolve(agentsBase, name) });
+        const fullPath = resolve(agentsBase, name);
+        items.push({ id: name.replace(/\.md$/, ''), type: 'agent', path: fullPath, broken: !existsSync(fullPath) });
       }
     }
     return items;
@@ -100,11 +102,13 @@ export class HermesAdapter extends FrameworkAdapter {
 
   async audit() {
     const installed = await this.listInstalled();
+    const broken = installed.filter(i => i.broken);
+    const valid = installed.filter(i => !i.broken);
     return {
       framework: HermesAdapter.displayName,
-      ok: installed.length > 0 ? [`${installed.length} items installed`] : [],
+      ok: valid.length > 0 ? [`${valid.length} items installed`] : [],
       warnings: installed.length === 0 ? ['No Hermes content installed'] : [],
-      errors: [],
+      errors: broken.length > 0 ? [`${broken.length} broken links`] : [],
     };
   }
 }
