@@ -528,10 +528,19 @@ fi
 # B11: CLI audit (optional, only if CLI is available)
 echo "--- B11: CLI audit ---"
 if command -v node >/dev/null 2>&1 && [ -f "cli/index.js" ]; then
-  cli_out=$(node cli/index.js audit 2>&1) || true
-  if echo "$cli_out" | grep -q "error"; then
-    echo "WARN: CLI audit reported errors:"
-    echo "$cli_out" | grep -i "error" | sed 's/^/  /'
+  # The reporter prints findings as "  ERR  <msg>" (cli/lib/reporter.js), and
+  # the crash path prepends "Audit failed: " via auditAll(). Neither string
+  # contains a lowercase "error", so the previous `grep -q "error"` could never
+  # fire: this check reported OK for as long as the claude-code audit was
+  # throwing (#365, #373). Match the markers the reporter actually emits, and
+  # treat a non-zero exit as a failure too. Still warn-only -- making the audit
+  # itself signal through its exit status is #439.
+  audit_pattern='(^|[[:space:]])ERR([[:space:]]|$)|Audit failed'
+  cli_rc=0
+  cli_out=$(node cli/index.js audit 2>&1) || cli_rc=$?
+  if [ "$cli_rc" -ne 0 ] || echo "$cli_out" | grep -qE "$audit_pattern"; then
+    echo "WARN: CLI audit reported errors (exit $cli_rc):"
+    echo "$cli_out" | grep -E "$audit_pattern" | sed 's/^/  /'
     warn_count=$((warn_count + 1))
   else
     echo "OK: CLI audit passed"
