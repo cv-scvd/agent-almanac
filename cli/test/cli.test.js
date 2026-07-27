@@ -18,6 +18,7 @@ import { CursorAdapter } from '../adapters/cursor.js';
 import { GeminiAdapter } from '../adapters/gemini.js';
 import { HermesAdapter } from '../adapters/hermes.js';
 import { OpenClawAdapter } from '../adapters/openclaw.js';
+import { OpenCodeAdapter } from '../adapters/opencode.js';
 import { VibeAdapter } from '../adapters/vibe.js';
 import { renderSprite, composite, canRenderPixelArt } from '../lib/pixel-renderer.js';
 import {
@@ -234,17 +235,25 @@ describe('audit', () => {
   });
 });
 
-// ── Adapter audits: broken symlink detection (#438) ──────────────
+// ── Adapter audits: broken symlink detection (#438, #445) ────────
 //
 // Every adapter that installs content as a symlink must report a dangling one
-// as an error. Before #438, six of them counted a broken symlink as installed
-// and returned `errors: []`, so a half-destroyed install audited clean.
+// as an error, and must not count it as installed. Before #438, six of them
+// returned `errors: []` outright, so a half-destroyed install audited clean.
+// opencode did report the error but still counted the dangling item in `ok`;
+// #445 aligned it, so all nine now split valid from broken the same way.
 //
-// Each case builds one valid and one dangling symlink and asserts the exact
-// error string, so a regression to `errors: []` fails rather than degrading
-// quietly. The wording differs per adapter by design and follows what each
-// installs: "broken skill symlinks" where only skills are linked, "broken
-// links" for hermes, which links agents too.
+// Nine adapters split, but this block holds SEVEN cases. claude-code is
+// covered by its own direct audit test above; universal is not covered by any
+// broken-symlink test yet (#447) — its `N broken symlinks: <ids>` wording at
+// universal.js:123 is unexercised.
+//
+// Each case builds one valid and one dangling symlink and asserts BOTH the
+// exact error and the exact ok string, so neither a regression to `errors: []`
+// nor a drift back to counting totals passes. The wording differs per adapter
+// by design and follows what each installs: "broken skill symlinks" where only
+// skills are linked, "broken links" for hermes and opencode, which link agents
+// too.
 //
 // `hermes` and `openclaw` resolve their target from `homedir()` rather than a
 // project dir, so HOME is redirected into the fixture for the whole block.
@@ -271,6 +280,10 @@ describe('adapter audits detect broken symlinks', () => {
     // wording exists to describe.
     { name: 'hermes', base: 'home', dir: '.hermes/skills/general', agentDir: '.hermes/agents', ok: '2 items installed', err: '2 broken links', audit: () => new HermesAdapter().audit() },
     { name: 'openclaw', base: 'home', dir: '.openclaw/workspace', ok: '1 skills in workspace', err: '1 broken skill symlinks', audit: () => new OpenClawAdapter().audit(ROOT, 'project') },
+    // opencode already reported broken links before #438; #445 aligned its ok
+    // line to valid-only like the rest. One dir is enough here: unlike hermes,
+    // its skills and agents flow through the same expression (opencode.js:82).
+    { name: 'opencode', base: 'project', dir: '.opencode/skills', ok: '1 items installed', err: '1 broken links', audit: (d) => new OpenCodeAdapter().audit(d, 'project') },
   ];
 
   const dirFor = (c) => (c.base === 'home' ? resolve(fakeHome, c.dir) : resolve(tmpRoot, c.name, c.dir));

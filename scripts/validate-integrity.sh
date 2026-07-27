@@ -525,54 +525,12 @@ if [ -n "$b10_missing" ]; then
 fi
 [ "$b10_warn" -eq 0 ] && echo "OK: All registry domains have DOMAIN_STYLES entries"
 
-# B11: CLI audit (optional, only if CLI is available)
-echo "--- B11: CLI audit ---"
-if ! command -v node >/dev/null 2>&1 || [ ! -f "cli/index.js" ]; then
-  echo "SKIP: CLI not available (node or cli/index.js missing)"
-elif [ ! -d "node_modules/commander" ]; then
-  # validate-integrity.yml checks out without `npm ci`, so the CLI cannot even
-  # load here: node exits 1 with ERR_MODULE_NOT_FOUND before printing anything.
-  # The previous `|| true` discarded that exit code and grepped the loader
-  # error for a lowercase "error" it does not contain, so this check reported
-  # "OK: CLI audit passed" against a CLI that never ran -- in CI, always
-  # (#373). Skip honestly instead. The audit itself is covered in
-  # ci-node-cli.yml, which does install dependencies and whose test:cli asserts
-  # on the Claude Code section directly.
-  echo "SKIP: CLI dependencies not installed (run 'npm ci' to exercise B11)"
-else
-  # The reporter prints findings as "  ERR  <msg>" (cli/lib/reporter.js), and
-  # the crash path prepends "Audit failed: " via auditAll(). Neither contains a
-  # lowercase "error", which is why the old pattern never fired locally either
-  # while the claude-code audit was throwing (#365). Match the markers the
-  # reporter actually emits, and treat a non-zero exit as a failure too.
-  # Warn-only, as before: making `audit` signal through its exit status is #439.
-  audit_pattern='(^|[[:space:]])ERR([[:space:]]|$)|Audit failed'
-  cli_rc=0
-  cli_out=$(node cli/index.js audit 2>&1) || cli_rc=$?
-  # Strip ANSI before matching. printAudit renders the marker as
-  # chalk.red('ERR'), so with colour enabled the line reads
-  # "  <ESC>[31mERR<ESC>[39m  <msg>": the byte before ERR is 'm' and the byte
-  # after is ESC, so a whitespace-anchored pattern cannot match. "Audit failed"
-  # would still catch an adapter crash, since that text sits outside the colour
-  # codes -- but the marker-only errors would go dark: "N broken skill
-  # symlinks" (claude-code.js:197), "agents symlink is broken" (:201), and
-  # "N broken symlinks: ..." (universal.js:123). auditSection() in
-  # cli/test/cli.test.js strips ANSI for exactly this reason; this is the
-  # shell-side half of that same fix.
-  esc=$(printf '\033')
-  cli_out=$(printf '%s\n' "$cli_out" | sed -E "s/${esc}\[[0-9;]*m//g")
-  if [ "$cli_rc" -ne 0 ] || printf '%s\n' "$cli_out" | grep -qE "$audit_pattern"; then
-    echo "WARN: CLI audit reported errors (exit $cli_rc):"
-    # A non-zero exit with no matching line means the CLI died before printing
-    # an audit at all; fall back to the tail so the failure is diagnosable.
-    # Without the fallback the empty grep aborts the script under pipefail.
-    printf '%s\n' "$cli_out" | grep -E "$audit_pattern" | sed 's/^/  /' \
-      || printf '%s\n' "$cli_out" | tail -5 | sed 's/^/  /'
-    warn_count=$((warn_count + 1))
-  else
-    echo "OK: CLI audit passed"
-  fi
-fi
+# B11 (CLI audit) was removed: it could not fire on a real failure, never ran
+# in CI (this job performs no `npm ci`, so the CLI died at module resolution),
+# and would not have triggered anyway -- `cli/**` is absent from this
+# workflow's paths. Audit coverage lives in ci-node-cli.yml, whose test:cli
+# asserts the adapter results directly (#373, #438). Do not re-add a stdout
+# grep here. See #443.
 
 # B12: Global discovery-hub coverage (warn-only; #324/#325)
 # Repo-internal skill symlinks are the hard gate (B1); the global hub
