@@ -1,13 +1,13 @@
 {
   "meta": {
-    "generated": "2026-07-22T13:12:56.432Z",
+    "generated": "2026-07-27T06:30:47.529Z",
     "totalSkills": 369,
-    "totalAgents": 73,
-    "totalTeams": 18,
-    "totalNodes": 460,
-    "totalLinks": 1872,
-    "totalAgentLinks": 286,
-    "totalTeamLinks": 58,
+    "totalAgents": 75,
+    "totalTeams": 22,
+    "totalNodes": 466,
+    "totalLinks": 1904,
+    "totalAgentLinks": 297,
+    "totalTeamLinks": 73,
     "totalDomains": 66,
     "supportedLocales": [
       "de",
@@ -6446,7 +6446,14 @@
         "deployment",
         "templating"
       ],
-      "related": [],
+      "related": [
+        "deploy-to-kubernetes",
+        "setup-local-kubernetes",
+        "manage-kubernetes-secrets",
+        "implement-gitops-workflow",
+        "setup-container-registry",
+        "create-dockerfile"
+      ],
       "path": "write-helm-chart/SKILL.md",
       "locales": [
         "de",
@@ -13635,6 +13642,46 @@
       ]
     },
     {
+      "id": "agent:memex-keeper",
+      "type": "agent",
+      "title": "Memex Keeper",
+      "priority": "high",
+      "description": "Custodian of the agent's documentary persistent self — loads and logs the cross-session bias-log through the memex store, and maintains the memex companion repo (verify gate, milestone handoff)",
+      "tags": [
+        "memex",
+        "memory",
+        "observability",
+        "bias-log",
+        "vipassana",
+        "mcp",
+        "rust",
+        "handoff"
+      ],
+      "tools": [
+        "Read",
+        "Write",
+        "Edit",
+        "Bash",
+        "Grep",
+        "Glob"
+      ],
+      "mcp_servers": [],
+      "skills": [
+        "memex",
+        "memex-init",
+        "memex-observe",
+        "memex-verify",
+        "memex-wrap"
+      ],
+      "path": "agents/memex-keeper.md",
+      "locales": [
+        "de",
+        "zh-CN",
+        "ja",
+        "es"
+      ]
+    },
+    {
       "id": "agent:mystic",
       "type": "agent",
       "title": "Mystic",
@@ -13822,14 +13869,16 @@
         "Edit",
         "Grep",
         "Glob",
-        "WebFetch"
+        "WebFetch",
+        "Bash"
       ],
       "mcp_servers": [],
       "skills": [
         "review-research",
         "review-data-analysis",
         "format-apa-report",
-        "generate-statistical-tables"
+        "generate-statistical-tables",
+        "validate-references"
       ],
       "path": "agents/senior-researcher.md",
       "locales": []
@@ -14271,7 +14320,8 @@
       "skills": [
         "format-apa-report",
         "format-citations",
-        "validate-references"
+        "validate-references",
+        "manage-bibliography"
       ],
       "path": "agents/apa-specialist.md",
       "locales": []
@@ -14636,6 +14686,40 @@
       ],
       "path": "agents/lapidary.md",
       "locales": []
+    },
+    {
+      "id": "agent:artisan",
+      "type": "agent",
+      "title": "Artisan",
+      "priority": "normal",
+      "description": "Handmade craft specialist who transforms raw natural materials — plant fibres, wood, leather, blades — into functional handmade artifacts through papermaking, hand-tool sharpening and maintenance, and material preservation",
+      "tags": [
+        "crafting",
+        "handmade",
+        "natural-materials",
+        "papermaking",
+        "hand-tools"
+      ],
+      "tools": [
+        "Read",
+        "Write",
+        "Edit",
+        "Bash",
+        "Grep",
+        "Glob"
+      ],
+      "mcp_servers": [],
+      "skills": [
+        "paper-making",
+        "sharpen-knife"
+      ],
+      "path": "agents/artisan.md",
+      "locales": [
+        "de",
+        "zh-CN",
+        "ja",
+        "es"
+      ]
     },
     {
       "id": "agent:shaman",
@@ -15407,7 +15491,9 @@
         "WebFetch"
       ],
       "mcp_servers": [],
-      "skills": [],
+      "skills": [
+        "benchmark-htr-engines"
+      ],
       "path": "agents/nlp-specialist.md",
       "locales": []
     },
@@ -15679,7 +15765,8 @@
         "magnetic-fields",
         "induction",
         "physics",
-        "devices"
+        "devices",
+        "statics"
       ],
       "tools": [
         "Read",
@@ -15795,7 +15882,8 @@
         "conduct-empirical-wire-capture",
         "monitor-binary-version-baselines",
         "probe-feature-flag-state",
-        "redact-for-public-disclosure"
+        "redact-for-public-disclosure",
+        "redact-wire-capture"
       ],
       "path": "agents/empirical-investigator.md",
       "locales": []
@@ -16252,6 +16340,124 @@
         "design"
       ],
       "path": "teams/visual-pr-review.md",
+      "locales": [
+        "de",
+        "zh-CN",
+        "ja",
+        "es"
+      ]
+    },
+    {
+      "id": "team:mathematical-research",
+      "type": "team",
+      "title": "Mathematical Research",
+      "lead": "theoretical-researcher",
+      "members": [
+        "theoretical-researcher",
+        "geometrist",
+        "number-theorist",
+        "markovian",
+        "diffusion-specialist"
+      ],
+      "coordination": "hub-and-spoke",
+      "description": "Hub-and-spoke mathematical research team that surveys and formalizes a problem, decomposes it into sub-problems routed to geometry, number-theory, stochastic, and diffusion specialists, then synthesizes one rigorous derivation",
+      "tags": [
+        "mathematics",
+        "research",
+        "proof",
+        "theoretical-science",
+        "geometry",
+        "number-theory",
+        "stochastic-processes",
+        "diffusion"
+      ],
+      "path": "teams/mathematical-research.md",
+      "locales": [
+        "de",
+        "zh-CN",
+        "ja",
+        "es"
+      ]
+    },
+    {
+      "id": "team:empirical-disclosure",
+      "type": "team",
+      "title": "Empirical Disclosure",
+      "lead": "empirical-investigator",
+      "members": [
+        "empirical-investigator",
+        "advocatus-diaboli",
+        "security-analyst"
+      ],
+      "coordination": "sequential",
+      "description": "Sequential capture-verify-redact-disclose team that turns empirical CLI/binary observations into gated, independently verified, safely redacted public findings",
+      "tags": [
+        "investigation",
+        "disclosure",
+        "redaction",
+        "verification",
+        "reverse-engineering",
+        "security"
+      ],
+      "path": "teams/empirical-disclosure.md",
+      "locales": [
+        "de",
+        "zh-CN",
+        "ja",
+        "es"
+      ]
+    },
+    {
+      "id": "team:release-engineering",
+      "type": "team",
+      "title": "Release Engineering",
+      "lead": "version-manager",
+      "members": [
+        "version-manager",
+        "cli-developer",
+        "devops-engineer",
+        "code-reviewer"
+      ],
+      "coordination": "sequential",
+      "description": "Sequential release-train team that carries a change from version planning through the prepublish test gate, CI/CD build, GitHub release, and final review signoff",
+      "tags": [
+        "release",
+        "versioning",
+        "ci-cd",
+        "changelog",
+        "cli",
+        "review"
+      ],
+      "path": "teams/release-engineering.md",
+      "locales": [
+        "de",
+        "zh-CN",
+        "ja",
+        "es"
+      ]
+    },
+    {
+      "id": "team:design-to-fabrication",
+      "type": "team",
+      "title": "Design To Fabrication",
+      "lead": "blender-artist",
+      "members": [
+        "designer",
+        "blender-artist",
+        "fabricator"
+      ],
+      "coordination": "sequential",
+      "description": "Sequential decorative-object pipeline that carries an ornamental concept from style brief through Blender modeling to 3D-print fabrication, with print defects routed back to the modeler as revision requests",
+      "tags": [
+        "design",
+        "blender",
+        "3d-printing",
+        "visualization",
+        "ornament",
+        "fabrication",
+        "display-piece"
+      ],
+      "path": "teams/design-to-fabrication.md",
       "locales": [
         "de",
         "zh-CN",
@@ -19944,6 +20150,36 @@
     {
       "source": "setup-local-kubernetes",
       "target": "optimize-cloud-costs",
+      "type": "skill"
+    },
+    {
+      "source": "write-helm-chart",
+      "target": "deploy-to-kubernetes",
+      "type": "skill"
+    },
+    {
+      "source": "write-helm-chart",
+      "target": "setup-local-kubernetes",
+      "type": "skill"
+    },
+    {
+      "source": "write-helm-chart",
+      "target": "manage-kubernetes-secrets",
+      "type": "skill"
+    },
+    {
+      "source": "write-helm-chart",
+      "target": "implement-gitops-workflow",
+      "type": "skill"
+    },
+    {
+      "source": "write-helm-chart",
+      "target": "setup-container-registry",
+      "type": "skill"
+    },
+    {
+      "source": "write-helm-chart",
+      "target": "create-dockerfile",
       "type": "skill"
     },
     {
@@ -24042,6 +24278,31 @@
       "type": "agent"
     },
     {
+      "source": "agent:memex-keeper",
+      "target": "memex",
+      "type": "agent"
+    },
+    {
+      "source": "agent:memex-keeper",
+      "target": "memex-init",
+      "type": "agent"
+    },
+    {
+      "source": "agent:memex-keeper",
+      "target": "memex-observe",
+      "type": "agent"
+    },
+    {
+      "source": "agent:memex-keeper",
+      "target": "memex-verify",
+      "type": "agent"
+    },
+    {
+      "source": "agent:memex-keeper",
+      "target": "memex-wrap",
+      "type": "agent"
+    },
+    {
       "source": "agent:mystic",
       "target": "heal",
       "type": "agent"
@@ -24154,6 +24415,11 @@
     {
       "source": "agent:senior-researcher",
       "target": "generate-statistical-tables",
+      "type": "agent"
+    },
+    {
+      "source": "agent:senior-researcher",
+      "target": "validate-references",
       "type": "agent"
     },
     {
@@ -24452,6 +24718,11 @@
       "type": "agent"
     },
     {
+      "source": "agent:apa-specialist",
+      "target": "manage-bibliography",
+      "type": "agent"
+    },
+    {
       "source": "agent:alchemist",
       "target": "athanor",
       "type": "agent"
@@ -24669,6 +24940,16 @@
     {
       "source": "agent:lapidary",
       "target": "appraise-gemstone",
+      "type": "agent"
+    },
+    {
+      "source": "agent:artisan",
+      "target": "paper-making",
+      "type": "agent"
+    },
+    {
+      "source": "agent:artisan",
+      "target": "sharpen-knife",
       "type": "agent"
     },
     {
@@ -25092,6 +25373,11 @@
       "type": "agent"
     },
     {
+      "source": "agent:nlp-specialist",
+      "target": "benchmark-htr-engines",
+      "type": "agent"
+    },
+    {
       "source": "agent:conservation-entomologist",
       "target": "observe-insect-behavior",
       "type": "agent"
@@ -25319,6 +25605,11 @@
     {
       "source": "agent:empirical-investigator",
       "target": "redact-for-public-disclosure",
+      "type": "agent"
+    },
+    {
+      "source": "agent:empirical-investigator",
+      "target": "redact-wire-capture",
       "type": "agent"
     },
     {
@@ -25619,6 +25910,81 @@
     {
       "source": "team:visual-pr-review",
       "target": "agent:senior-web-designer",
+      "type": "team"
+    },
+    {
+      "source": "team:mathematical-research",
+      "target": "agent:theoretical-researcher",
+      "type": "team"
+    },
+    {
+      "source": "team:mathematical-research",
+      "target": "agent:geometrist",
+      "type": "team"
+    },
+    {
+      "source": "team:mathematical-research",
+      "target": "agent:number-theorist",
+      "type": "team"
+    },
+    {
+      "source": "team:mathematical-research",
+      "target": "agent:markovian",
+      "type": "team"
+    },
+    {
+      "source": "team:mathematical-research",
+      "target": "agent:diffusion-specialist",
+      "type": "team"
+    },
+    {
+      "source": "team:empirical-disclosure",
+      "target": "agent:empirical-investigator",
+      "type": "team"
+    },
+    {
+      "source": "team:empirical-disclosure",
+      "target": "agent:advocatus-diaboli",
+      "type": "team"
+    },
+    {
+      "source": "team:empirical-disclosure",
+      "target": "agent:security-analyst",
+      "type": "team"
+    },
+    {
+      "source": "team:release-engineering",
+      "target": "agent:version-manager",
+      "type": "team"
+    },
+    {
+      "source": "team:release-engineering",
+      "target": "agent:cli-developer",
+      "type": "team"
+    },
+    {
+      "source": "team:release-engineering",
+      "target": "agent:devops-engineer",
+      "type": "team"
+    },
+    {
+      "source": "team:release-engineering",
+      "target": "agent:code-reviewer",
+      "type": "team"
+    },
+    {
+      "source": "team:design-to-fabrication",
+      "target": "agent:designer",
+      "type": "team"
+    },
+    {
+      "source": "team:design-to-fabrication",
+      "target": "agent:blender-artist",
+      "type": "team"
+    },
+    {
+      "source": "team:design-to-fabrication",
+      "target": "agent:fabricator",
       "type": "team"
     }
   ]

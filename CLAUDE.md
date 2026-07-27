@@ -128,6 +128,20 @@ npm run check-readmes
 
 CI auto-commits README updates when registry files change on `main` (`.github/workflows/update-readmes.yml`). Manual table updates in step 5 above are no longer needed — the script handles it.
 
+## Viz Deploy Model
+
+The visualization deploys to GitHub Pages from `.github/workflows/deploy-pages.yml`, which regenerates `viz/public/data/skills.json` from the four registries before `vite build`. Anything the deployed site reads at runtime must therefore be derived in that job — the site fetches `data/skills.json` and nothing else, so a registry change reaches the page only through `build-data.js`.
+
+The icon manifests (`icon-manifest.json`, `agent-icon-manifest.json`, `team-icon-manifest.json`) are *not* part of that path. They are inputs to the R renderers in `viz/build.sh`, which produce committed PNGs; no runtime code fetches a manifest. Regenerate them locally when glyphs change, via the full pipeline:
+
+```bash
+cd viz && bash build.sh          # never call Rscript directly
+```
+
+Note that `npm run build-manifest` builds skill manifests only — `build-icon-manifest.js` defaults to `['skill']`, and `build.sh` passes `--type all`.
+
+`viz/public/data/skills.json` stays committed for local `npm run dev` and the Docker image. Because CI regenerates it on deploy, a stale committed copy no longer reaches the published site, but it can still drift from the registries in-tree; refresh it with `npm run build-data` in the same commit as the content change.
+
 ## Internationalization (i18n)
 
 Translations live in the `i18n/` directory using a parallel tree structure. English sources remain canonical in `skills/`, `agents/`, `teams/`, `guides/`.
