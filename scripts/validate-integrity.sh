@@ -549,6 +549,18 @@ else
   audit_pattern='(^|[[:space:]])ERR([[:space:]]|$)|Audit failed'
   cli_rc=0
   cli_out=$(node cli/index.js audit 2>&1) || cli_rc=$?
+  # Strip ANSI before matching. printAudit renders the marker as
+  # chalk.red('ERR'), so with colour enabled the line reads
+  # "  <ESC>[31mERR<ESC>[39m  <msg>": the byte before ERR is 'm' and the byte
+  # after is ESC, so a whitespace-anchored pattern cannot match. "Audit failed"
+  # would still catch an adapter crash, since that text sits outside the colour
+  # codes -- but the marker-only errors would go dark: "N broken skill
+  # symlinks" (claude-code.js:197), "agents symlink is broken" (:201), and
+  # "N broken symlinks: ..." (universal.js:123). auditSection() in
+  # cli/test/cli.test.js strips ANSI for exactly this reason; this is the
+  # shell-side half of that same fix.
+  esc=$(printf '\033')
+  cli_out=$(printf '%s\n' "$cli_out" | sed -E "s/${esc}\[[0-9;]*m//g")
   if [ "$cli_rc" -ne 0 ] || printf '%s\n' "$cli_out" | grep -qE "$audit_pattern"; then
     echo "WARN: CLI audit reported errors (exit $cli_rc):"
     # A non-zero exit with no matching line means the CLI died before printing
