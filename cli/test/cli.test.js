@@ -36,9 +36,17 @@ function run(args) {
  * `  OK|WARN|ERR  ...` entries, so the block runs to the next flush-left
  * line. Asserting against the whole output instead lets a passing sibling
  * section satisfy a match meant for this one.
+ *
+ * ANSI is stripped first: printAudit renders the header with chalk.bold and
+ * the markers with colours, so under FORCE_COLOR the header arrives as
+ * `\x1b[1mClaude Code:\x1b[22m`. Matching that literally would miss the
+ * section and return '' -- which fails the OK assertion on a healthy repo
+ * and, worse, makes the paired ERR check pass vacuously. Callers should
+ * still assert the section is non-empty before asserting on its contents.
  */
 function auditSection(out, framework) {
-  const lines = out.split('\n');
+  // eslint-disable-next-line no-control-regex
+  const lines = out.replace(/\x1b\[[0-9;]*m/g, '').split('\n');
   const start = lines.findIndex((line) => line.trim() === `${framework}:`);
   if (start === -1) return '';
   const rest = lines.slice(start + 1);
@@ -177,8 +185,16 @@ describe('install', () => {
 // ── Audit ────────────────────────────────────────────────────────
 
 describe('audit', () => {
+  // One spawn shared by every output assertion below. `audit` takes ~3-9s on
+  // a WSL/NTFS checkout against run()'s 10s execSync cap, so giving each
+  // assertion its own subprocess made the suite flake on ETIMEDOUT -- and
+  // package.json wires this file as prepublishOnly, so a flake blocks release.
+  let out;
+  before(() => {
+    out = run('audit');
+  });
+
   it('reports Claude Code health', () => {
-    const out = run('audit');
     assert.match(out, /Claude Code/);
     assert.match(out, /skills installed/);
   });
@@ -192,11 +208,15 @@ describe('audit', () => {
   // output is the only signal a failure happened at all.
 
   it('reports no adapter failure for any framework', () => {
-    assert.doesNotMatch(run('audit'), /Audit failed/);
+    assert.doesNotMatch(out, /Audit failed/);
   });
 
   it('reports installed skills inside the Claude Code section', () => {
-    const section = auditSection(run('audit'), 'Claude Code');
+    const section = auditSection(out, 'Claude Code');
+    // Guard first: an empty section would make the ERR check below pass
+    // vacuously, which is the same class of false green this test exists
+    // to remove.
+    assert.notEqual(section, '', 'no Claude Code section found in audit output');
     assert.match(section, /^\s+OK\s+\d+ skills installed$/m);
     assert.doesNotMatch(section, /ERR/);
   });
