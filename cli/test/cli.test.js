@@ -243,6 +243,11 @@ describe('audit', () => {
 // opencode did report the error but still counted the dangling item in `ok`;
 // #445 aligned it, so all nine now split valid from broken the same way.
 //
+// Nine adapters split, but this block holds SEVEN cases. claude-code is
+// covered by its own direct audit test above; universal is not covered by any
+// broken-symlink test yet (#447) — its `N broken symlinks: <ids>` wording at
+// universal.js:123 is unexercised.
+//
 // Each case builds one valid and one dangling symlink and asserts BOTH the
 // exact error and the exact ok string, so neither a regression to `errors: []`
 // nor a drift back to counting totals passes. The wording differs per adapter
