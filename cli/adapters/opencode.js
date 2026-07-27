@@ -88,9 +88,10 @@ export class OpenCodeAdapter extends FrameworkAdapter {
   async audit(projectDir, scope) {
     const installed = await this.listInstalled(projectDir, scope);
     const broken = installed.filter(i => i.broken);
+    const valid = installed.filter(i => !i.broken);
     return {
       framework: OpenCodeAdapter.displayName,
-      ok: installed.length > 0 ? [`${installed.length} items installed`] : [],
+      ok: valid.length > 0 ? [`${valid.length} items installed`] : [],
       warnings: installed.length === 0 ? ['No OpenCode content installed'] : [],
       errors: broken.length > 0 ? [`${broken.length} broken links`] : [],
     };
