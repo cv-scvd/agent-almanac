@@ -19,6 +19,10 @@
  */
 
 import { Command } from 'commander';
+// Read the version from the manifest rather than restating it. A hardcoded
+// string drifted three ways (#456): the binary printed 0.1.0, cli/README.md
+// advertised 1.1.0, and the published package was 1.3.0.
+import pkg from '../package.json' with { type: 'json' };
 import { createInterface } from 'readline';
 import { loadRegistries, resolveItems, filterSkills, search, findTeam, findAgent } from './lib/registry.js';
 import { detectAlmanacRoot, resolveTargetDir } from './lib/resolver.js';
@@ -35,7 +39,7 @@ const program = new Command();
 program
   .name('agent-almanac')
   .description('Universal skill/agent/team installer for agentic CLI frameworks')
-  .version('0.1.0')
+  .version(pkg.version)
   .action(async () => {
     // Bare invocation — launch TUI if in a TTY, otherwise show help
     const { startTui } = await import('./lib/tui.js');

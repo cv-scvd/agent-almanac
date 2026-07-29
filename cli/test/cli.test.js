@@ -808,9 +808,14 @@ describe('tend', () => {
 // ── Version ──────────────────────────────────────────────────────
 
 describe('meta', () => {
-  it('shows version', () => {
-    const out = run('--version');
-    assert.match(out, /\d+\.\d+\.\d+/);
+  it('shows the version from package.json', () => {
+    // Deliberately re-reads the manifest instead of importing the same module
+    // the CLI does: if the CLI's version wiring breaks, this still knows the
+    // truth. The previous assertion was /\d+\.\d+\.\d+/, which `0.1.0` satisfied
+    // while the published package was 1.3.0 — which is why #456 went unnoticed
+    // through every release.
+    const expected = JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8')).version;
+    assert.equal(run('--version').trim(), expected);
   });
 
   it('shows help', () => {
