@@ -9,13 +9,14 @@ import { loadRegistries } from './registry.js';
 import { detectAlmanacRoot } from './resolver.js';
 import { loadState, saveState, recordWarm, recordGather, recordScatter, markWelcomed, computeFireState, findHearthKeepers } from './state.js';
 import { buildFireScene } from './scene.js';
+import { makeChalkStub } from './chalk-stub.js';
 
 let chalk;
 try {
   chalk = (await import('chalk')).default;
 } catch {
-  const id = (s) => s;
-  chalk = new Proxy({}, { get: () => id });
+  // Fallback: no colors (#455)
+  chalk = makeChalkStub();
 }
 
 // ── Color palette ──────────────────────────────────────────────────

@@ -5,13 +5,14 @@
  * Uses chalk for colors when available, falls back to plain text.
  */
 
+import { makeChalkStub } from './chalk-stub.js';
+
 let chalk;
 try {
   chalk = (await import('chalk')).default;
 } catch {
-  // Fallback: no colors
-  const identity = (s) => s;
-  chalk = new Proxy({}, { get: () => identity });
+  // Fallback: no colors (#455)
+  chalk = makeChalkStub();
 }
 
 /**

@@ -28,6 +28,8 @@ import {
   createAgentGlyph, getAgentPng, getTeamStrip, getCampfirePng, getCampfireFrames, GLYPH_SIZE,
 } from '../lib/sprites.js';
 import { auditAll, auditExitCode, AUDIT_EXIT } from '../lib/installer.js';
+import { makeChalkStub } from '../lib/chalk-stub.js';
+import { detectFrameworks } from '../lib/detector.js';
 import { buildFireScene } from '../lib/scene.js';
 import { canInlineImage, renderInlineImage } from '../lib/inline-image.js';
 
@@ -383,6 +385,99 @@ describe('auditExitCode (#439)', () => {
       [entry({ crashed: true }), entry({ errors: ['e'] })],
     ];
     for (const shape of shapes) assert.notEqual(auditExitCode(shape), 1);
+  });
+});
+
+// ── chalk fallback (#455) ────────────────────────────────────────
+//
+// The old fallback was `new Proxy({}, { get: () => identity })`, which satisfies
+// the direct styles and breaks the factories: chalk.hex('#FF6B35') returned the
+// STRING '#FF6B35', and calling it threw. Because every palette here is built
+// from chalk.hex(...) at module load (campfire-reporter.js, tui.js,
+// pixel-renderer.js), a chalk that failed to import took the CLI down at import
+// time rather than degrading to plain text.
+//
+// These assert the three call shapes the CLI actually uses, plus the two traps
+// that make a naive stub wrong.
+
+describe('chalk fallback stub (#455)', () => {
+  const chalk = makeChalkStub();
+
+  it('passes text through a direct style', () => {
+    assert.equal(chalk.dim('x'), 'x');
+    assert.equal(chalk.red('x'), 'x');
+  });
+
+  it('returns a callable from a factory, not a string', () => {
+    // The exact defect: this used to be the string '#FF6B35'.
+    assert.equal(typeof chalk.hex('#FF6B35'), 'function');
+    assert.equal(chalk.hex('#FF6B35')('flame'), 'flame');
+    assert.equal(chalk.bgHex('#FFB347')('bg'), 'bg');
+    assert.equal(chalk.rgb(1, 2, 3)('x'), 'x');
+  });
+
+  it('covers the underline* factories chalk 6 added', () => {
+    // A factory list written from memory omits these, which reintroduces the
+    // bug for exactly these names.
+    assert.equal(chalk.underlineHex('#fff')('x'), 'x');
+    assert.equal(chalk.underlineRgb(1, 2, 3)('x'), 'x');
+    assert.equal(chalk.underlineAnsi256(42)('x'), 'x');
+  });
+
+  it('chains', () => {
+    assert.equal(chalk.bold.cyan('x'), 'x');
+    assert.equal(chalk.bold.underline.red('x'), 'x');
+  });
+
+  it('reports level 0 so the pixel-art gate stays closed', () => {
+    // pixel-renderer.js gates canRenderPixelArt() on `level >= 1`. A stub means
+    // no colour support, so 0 is the truthful answer.
+    assert.equal(chalk.level, 0);
+    assert.equal(chalk.level >= 1, false);
+  });
+
+  it('is not a thenable', async () => {
+    // A stub that answers every property with a function makes `await chalk`
+    // hang forever: the runtime calls .then and waits for a callback that is
+    // never invoked. Guard with a race so a regression fails instead of hanging
+    // the whole suite.
+    const settled = await Promise.race([
+      Promise.resolve(chalk).then(() => 'settled'),
+      new Promise((r) => setTimeout(() => r('HUNG'), 500)),
+    ]);
+    assert.equal(settled, 'settled');
+  });
+});
+
+// ── universal detection is a deliberate constant (#457) ──────────
+
+describe('universal framework detection (#457)', () => {
+  let tmpDir;
+
+  before(() => {
+    tmpDir = mkdtempSync(resolve(tmpdir(), 'almanac-detect-'));
+  });
+
+  after(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('detects universal in a directory with no .agents/', () => {
+    // `.agents/skills/` is the cross-client interoperability path, so universal
+    // is always an eligible install target. The rule used to express this as
+    // `existsSync(...) || true`, which is unconditionally true — the existsSync
+    // was dead code that read like a condition (#457).
+    assert.equal(existsSync(resolve(tmpDir, '.agents')), false, 'fixture must have no .agents/');
+    const ids = detectFrameworks(tmpDir).map((d) => d.id);
+    assert.ok(ids.includes('universal'), 'universal should always be detected');
+  });
+
+  it('does not detect a framework whose marker is absent', () => {
+    // The control. Without this, a detector that returned every rule would
+    // satisfy the assertion above while being completely broken.
+    const ids = detectFrameworks(tmpDir).map((d) => d.id);
+    assert.ok(!ids.includes('claude-code'), 'claude-code has no .claude/ here');
+    assert.ok(!ids.includes('cursor'), 'cursor has no .cursor/ here');
   });
 });
 
