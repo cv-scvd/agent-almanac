@@ -148,3 +148,41 @@ export async function auditAll(adapters, projectDir, scope) {
   }
   return results;
 }
+
+/**
+ * Exit codes for `audit` (#439).
+ *
+ * 1 is deliberately absent. It already means "usage or loader error": getContext()
+ * exits 1 for an undetectable almanac root and for an unknown --framework, and node
+ * itself exits 1 with ERR_MODULE_NOT_FOUND when the CLI's deps are missing. Reusing
+ * it would leave automation unable to tell "the CLI is not installed here" from
+ * "your install is broken" — the ambiguity that made check B11 unfixable (#443).
+ */
+export const AUDIT_EXIT = {
+  CLEAN: 0,
+  CRASHED: 2,
+  FINDINGS: 3,
+};
+
+/**
+ * Reduce audit results to a process exit code.
+ *
+ * A crash outranks a finding: a finding is a completed audit that found
+ * something, while a crash means that framework has no verdict at all, so it is
+ * the more urgent thing to report. Warnings never affect the code — they
+ * describe ordinary states such as "No Copilot skills installed", so failing on
+ * them would make a machine with one framework installed exit non-zero for
+ * every other adapter.
+ *
+ * An empty result set is CLEAN. "Nothing was detected" is surfaced by the
+ * command as a warning rather than a failure, since a fresh clone with nothing
+ * installed yet is a legitimate state.
+ *
+ * @param {import('../adapters/base.js').AuditEntry[]} results
+ * @returns {number}
+ */
+export function auditExitCode(results) {
+  if (results.some((r) => r.crashed)) return AUDIT_EXIT.CRASHED;
+  if (results.some((r) => (r.errors || []).length > 0)) return AUDIT_EXIT.FINDINGS;
+  return AUDIT_EXIT.CLEAN;
+}

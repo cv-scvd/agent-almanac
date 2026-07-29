@@ -26,7 +26,7 @@ import {
   getCampfireSprite,
   createAgentGlyph, getAgentPng, getTeamStrip, getCampfirePng, getCampfireFrames, GLYPH_SIZE,
 } from '../lib/sprites.js';
-import { auditAll } from '../lib/installer.js';
+import { auditAll, auditExitCode, AUDIT_EXIT } from '../lib/installer.js';
 import { buildFireScene } from '../lib/scene.js';
 import { canInlineImage, renderInlineImage } from '../lib/inline-image.js';
 
@@ -35,6 +35,29 @@ const ROOT = process.cwd();
 
 function run(args) {
   return execSync(`${CLI} ${args}`, { cwd: ROOT, encoding: 'utf8', timeout: 10000 });
+}
+
+/**
+ * Run the CLI, capturing output even when it exits non-zero.
+ *
+ * run() uses execSync, which throws on a non-zero exit and leaves stdout on
+ * err.stdout — where callers normally drop it. Since #439 `audit` exits 3 on
+ * findings and 2 on a crash, so the audit assertions need the report regardless
+ * of status; using run() there would let the first real finding take down the
+ * whole block with an opaque error instead of a legible failure.
+ *
+ * run() itself is deliberately left throwing: the gather and scatter tests
+ * below assert on that behaviour.
+ *
+ * @returns {{ stdout: string, status: number }}
+ */
+function runAllowFail(args) {
+  try {
+    const stdout = execSync(`${CLI} ${args}`, { cwd: ROOT, encoding: 'utf8', timeout: 10000 });
+    return { stdout, status: 0 };
+  } catch (err) {
+    return { stdout: err.stdout ?? '', status: err.status ?? 1 };
+  }
 }
 
 /**
@@ -198,8 +221,9 @@ describe('audit', () => {
   // assertion its own subprocess made the suite flake on ETIMEDOUT -- and
   // package.json wires this file as prepublishOnly, so a flake blocks release.
   let out;
+  let auditStatus;
   before(() => {
-    out = run('audit');
+    ({ stdout: out, status: auditStatus } = runAllowFail('audit'));
   });
 
   it('reports Claude Code health', () => {
@@ -233,6 +257,13 @@ describe('audit', () => {
     const result = await new ClaudeCodeAdapter().audit(ROOT, 'project');
     assert.deepEqual(result.errors, []);
     assert.ok(result.ok.some((line) => /skills installed/.test(line)));
+  });
+
+  // The machine-readable half of the signal the three assertions above make by
+  // reading prose (#439). This repo audits clean, so a non-zero status here is a
+  // real regression rather than a test artifact.
+  it('exits 0 when the audit is clean', () => {
+    assert.equal(auditStatus, AUDIT_EXIT.CLEAN);
   });
 });
 
@@ -293,6 +324,71 @@ describe('auditAll marks crashes structurally (#439)', () => {
     const results = await auditAll(
       [new CleanAdapter(), new ThrowingAdapter()], ROOT, 'project');
     assert.deepEqual(results.map((r) => Object.hasOwn(r, 'crashed')), [true, true]);
+  });
+});
+
+describe('auditExitCode (#439)', () => {
+  const entry = (over = {}) => (
+    { framework: 'X', ok: [], warnings: [], errors: [], crashed: false, ...over });
+
+  it('pins the numeric contract', () => {
+    // Deliberately literal. Asserting via AUDIT_EXIT everywhere would let a
+    // renumbering pass silently, and these codes are a public contract the
+    // moment they ship in a released CLI.
+    assert.deepEqual(AUDIT_EXIT, { CLEAN: 0, CRASHED: 2, FINDINGS: 3 });
+  });
+
+  it('is CLEAN for a healthy audit', () => {
+    assert.equal(auditExitCode([entry({ ok: ['2 skills installed'] })]), AUDIT_EXIT.CLEAN);
+  });
+
+  it('is FINDINGS when an adapter reported errors', () => {
+    assert.equal(
+      auditExitCode([entry({ errors: ['1 broken skill symlinks'] })]), AUDIT_EXIT.FINDINGS);
+  });
+
+  it('is CRASHED when an adapter threw', () => {
+    assert.equal(
+      auditExitCode([entry({ crashed: true, errors: ['Audit failed: boom'] })]),
+      AUDIT_EXIT.CRASHED);
+  });
+
+  it('ranks a crash above a finding', () => {
+    // A finding is a completed audit that found something; a crash means that
+    // framework produced no verdict at all, so it is the more urgent report.
+    assert.equal(auditExitCode([
+      entry({ errors: ['1 broken skill symlinks'] }),
+      entry({ crashed: true, errors: ['Audit failed: boom'] }),
+    ]), AUDIT_EXIT.CRASHED);
+  });
+
+  it('never fails on warnings alone', () => {
+    // Warnings describe ordinary states ("No Copilot skills installed"), so
+    // failing on them would make a machine with one framework installed exit
+    // non-zero for every other adapter.
+    assert.equal(
+      auditExitCode([entry({ warnings: ['No Copilot skills installed'] })]), AUDIT_EXIT.CLEAN);
+  });
+
+  it('is CLEAN for an empty result set', () => {
+    // "Nothing detected" is surfaced by the command as a warning rather than a
+    // failure — a fresh clone with nothing installed yet is legitimate.
+    assert.equal(auditExitCode([]), AUDIT_EXIT.CLEAN);
+  });
+
+  it('never returns 1, which is reserved for usage and loader errors', () => {
+    // getContext() exits 1 for an undetectable root and unknown --framework, and
+    // node exits 1 with ERR_MODULE_NOT_FOUND when deps are missing. Colliding
+    // with that is what made B11 unfixable (#443).
+    const shapes = [
+      [],
+      [entry()],
+      [entry({ errors: ['e'] })],
+      [entry({ crashed: true })],
+      [entry({ warnings: ['w'] })],
+      [entry({ crashed: true }), entry({ errors: ['e'] })],
+    ];
+    for (const shape of shapes) assert.notEqual(auditExitCode(shape), 1);
   });
 });
 
