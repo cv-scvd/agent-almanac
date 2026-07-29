@@ -114,23 +114,35 @@ export async function uninstallAll(resolved, adapters, projectDir, scope, option
 
 /**
  * Audit all adapters.
+ *
+ * A crash and a finding are different kinds of result: a finding means the
+ * adapter ran and reported something, while a crash means it produced no
+ * verdict at all — so a fully broken install reads as "nothing installed,
+ * nothing wrong" (#365). `crashed` carries that distinction structurally, so
+ * callers never have to match on the `Audit failed:` message prefix (#439).
+ *
  * @param {import('../adapters/base.js').FrameworkAdapter[]} adapters
  * @param {string} projectDir
  * @param {string} scope
- * @returns {Promise<object[]>}
+ * @returns {Promise<import('../adapters/base.js').AuditEntry[]>}
  */
 export async function auditAll(adapters, projectDir, scope) {
   const results = [];
   for (const adapter of adapters) {
     try {
       const result = await adapter.audit(projectDir, scope);
-      results.push(result);
+      // Normalised here rather than in all 14 adapters: returning from audit()
+      // is what proves the adapter ran to completion, so this is the only place
+      // that can set the flag authoritatively.
+      results.push({ ...result, crashed: false });
     } catch (err) {
       results.push({
         framework: adapter.constructor.displayName,
         ok: [],
         warnings: [],
         errors: [`Audit failed: ${err.message}`],
+        crashed: true,
+        error: err,
       });
     }
   }

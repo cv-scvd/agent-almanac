@@ -26,6 +26,7 @@ import {
   getCampfireSprite,
   createAgentGlyph, getAgentPng, getTeamStrip, getCampfirePng, getCampfireFrames, GLYPH_SIZE,
 } from '../lib/sprites.js';
+import { auditAll } from '../lib/installer.js';
 import { buildFireScene } from '../lib/scene.js';
 import { canInlineImage, renderInlineImage } from '../lib/inline-image.js';
 
@@ -232,6 +233,66 @@ describe('audit', () => {
     const result = await new ClaudeCodeAdapter().audit(ROOT, 'project');
     assert.deepEqual(result.errors, []);
     assert.ok(result.ok.some((line) => /skills installed/.test(line)));
+  });
+});
+
+// ── auditAll: crash vs finding (#439) ────────────────────────────
+//
+// A crash and a finding reach printAudit() with the same shape — same keys,
+// same types, same framework name — so the only way to tell them apart used to
+// be the `Audit failed: ` prefix on the message. That is a stdout grep moved
+// into the data structure, which is the fragility that killed B11 (#443).
+//
+// The distinction is not cosmetic. A finding means the adapter ran and reported
+// something; a crash means it produced no verdict at all, so `ok` is empty and a
+// wholly broken install audits as "nothing installed, nothing wrong" — which is
+// how #365 survived three weeks. auditAll() now records that structurally.
+
+describe('auditAll marks crashes structurally (#439)', () => {
+  class ThrowingAdapter {
+    static displayName = 'Throwing';
+    async audit() { throw new Error('boom'); }
+  }
+  class FindingAdapter {
+    static displayName = 'Finding';
+    async audit() {
+      return { framework: 'Finding', ok: [], warnings: [], errors: ['1 broken skill symlinks'] };
+    }
+  }
+  class CleanAdapter {
+    static displayName = 'Clean';
+    async audit() {
+      return { framework: 'Clean', ok: ['2 skills installed'], warnings: [], errors: [] };
+    }
+  }
+
+  it('flags a thrown audit as crashed and carries the original error', async () => {
+    const [entry] = await auditAll([new ThrowingAdapter()], ROOT, 'project');
+    assert.equal(entry.crashed, true);
+    assert.equal(entry.framework, 'Throwing');
+    assert.match(entry.errors[0], /Audit failed: boom/);
+    assert.ok(entry.error instanceof Error, 'the original throw should be carried');
+  });
+
+  it('does not flag an adapter that reported findings without throwing', async () => {
+    const [entry] = await auditAll([new FindingAdapter()], ROOT, 'project');
+    assert.equal(entry.crashed, false);
+    assert.deepEqual(entry.errors, ['1 broken skill symlinks']);
+  });
+
+  it('separates crash from finding without matching on message text', async () => {
+    const results = await auditAll(
+      [new ThrowingAdapter(), new FindingAdapter(), new CleanAdapter()], ROOT, 'project');
+    assert.deepEqual(results.map((r) => r.crashed), [true, false, false]);
+    // Both the crash and the finding have a non-empty errors[]. That is exactly
+    // why errors.length cannot be the discriminator and the flag has to exist.
+    assert.deepEqual(results.map((r) => r.errors.length > 0), [true, true, false]);
+  });
+
+  it('sets crashed on every entry, so consumers need no undefined check', async () => {
+    const results = await auditAll(
+      [new CleanAdapter(), new ThrowingAdapter()], ROOT, 'project');
+    assert.deepEqual(results.map((r) => Object.hasOwn(r, 'crashed')), [true, true]);
   });
 });
 
