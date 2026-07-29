@@ -86,11 +86,14 @@ npm run mutation-check -- \
   --expect-killed-by 2
 ```
 
-It refuses to run on a file with uncommitted changes (restore is `git checkout --`), requires a green baseline, **verifies via `git diff` that the mutation actually landed**, records the real exit code, then restores and verifies the restore. Exit 0 means the mutant was killed; exit 1 means it survived and the line is uncovered.
+Exit 0 means the mutant was killed and the check works. Exit 1 means it survived — the line is uncovered — or the run could not produce an honest verdict.
 
-Two traps this exists to catch, both of which have shipped here:
+The tool refuses to guess. It requires a green baseline, backs the file up on disk before touching it, restores from an in-memory buffer (never `git checkout --`, which restores from the *index*), and reports `INCONCLUSIVE` rather than a kill whenever the test command could not be interpreted. It declines to run at all on a symlink, on an `--assume-unchanged`/`--skip-worktree` file, on a file with uncommitted changes, on a mutation matching more than one site without `--allow-multiple`, or while a stale `.mutation-check.bak` is present.
 
-- **A mutation that silently matched nothing** makes the whole exercise pass vacuously while looking correct. In-place `sed`/`perl -0pi` no-op on the NTFS mount, and bare `grep` resolves to ugrep locally but GNU grep in CI — which is why the tool is Node and checks `git diff` rather than trusting the edit.
+Three traps it exists to catch, all of which have shipped here:
+
+- **A mutation that silently matched nothing** makes the exercise pass vacuously while looking correct. In-place `sed`/`perl -0pi` no-op on the NTFS mount, and bare `grep` resolves to ugrep locally but GNU grep in CI — which is why the tool is Node and compares content in memory rather than trusting the edit.
+- **A mutation that merely breaks parsing is not coverage.** Deleting a line carrying a brace makes the file fail to load, and node:test reports that as one failing test — indistinguishable from a real kill. Mutants are syntax-checked first and reported `INVALID` if they do not parse. Note `node --check` parses a `.js` file as CommonJS, so the check is done through a temp file whose extension matches the package's module type; without that this guard is dead for every `.js` file in an ESM package.
 - **A manual break-and-check proves the feature, not the coverage.** Running the CLI by hand and seeing the right behaviour is a demo; "removing this line fails these N tests" is coverage. In #458 the exit code was verified end to end by hand and written up in the commit, while deleting the fix line still left all 101 tests green.
 
 ## Adding a New Skill
