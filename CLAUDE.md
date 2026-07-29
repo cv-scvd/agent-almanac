@@ -72,6 +72,27 @@ Guides, skills, agents, and teams are cross-referenced. The parent project `CLAU
   done
   ```
 
+## Proving a Gate Can Fail
+
+A green check is evidence about the *check*, not about the subject. Before trusting a gate — and always before claiming to have tightened one — break the thing it guards and confirm the gate goes red.
+
+`scripts/mutation-check.js` automates the envelope:
+
+```bash
+npm run mutation-check -- \
+  --file cli/index.js \
+  --delete-matching 'process.exitCode = auditExitCode' \
+  --test 'npm run test:cli' \
+  --expect-killed-by 2
+```
+
+It refuses to run on a file with uncommitted changes (restore is `git checkout --`), requires a green baseline, **verifies via `git diff` that the mutation actually landed**, records the real exit code, then restores and verifies the restore. Exit 0 means the mutant was killed; exit 1 means it survived and the line is uncovered.
+
+Two traps this exists to catch, both of which have shipped here:
+
+- **A mutation that silently matched nothing** makes the whole exercise pass vacuously while looking correct. In-place `sed`/`perl -0pi` no-op on the NTFS mount, and bare `grep` resolves to ugrep locally but GNU grep in CI — which is why the tool is Node and checks `git diff` rather than trusting the edit.
+- **A manual break-and-check proves the feature, not the coverage.** Running the CLI by hand and seeing the right behaviour is a demo; "removing this line fails these N tests" is coverage. In #458 the exit code was verified end to end by hand and written up in the commit, while deleting the fix line still left all 101 tests green.
+
 ## Adding a New Skill
 
 1. Create `skills/<skill-name>/SKILL.md` following the format of existing skills
