@@ -8,7 +8,8 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execSync } from 'child_process';
-import { existsSync, mkdirSync, rmSync, readlinkSync, readFileSync, writeFileSync, symlinkSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, readlinkSync, readFileSync, writeFileSync, symlinkSync } from 'fs';
+import { tmpdir } from 'os';
 import { resolve } from 'path';
 
 // Direct imports for unit tests.
@@ -221,9 +222,8 @@ describe('audit', () => {
   // assertion its own subprocess made the suite flake on ETIMEDOUT -- and
   // package.json wires this file as prepublishOnly, so a flake blocks release.
   let out;
-  let auditStatus;
   before(() => {
-    ({ stdout: out, status: auditStatus } = runAllowFail('audit'));
+    ({ stdout: out } = runAllowFail('audit'));
   });
 
   it('reports Claude Code health', () => {
@@ -259,12 +259,6 @@ describe('audit', () => {
     assert.ok(result.ok.some((line) => /skills installed/.test(line)));
   });
 
-  // The machine-readable half of the signal the three assertions above make by
-  // reading prose (#439). This repo audits clean, so a non-zero status here is a
-  // real regression rather than a test artifact.
-  it('exits 0 when the audit is clean', () => {
-    assert.equal(auditStatus, AUDIT_EXIT.CLEAN);
-  });
 });
 
 // ── auditAll: crash vs finding (#439) ────────────────────────────
@@ -389,6 +383,95 @@ describe('auditExitCode (#439)', () => {
       [entry({ crashed: true }), entry({ errors: ['e'] })],
     ];
     for (const shape of shapes) assert.notEqual(auditExitCode(shape), 1);
+  });
+});
+
+// ── audit exit codes, end to end (#439) ──────────────────────────
+//
+// The block above covers auditExitCode()'s logic, but it cannot see whether the
+// command ever CALLS it: deleting `process.exitCode = auditExitCode(results)`
+// from cli/index.js leaves every one of those assertions green, so #439 could
+// regress verbatim under a refactor while CI stayed green. That is the same
+// shape as the defect this whole change exists to close, so it is worth the
+// three subprocesses. These tests spawn the real CLI and read its exit status.
+//
+// HOME is redirected at a fixture for the same reason the broken-symlink block
+// does it: detectFrameworks() appends the global rules unconditionally
+// (cli/lib/detector.js), so openclaw and hermes join the adapter list whenever
+// the developer has ~/.openclaw or ~/.hermes. Since the exit code reduces over
+// every adapter, one stale symlink in either would otherwise turn this repo's
+// suite red on an untouched checkout — and block npm publish via prepublishOnly.
+//
+// Fixtures live in the OS temp dir rather than under ROOT, so a crashed run
+// cannot leave state behind that poisons the next one.
+
+describe('audit exit codes end to end (#439)', () => {
+  const realSkill = resolve(ROOT, 'skills/commit-changes');
+  const cliEntry = resolve(ROOT, 'cli/index.js');
+  let tmpRoot;
+  let savedHome;
+
+  /** A project fixture copilot detects, via .github/copilot-instructions.md. */
+  function project(name) {
+    const dir = resolve(tmpRoot, name);
+    mkdirSync(resolve(dir, '.github'), { recursive: true });
+    writeFileSync(resolve(dir, '.github/copilot-instructions.md'), '');
+    return dir;
+  }
+
+  // Absolute entry path: these run with cwd set to the fixture, so the relative
+  // `node cli/index.js` that run() uses would not resolve.
+  function auditStatusIn(dir) {
+    try {
+      execSync(`node ${cliEntry} audit --source ${ROOT}`,
+        { cwd: dir, encoding: 'utf8', timeout: 10000 });
+      return 0;
+    } catch (err) {
+      return err.status ?? 1;
+    }
+  }
+
+  before(() => {
+    tmpRoot = mkdtempSync(resolve(tmpdir(), 'almanac-exit-'));
+    mkdirSync(resolve(tmpRoot, 'home'), { recursive: true });
+
+    const clean = project('clean');
+    mkdirSync(resolve(clean, '.github/skills'), { recursive: true });
+    symlinkSync(realSkill, resolve(clean, '.github/skills/good-skill'));
+
+    // Same fixture as clean, plus one dangling link. That one link is the only
+    // difference between CLEAN and FINDINGS.
+    const findings = project('findings');
+    mkdirSync(resolve(findings, '.github/skills'), { recursive: true });
+    symlinkSync(realSkill, resolve(findings, '.github/skills/good-skill'));
+    symlinkSync(resolve(tmpRoot, 'no-such-target'),
+      resolve(findings, '.github/skills/ghost-skill'));
+
+    // A file where the adapter expects a directory makes readdirSync throw
+    // ENOTDIR — a real adapter crash rather than a synthesised one.
+    const crashed = project('crashed');
+    writeFileSync(resolve(crashed, '.github/skills'), 'not a directory');
+
+    savedHome = process.env.HOME;
+    process.env.HOME = resolve(tmpRoot, 'home');
+  });
+
+  after(() => {
+    if (savedHome === undefined) delete process.env.HOME;
+    else process.env.HOME = savedHome;
+    rmSync(tmpRoot, { recursive: true, force: true });
+  });
+
+  it('exits CLEAN when every link resolves', () => {
+    assert.equal(auditStatusIn(resolve(tmpRoot, 'clean')), AUDIT_EXIT.CLEAN);
+  });
+
+  it('exits FINDINGS when an adapter reports a dangling symlink', () => {
+    assert.equal(auditStatusIn(resolve(tmpRoot, 'findings')), AUDIT_EXIT.FINDINGS);
+  });
+
+  it('exits CRASHED when an adapter throws', () => {
+    assert.equal(auditStatusIn(resolve(tmpRoot, 'crashed')), AUDIT_EXIT.CRASHED);
   });
 });
 
