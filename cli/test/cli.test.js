@@ -8,7 +8,8 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execSync } from 'child_process';
-import { existsSync, mkdirSync, rmSync, readlinkSync, readFileSync, writeFileSync, symlinkSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, readlinkSync, readFileSync, writeFileSync, symlinkSync } from 'fs';
+import { tmpdir } from 'os';
 import { resolve } from 'path';
 
 // Direct imports for unit tests.
@@ -26,6 +27,7 @@ import {
   getCampfireSprite,
   createAgentGlyph, getAgentPng, getTeamStrip, getCampfirePng, getCampfireFrames, GLYPH_SIZE,
 } from '../lib/sprites.js';
+import { auditAll, auditExitCode, AUDIT_EXIT } from '../lib/installer.js';
 import { buildFireScene } from '../lib/scene.js';
 import { canInlineImage, renderInlineImage } from '../lib/inline-image.js';
 
@@ -34,6 +36,29 @@ const ROOT = process.cwd();
 
 function run(args) {
   return execSync(`${CLI} ${args}`, { cwd: ROOT, encoding: 'utf8', timeout: 10000 });
+}
+
+/**
+ * Run the CLI, capturing output even when it exits non-zero.
+ *
+ * run() uses execSync, which throws on a non-zero exit and leaves stdout on
+ * err.stdout — where callers normally drop it. Since #439 `audit` exits 3 on
+ * findings and 2 on a crash, so the audit assertions need the report regardless
+ * of status; using run() there would let the first real finding take down the
+ * whole block with an opaque error instead of a legible failure.
+ *
+ * run() itself is deliberately left throwing: the gather and scatter tests
+ * below assert on that behaviour.
+ *
+ * @returns {{ stdout: string, status: number }}
+ */
+function runAllowFail(args) {
+  try {
+    const stdout = execSync(`${CLI} ${args}`, { cwd: ROOT, encoding: 'utf8', timeout: 10000 });
+    return { stdout, status: 0 };
+  } catch (err) {
+    return { stdout: err.stdout ?? '', status: err.status ?? 1 };
+  }
 }
 
 /**
@@ -198,7 +223,7 @@ describe('audit', () => {
   // package.json wires this file as prepublishOnly, so a flake blocks release.
   let out;
   before(() => {
-    out = run('audit');
+    ({ stdout: out } = runAllowFail('audit'));
   });
 
   it('reports Claude Code health', () => {
@@ -232,6 +257,221 @@ describe('audit', () => {
     const result = await new ClaudeCodeAdapter().audit(ROOT, 'project');
     assert.deepEqual(result.errors, []);
     assert.ok(result.ok.some((line) => /skills installed/.test(line)));
+  });
+
+});
+
+// ── auditAll: crash vs finding (#439) ────────────────────────────
+//
+// A crash and a finding reach printAudit() with the same shape — same keys,
+// same types, same framework name — so the only way to tell them apart used to
+// be the `Audit failed: ` prefix on the message. That is a stdout grep moved
+// into the data structure, which is the fragility that killed B11 (#443).
+//
+// The distinction is not cosmetic. A finding means the adapter ran and reported
+// something; a crash means it produced no verdict at all, so `ok` is empty and a
+// wholly broken install audits as "nothing installed, nothing wrong" — which is
+// how #365 survived three weeks. auditAll() now records that structurally.
+
+describe('auditAll marks crashes structurally (#439)', () => {
+  class ThrowingAdapter {
+    static displayName = 'Throwing';
+    async audit() { throw new Error('boom'); }
+  }
+  class FindingAdapter {
+    static displayName = 'Finding';
+    async audit() {
+      return { framework: 'Finding', ok: [], warnings: [], errors: ['1 broken skill symlinks'] };
+    }
+  }
+  class CleanAdapter {
+    static displayName = 'Clean';
+    async audit() {
+      return { framework: 'Clean', ok: ['2 skills installed'], warnings: [], errors: [] };
+    }
+  }
+
+  it('flags a thrown audit as crashed and carries the original error', async () => {
+    const [entry] = await auditAll([new ThrowingAdapter()], ROOT, 'project');
+    assert.equal(entry.crashed, true);
+    assert.equal(entry.framework, 'Throwing');
+    assert.match(entry.errors[0], /Audit failed: boom/);
+    assert.ok(entry.error instanceof Error, 'the original throw should be carried');
+  });
+
+  it('does not flag an adapter that reported findings without throwing', async () => {
+    const [entry] = await auditAll([new FindingAdapter()], ROOT, 'project');
+    assert.equal(entry.crashed, false);
+    assert.deepEqual(entry.errors, ['1 broken skill symlinks']);
+  });
+
+  it('separates crash from finding without matching on message text', async () => {
+    const results = await auditAll(
+      [new ThrowingAdapter(), new FindingAdapter(), new CleanAdapter()], ROOT, 'project');
+    assert.deepEqual(results.map((r) => r.crashed), [true, false, false]);
+    // Both the crash and the finding have a non-empty errors[]. That is exactly
+    // why errors.length cannot be the discriminator and the flag has to exist.
+    assert.deepEqual(results.map((r) => r.errors.length > 0), [true, true, false]);
+  });
+
+  it('sets crashed on every entry, so consumers need no undefined check', async () => {
+    const results = await auditAll(
+      [new CleanAdapter(), new ThrowingAdapter()], ROOT, 'project');
+    assert.deepEqual(results.map((r) => Object.hasOwn(r, 'crashed')), [true, true]);
+  });
+});
+
+describe('auditExitCode (#439)', () => {
+  const entry = (over = {}) => (
+    { framework: 'X', ok: [], warnings: [], errors: [], crashed: false, ...over });
+
+  it('pins the numeric contract', () => {
+    // Deliberately literal. Asserting via AUDIT_EXIT everywhere would let a
+    // renumbering pass silently, and these codes are a public contract the
+    // moment they ship in a released CLI.
+    assert.deepEqual(AUDIT_EXIT, { CLEAN: 0, CRASHED: 2, FINDINGS: 3 });
+  });
+
+  it('is CLEAN for a healthy audit', () => {
+    assert.equal(auditExitCode([entry({ ok: ['2 skills installed'] })]), AUDIT_EXIT.CLEAN);
+  });
+
+  it('is FINDINGS when an adapter reported errors', () => {
+    assert.equal(
+      auditExitCode([entry({ errors: ['1 broken skill symlinks'] })]), AUDIT_EXIT.FINDINGS);
+  });
+
+  it('is CRASHED when an adapter threw', () => {
+    assert.equal(
+      auditExitCode([entry({ crashed: true, errors: ['Audit failed: boom'] })]),
+      AUDIT_EXIT.CRASHED);
+  });
+
+  it('ranks a crash above a finding', () => {
+    // A finding is a completed audit that found something; a crash means that
+    // framework produced no verdict at all, so it is the more urgent report.
+    assert.equal(auditExitCode([
+      entry({ errors: ['1 broken skill symlinks'] }),
+      entry({ crashed: true, errors: ['Audit failed: boom'] }),
+    ]), AUDIT_EXIT.CRASHED);
+  });
+
+  it('never fails on warnings alone', () => {
+    // Warnings describe ordinary states ("No Copilot skills installed"), so
+    // failing on them would make a machine with one framework installed exit
+    // non-zero for every other adapter.
+    assert.equal(
+      auditExitCode([entry({ warnings: ['No Copilot skills installed'] })]), AUDIT_EXIT.CLEAN);
+  });
+
+  it('is CLEAN for an empty result set', () => {
+    // "Nothing detected" is surfaced by the command as a warning rather than a
+    // failure — a fresh clone with nothing installed yet is legitimate.
+    assert.equal(auditExitCode([]), AUDIT_EXIT.CLEAN);
+  });
+
+  it('never returns 1, which is reserved for usage and loader errors', () => {
+    // getContext() exits 1 for an undetectable root and unknown --framework, and
+    // node exits 1 with ERR_MODULE_NOT_FOUND when deps are missing. Colliding
+    // with that is what made B11 unfixable (#443).
+    const shapes = [
+      [],
+      [entry()],
+      [entry({ errors: ['e'] })],
+      [entry({ crashed: true })],
+      [entry({ warnings: ['w'] })],
+      [entry({ crashed: true }), entry({ errors: ['e'] })],
+    ];
+    for (const shape of shapes) assert.notEqual(auditExitCode(shape), 1);
+  });
+});
+
+// ── audit exit codes, end to end (#439) ──────────────────────────
+//
+// The block above covers auditExitCode()'s logic, but it cannot see whether the
+// command ever CALLS it: deleting `process.exitCode = auditExitCode(results)`
+// from cli/index.js leaves every one of those assertions green, so #439 could
+// regress verbatim under a refactor while CI stayed green. That is the same
+// shape as the defect this whole change exists to close, so it is worth the
+// three subprocesses. These tests spawn the real CLI and read its exit status.
+//
+// HOME is redirected at a fixture for the same reason the broken-symlink block
+// does it: detectFrameworks() appends the global rules unconditionally
+// (cli/lib/detector.js), so openclaw and hermes join the adapter list whenever
+// the developer has ~/.openclaw or ~/.hermes. Since the exit code reduces over
+// every adapter, one stale symlink in either would otherwise turn this repo's
+// suite red on an untouched checkout — and block npm publish via prepublishOnly.
+//
+// Fixtures live in the OS temp dir rather than under ROOT, so a crashed run
+// cannot leave state behind that poisons the next one.
+
+describe('audit exit codes end to end (#439)', () => {
+  const realSkill = resolve(ROOT, 'skills/commit-changes');
+  const cliEntry = resolve(ROOT, 'cli/index.js');
+  let tmpRoot;
+  let savedHome;
+
+  /** A project fixture copilot detects, via .github/copilot-instructions.md. */
+  function project(name) {
+    const dir = resolve(tmpRoot, name);
+    mkdirSync(resolve(dir, '.github'), { recursive: true });
+    writeFileSync(resolve(dir, '.github/copilot-instructions.md'), '');
+    return dir;
+  }
+
+  // Absolute entry path: these run with cwd set to the fixture, so the relative
+  // `node cli/index.js` that run() uses would not resolve.
+  function auditStatusIn(dir) {
+    try {
+      execSync(`node ${cliEntry} audit --source ${ROOT}`,
+        { cwd: dir, encoding: 'utf8', timeout: 10000 });
+      return 0;
+    } catch (err) {
+      return err.status ?? 1;
+    }
+  }
+
+  before(() => {
+    tmpRoot = mkdtempSync(resolve(tmpdir(), 'almanac-exit-'));
+    mkdirSync(resolve(tmpRoot, 'home'), { recursive: true });
+
+    const clean = project('clean');
+    mkdirSync(resolve(clean, '.github/skills'), { recursive: true });
+    symlinkSync(realSkill, resolve(clean, '.github/skills/good-skill'));
+
+    // Same fixture as clean, plus one dangling link. That one link is the only
+    // difference between CLEAN and FINDINGS.
+    const findings = project('findings');
+    mkdirSync(resolve(findings, '.github/skills'), { recursive: true });
+    symlinkSync(realSkill, resolve(findings, '.github/skills/good-skill'));
+    symlinkSync(resolve(tmpRoot, 'no-such-target'),
+      resolve(findings, '.github/skills/ghost-skill'));
+
+    // A file where the adapter expects a directory makes readdirSync throw
+    // ENOTDIR — a real adapter crash rather than a synthesised one.
+    const crashed = project('crashed');
+    writeFileSync(resolve(crashed, '.github/skills'), 'not a directory');
+
+    savedHome = process.env.HOME;
+    process.env.HOME = resolve(tmpRoot, 'home');
+  });
+
+  after(() => {
+    if (savedHome === undefined) delete process.env.HOME;
+    else process.env.HOME = savedHome;
+    rmSync(tmpRoot, { recursive: true, force: true });
+  });
+
+  it('exits CLEAN when every link resolves', () => {
+    assert.equal(auditStatusIn(resolve(tmpRoot, 'clean')), AUDIT_EXIT.CLEAN);
+  });
+
+  it('exits FINDINGS when an adapter reports a dangling symlink', () => {
+    assert.equal(auditStatusIn(resolve(tmpRoot, 'findings')), AUDIT_EXIT.FINDINGS);
+  });
+
+  it('exits CRASHED when an adapter throws', () => {
+    assert.equal(auditStatusIn(resolve(tmpRoot, 'crashed')), AUDIT_EXIT.CRASHED);
   });
 });
 

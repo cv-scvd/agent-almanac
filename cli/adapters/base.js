@@ -18,6 +18,10 @@
  * @property {string[]} ok - OK messages
  * @property {string[]} warnings - Warning messages
  * @property {string[]} errors - Error messages
+ * @property {boolean} [crashed] - True when audit() threw and produced no verdict.
+ *   Set by auditAll(), not by adapters — see cli/lib/installer.js. Absent on
+ *   entries obtained by calling an adapter's audit() directly.
+ * @property {Error} [error] - The original throw, present only when crashed
  */
 
 export class FrameworkAdapter {

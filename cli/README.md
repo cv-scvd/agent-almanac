@@ -32,6 +32,31 @@ agent-almanac audit                  # Health check installed content
 agent-almanac uninstall <names...>   # Remove installed content
 ```
 
+### Audit exit codes
+
+`audit` always prints its full report before exiting, so a non-zero status never
+costs you the reason for it.
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Audit ran and found no errors |
+| `2` | An adapter crashed, so that framework has no verdict at all |
+| `3` | Audit ran and found errors |
+
+`1` is deliberately not used for audit findings. It already means "usage or
+loader error" — an unknown `--framework`, an undetectable almanac root, or
+missing dependencies — so reusing it would leave automation unable to tell *"the
+CLI is not installed here"* from *"your install is broken"*.
+
+A crash outranks a finding: a finding is a completed audit that found something,
+whereas a crash means that framework produced no verdict at all. Warnings never
+affect the exit code, since they describe ordinary states such as `No Copilot
+skills installed`.
+
+```bash
+agent-almanac audit || echo "audit reported problems (exit $?)"
+```
+
 ## Install
 
 ```bash

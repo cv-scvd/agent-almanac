@@ -24,7 +24,7 @@ import { loadRegistries, resolveItems, filterSkills, search, findTeam, findAgent
 import { detectAlmanacRoot, resolveTargetDir } from './lib/resolver.js';
 import { detectFrameworks } from './lib/detector.js';
 import { getAdapter, getAdaptersForDetections, listAdapters } from './adapters/index.js';
-import { installAll, uninstallAll, auditAll } from './lib/installer.js';
+import { installAll, uninstallAll, auditAll, auditExitCode } from './lib/installer.js';
 import { loadManifest, resolveManifest, generateManifest, writeManifest } from './lib/manifest.js';
 import { loadState, saveState, recordGather, recordScatter, recordWarm, markWelcomed, getFireStates, getFireState, findSharedSkills } from './lib/state.js';
 import * as campfire from './lib/campfire-reporter.js';
@@ -274,13 +274,44 @@ program
   .option('-g, --global', 'Audit global scope')
   .option('--scope <scope>', 'Scope: project, workspace, global', 'project')
   .option('--source <path>', 'Path to agent-almanac root')
+  .addHelpText('after', `
+Exit codes:
+  0  audit ran and found no errors
+  2  an adapter crashed, so that framework has no verdict
+  3  audit ran and found errors
+
+  1 is reserved for usage and loader errors (unknown --framework,
+  undetectable almanac root, missing dependencies).
+
+Examples:
+  agent-almanac audit
+  agent-almanac audit --framework claude-code
+  agent-almanac audit --global`)
   .action(async (options) => {
     const ctx = getContext(options);
 
     console.log('\nAudit results:\n');
     const results = await auditAll(ctx.adapters, ctx.projectDir, ctx.scope);
     reporter.printAudit(results);
+
+    // An empty result set prints nothing at all, which reads exactly like a
+    // clean bill of health (#439).
+    //
+    // This is currently unreachable, and deliberately kept anyway. The universal
+    // rule at cli/lib/detector.js:20 is `existsSync(...) || true`, which is
+    // always true, so detection never returns an empty list and --framework
+    // always yields exactly one adapter. Should that `|| true` be corrected,
+    // this branch starts mattering immediately; it is three lines to keep and a
+    // silent false-clean to omit. Tracked in #457 — do not read the presence of
+    // this guard as evidence that the empty case has been observed.
+    if (results.length === 0) {
+      reporter.warn('No frameworks detected — nothing was audited.');
+    }
     console.log();
+
+    // Every result is printed before this point: the report is the useful
+    // output, and exiting non-zero must not cost the user the reason why.
+    process.exitCode = auditExitCode(results);
   });
 
 // ── bundle ──────────────────────────────────────────────────
