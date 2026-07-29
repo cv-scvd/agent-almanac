@@ -154,7 +154,7 @@ CI auto-commits README updates when registry files change on `main` (`.github/wo
 
 ## Viz Deploy Model
 
-The visualization deploys to GitHub Pages from `.github/workflows/deploy-pages.yml`, which regenerates `viz/public/data/skills.json` before `vite build`. A registry change therefore reaches the page only through `build-data.js`, which reads three registries — `skills`, `agents`, `teams`. The workflow also triggers on `guides/_registry.yml`, which nothing in the graph consumes; a guides-only change redeploys identical output.
+The visualization deploys to GitHub Pages from `.github/workflows/deploy-pages.yml`, which regenerates `viz/public/data/skills.json` before `vite build`. A registry change therefore reaches the page only through `build-data.js`, which reads three registries — `skills`, `agents`, `teams` — and every `skills/<id>/SKILL.md` body, from which it derives the node title, `metadata.tags`, and the entire skill-to-skill link set. The trigger paths therefore include `skills/*/SKILL.md` (#451). They deliberately exclude `guides/_registry.yml`, which no deploy step reads (#452), `skills/_template/SKILL.md`, which has no registry entry, and `agents/*.md` / `teams/*.md`, whose bodies `build-data.js` never opens.
 
 The site makes three kinds of runtime fetch, and only the first is CI-derived:
 

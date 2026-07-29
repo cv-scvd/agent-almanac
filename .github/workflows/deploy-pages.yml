@@ -5,10 +5,20 @@ on:
     branches: [main]
     paths:
       - 'viz/**'
+      # build-data.js opens every skills/<id>/SKILL.md and derives the node title,
+      # metadata.tags, and the entire skill-to-skill link set, so editing a
+      # `## Related Skills` section changes the published graph (#451). Scoped to
+      # */SKILL.md rather than 'skills/**' because references/ and examples/ are
+      # never opened; _template is excluded for the same reason, since the read
+      # loop iterates the registry and _template has no entry there.
       - 'skills/_registry.yml'
+      - 'skills/*/SKILL.md'
+      - '!skills/_template/SKILL.md'
       - 'agents/_registry.yml'
       - 'teams/_registry.yml'
-      - 'guides/_registry.yml'
+      # guides/_registry.yml is deliberately absent -- no deploy step reads it
+      # (#452). agents/*.md and teams/*.md likewise: build-data.js reads only
+      # their registries, never their bodies.
       - 'i18n/**'
       - '.github/workflows/deploy-pages.yml'
   workflow_dispatch:
