@@ -22,7 +22,13 @@
  *
  *   node -e "import('chalk').then(m=>{const c=m.default;for(const n of
  *     Object.getOwnPropertyNames(Object.getPrototypeOf(c)))
- *     {try{if(typeof c[n]('#fff')==='function')console.log(n)}catch{}}})"
+ *     {if(n==='constructor')continue;
+ *      try{if(typeof c[n]('#fff')==='function')console.log(n)}catch{}}})"
+ *
+ * The `constructor` skip is load-bearing: that property is `createChalk`, and
+ * `createChalk('#fff')` returns a function, so without the skip the probe reports
+ * a tenth name that is not a factory. Diff the output against this set; do not
+ * paste it in. Against chalk 6.0.0 the corrected probe prints exactly these nine.
  */
 const CHALK_FACTORIES = new Set([
   'ansi256',
