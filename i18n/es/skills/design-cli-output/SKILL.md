@@ -296,7 +296,8 @@ CI=true node cli/index.js audit
 
 # The no-color fallback. A failed import cannot be provoked with an env var, so
 # assert on the stub itself in the suite rather than reaching it through the CLI.
-node --test cli/test/
+# Pass a glob, not a directory: `node --test <dir>` stopped expanding at Node 22.
+node --test 'cli/test/*.test.js'
 ```
 
 Verificar:
