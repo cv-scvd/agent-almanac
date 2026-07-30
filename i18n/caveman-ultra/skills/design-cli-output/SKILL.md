@@ -2,9 +2,9 @@
 name: design-cli-output
 locale: caveman-ultra
 source_locale: en
-source_commit: 82c77053
+source_commit: 23c3299b
 translator: "Julius Brussee homage — caveman"
-translation_date: "2026-04-19"
+translation_date: "2026-07-30"
 description: >
   Design terminal output for a CLI tool with chalk colors, Unicode glyphs,
   multiple verbosity levels (human, verbose, quiet, JSON), and consistent
@@ -53,15 +53,45 @@ Consistent multi-level terminal output for CLI.
 
 ### Step 1: Color palette
 
-chalk → named palette:
+chalk → named palette.
+
+**Load chalk behind no-color fallback.** Fallback must stand in for every call shape palette uses — more than passing strings thru:
+
+```javascript
+// A factory returns a *function*; a direct style returns a string. Enumerate
+// this list against the installed chalk, not from memory — chalk 6 added the
+// three underline* variants, and a list that omits them is wrong for those names.
+const FACTORIES = new Set(['ansi256', 'bgAnsi256', 'bgHex', 'bgRgb', 'hex',
+  'rgb', 'underlineAnsi256', 'underlineHex', 'underlineRgb']);
+
+function makeChalkStub() {
+  return new Proxy((text) => text, {
+    get(target, prop) {
+      if (prop === 'then') return undefined;   // must not be a thenable
+      if (prop === 'level') return 0;          // no color support, truthfully
+      if (typeof prop === 'symbol') return Reflect.get(target, prop);
+      return FACTORIES.has(prop) ? () => makeChalkStub() : makeChalkStub();
+    },
+  });
+}
+
+let chalk;
+try { chalk = (await import('chalk')).default; }
+catch { chalk = makeChalkStub(); }
+```
+
+4 invariants, shorter stub gets each wrong:
+
+1. **Proxy target callable** — `(text) => text`, not `{}`. Chain (`chalk.bold.cyan('x')`) → every hop indexable + callable.
+2. **Factories return fn.** `new Proxy({}, { get: () => (s) => s })` OK for direct styles, breaks factories: `chalk.hex('#FF6B35')` = *string* `'#FF6B35'`, call it → `TypeError: ... is not a function`. Palettes built at module load → that fallback kills tool at import time — exactly where degrading to plain text was the point.
+3. **`then` = `undefined`.** Stub answering every prop w/ fn → `await chalk` hangs forever: runtime calls `.then`, waits for callback nobody fires. Node: `Detected unsettled top-level await`, exit 13.
+4. **`level` = number.** Capability gates read `chalk.level >= 1`; truthy stub opens them w/ no color behind.
+
+Build palette from whichever obj survived that import.
 
 **Standard** (transactional):
 
 ```javascript
-let chalk;
-try { chalk = (await import('chalk')).default; }
-catch { chalk = new Proxy({}, { get: () => (s) => s }); }
-
 // Status colors
 const ok = chalk.green;       // success
 const fail = chalk.red;       // errors
@@ -86,14 +116,25 @@ const C = {
 ```
 
 Rules:
-- No-color fallback (Proxy pattern)
+- Always no-color fallback + check it vs call shapes palette really uses — warm palette above near-all factories
 - Hex for custom (`chalk.hex('#FF6B35')`)
 - Fail/err → red regardless
 - Name by semantic role not visual
+- Share 1 stub across modules, no rebuild per import site → else same defect hunted + fixed in every copy
 
-→ Palette obj w/ named entries + no-color fallback.
+→ Palette obj w/ named entries + fallback that ran, not merely written.
 
-If err: chalk unavailable (piped, CI) → Proxy returns strings unchanged. Test `NO_COLOR=1`.
+If err: Exercise fallback path direct; palette = wrong place to find it broken. Stub in scope:
+
+```javascript
+console.assert(chalk.dim('x') === 'x');            // direct style
+console.assert(chalk.hex('#fff')('x') === 'x');    // factory — the usual defect
+console.assert(chalk.bold.cyan('x') === 'x');      // chain
+console.assert(chalk.level === 0);                 // capability gate stays shut
+await chalk;                                       // must not hang
+```
+
+`NO_COLOR=1` no cover this. It runs *working* chalk choosing no escapes; fallback runs chalk that failed import. 2 paths share no code. See [More Ex](references/EXAMPLES.md#step-1-the-no-color-chalk-fallback) → annotated prod stub, defect repro, runnable ver of checks above.
 
 ### Step 2: Status indicators
 
@@ -250,6 +291,10 @@ node cli/index.js campfire --json | jq .
 
 # In CI (typically no TTY)
 CI=true node cli/index.js audit
+
+# The no-color fallback. A failed import cannot be provoked with an env var, so
+# assert on the stub itself in the suite rather than reaching it through the CLI.
+node --test cli/test/
 ```
 
 Check:
@@ -258,14 +303,15 @@ Check:
 - JSON valid (`jq .`)
 - Unicode in target terminals
 - Col align w/ varying widths
+- No-color fallback answers every call shape palette uses, asserted in suite not hand-demoed once
 
-→ Output correct in all 5 contexts.
+→ Output correct in all 6 contexts.
 
-If err: ANSI leaks → chalk respects `NO_COLOR`. Unicode breaks → ASCII fallback.
+If err: ANSI leaks → chalk respects `NO_COLOR`. Unicode breaks → ASCII fallback. Green suite says nothing about color either way: test runners pipe stdout → `chalk.level` 0 → colored + uncolored out byte-identical, assertions hold w/ color fully broken. Prove color works → `FORCE_COLOR=3` + assert on escape seq.
 
 ## Check
 
-- [ ] Palette has no-color fallback
+- [ ] Palette has no-color fallback + fallback ran: direct style, factory, chain, `level === 0`, `await` all checked
 - [ ] Status indicators work color + no-color
 - [ ] All 4 verbosity levels useful
 - [ ] JSON valid + `jq`-parseable
@@ -275,6 +321,7 @@ If err: ANSI leaks → chalk respects `NO_COLOR`. Unicode breaks → ASCII fallb
 
 ## Traps
 
+- **No-color fallback covering direct styles only**: `new Proxy({}, { get: () => (s) => s })` reads complete, does cover `chalk.dim` + `chalk.red`, but every factory then returns string caller immediately tries to call. Palettes built at module load → `TypeError` lands at import time — fallback fails hardest in the 1 case it exists for. Step 1 lists 4 invariants stub must satisfy.
 - **Mix human + JSON**: `--json` only valid JSON. Stray line ("DRY RUN") breaks parsers. Suppress human in JSON mode.
 - **Hardcoded col widths**: Varies. `Math.max(...items.map(i => i.id.length))` dyn.
 - **Color w/o meaning**: Color-only → colorblind + piped lose info. Pair w/ text (`+`, `OK`, `ERR`).

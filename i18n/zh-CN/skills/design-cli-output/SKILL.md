@@ -22,9 +22,9 @@ metadata:
     - unicode
   locale: zh-CN
   source_locale: en
-  source_commit: 11edabf5
+  source_commit: 23c3299b
   translator: "Claude + human review"
-  translation_date: "2026-05-03"
+  translation_date: "2026-07-30"
 ---
 
 # 设计 CLI 输出
@@ -50,15 +50,45 @@ metadata:
 
 ### 第 1 步：定义配色板
 
-使用 chalk 创建命名的配色板对象：
+使用 chalk 创建命名的配色板对象。
+
+**加载 chalk 时带上无颜色后备。** 后备必须替代配色板所使用的每一种调用形态，而这不止于原样传回字符串：
+
+```javascript
+// A factory returns a *function*; a direct style returns a string. Enumerate
+// this list against the installed chalk, not from memory — chalk 6 added the
+// three underline* variants, and a list that omits them is wrong for those names.
+const FACTORIES = new Set(['ansi256', 'bgAnsi256', 'bgHex', 'bgRgb', 'hex',
+  'rgb', 'underlineAnsi256', 'underlineHex', 'underlineRgb']);
+
+function makeChalkStub() {
+  return new Proxy((text) => text, {
+    get(target, prop) {
+      if (prop === 'then') return undefined;   // must not be a thenable
+      if (prop === 'level') return 0;          // no color support, truthfully
+      if (typeof prop === 'symbol') return Reflect.get(target, prop);
+      return FACTORIES.has(prop) ? () => makeChalkStub() : makeChalkStub();
+    },
+  });
+}
+
+let chalk;
+try { chalk = (await import('chalk')).default; }
+catch { chalk = makeChalkStub(); }
+```
+
+四条不变量，更简短的 stub 每一条都会弄错：
+
+1. **Proxy 目标必须可调用** —— 是 `(text) => text`，不是 `{}`。链式调用（`chalk.bold.cyan('x')`）要求每一跳既可索引又可调用。
+2. **工厂函数必须返回函数。** `new Proxy({}, { get: () => (s) => s })` 满足直接样式却破坏工厂函数：此时 `chalk.hex('#FF6B35')` 是*字符串* `'#FF6B35'`，调用它会抛出 `TypeError: ... is not a function`。配色板在模块加载时构建，因此这种后备会在 import 时就让工具崩掉 —— 而这恰恰是本应降级为纯文本的场景。
+3. **`then` 必须是 `undefined`。** 若 stub 对每个属性都返回一个函数，`await chalk` 会永久挂起：运行时会调用 `.then`，然后等待一个无人触发的回调。Node 会报告 `Detected unsettled top-level await` 并以 13 退出。
+4. **`level` 必须是数字。** 能力开关读取 `chalk.level >= 1`；返回真值的 stub 会打开这些开关，而其背后并无颜色支持。
+
+用这次 import 之后存活下来的那个对象来构建配色板。
 
 **标准配色板**（事务性输出）：
 
 ```javascript
-let chalk;
-try { chalk = (await import('chalk')).default; }
-catch { chalk = new Proxy({}, { get: () => (s) => s }); }
-
 // Status colors
 const ok = chalk.green;       // success
 const fail = chalk.red;       // errors
@@ -83,14 +113,25 @@ const C = {
 ```
 
 配色板设计规则：
-- 始终提供无颜色后备（上面的 Proxy 模式）
+- 始终提供无颜色后备，并对照配色板实际使用的调用形态检查它 —— 上面的温暖配色板几乎全是工厂函数
 - 自定义配色板使用十六进制颜色（`chalk.hex('#FF6B35')`）
 - 无论配色板主题如何，fail/error 颜色保持红色
 - 按语义角色而非视觉外观命名配色板条目
+- 跨模块共用同一个 stub，而不是在每个 import 处各建一个，否则同一个缺陷得在每份副本里各找各修一遍
 
-**预期结果：** 一个带有命名条目和无颜色后备的配色板对象。
+**预期结果：** 一个带有命名条目的配色板对象，以及一个已被实际执行过、而非仅仅写出来的后备。
 
-**失败处理：** 若 chalk 不可用（管道输出、CI），Proxy 后备会原样返回字符串。使用 `NO_COLOR=1` 环境变量进行测试。
+**失败处理：** 直接演练后备路径；配色板不是发现它已损坏的合适位置。在 stub 处于作用域内时：
+
+```javascript
+console.assert(chalk.dim('x') === 'x');            // direct style
+console.assert(chalk.hex('#fff')('x') === 'x');    // factory — the usual defect
+console.assert(chalk.bold.cyan('x') === 'x');      // chain
+console.assert(chalk.level === 0);                 // capability gate stays shut
+await chalk;                                       // must not hang
+```
+
+`NO_COLOR=1` 覆盖不到这一点。它演练的是一个*可用的* chalk 选择不输出转义码；而后备演练的是一个 import 失败的 chalk。两条路径不共享任何代码。带注释的生产级 stub、该缺陷的复现，以及上述检查的可运行版本，请参阅[扩展示例](references/EXAMPLES.md#step-1-the-no-color-chalk-fallback)。
 
 ### 第 2 步：选择状态指示器
 
@@ -249,6 +290,10 @@ node cli/index.js campfire --json | jq .
 
 # In CI (typically no TTY)
 CI=true node cli/index.js audit
+
+# The no-color fallback. A failed import cannot be provoked with an env var, so
+# assert on the stub itself in the suite rather than reaching it through the CLI.
+node --test cli/test/
 ```
 
 检查：
@@ -257,14 +302,15 @@ CI=true node cli/index.js audit
 - JSON 有效（管道到 `jq .` 验证）
 - Unicode 图形符号在目标终端中渲染
 - 列对齐在不同内容宽度下保持
+- 无颜色后备能应答配色板使用的每一种调用形态，且是在测试套件中断言的，而非手工演示一次
 
-**预期结果：** 输出在所有五种上下文中都正确。
+**预期结果：** 输出在所有六种上下文中都正确。
 
-**失败处理：** 若 ANSI 码泄漏，确保 chalk 尊重 `NO_COLOR`。若 Unicode 损坏，提供 ASCII 后备模式。
+**失败处理：** 若 ANSI 码泄漏，确保 chalk 尊重 `NO_COLOR`。若 Unicode 损坏，提供 ASCII 后备模式。注意：绿色的测试套件对颜色本身两个方向都什么也说明不了 —— 测试运行器会把 stdout 接入管道，这会让 `chalk.level` 变成 0，于是有颜色和无颜色的输出逐字节相同，即便颜色彻底坏掉断言依然通过。要证明颜色可用，需要 `FORCE_COLOR=3` 并对转义序列做断言。
 
 ## 验证清单
 
-- [ ] 配色板有无颜色后备
+- [ ] 配色板有无颜色后备，且该后备已实际运行过：直接样式、工厂函数、链式调用、`level === 0`、`await` 全部检查通过
 - [ ] 状态指示器在颜色和无颜色模式下都工作
 - [ ] 所有四个详细级别产出有用输出
 - [ ] JSON 输出有效且可被 `jq` 解析
@@ -274,6 +320,7 @@ CI=true node cli/index.js audit
 
 ## 常见问题
 
+- **只处理直接样式的无颜色后备**：`new Proxy({}, { get: () => (s) => s })` 读起来很完整，也确实覆盖了 `chalk.dim` 和 `chalk.red`，但此后每个工厂函数都返回一个字符串，而调用者紧接着就要去调用它。由于配色板在模块加载时构建，`TypeError` 会落在 import 时 —— 后备恰恰在它唯一存在意义的那个场景里败得最惨。第 1 步列出了 stub 必须满足的四条不变量。
 - **将人类文本与 JSON 混合**：在 `--json` 模式下，仅输出有效 JSON。一行散漫的文本（如 "DRY RUN"）会破坏 JSON 解析器。若命令必须显示两者，清晰分离或在 JSON 模式下抑制人类文本。
 - **硬编码列宽**：内容长度不同。使用 `Math.max(...items.map(i => i.id.length))` 动态计算填充。
 - **无意义的颜色**：若颜色是区分成功与失败的唯一方式，色盲用户和管道输出会丢失信息。始终将颜色与文本指示器配对（`+`、`OK`、`ERR`）。

@@ -25,9 +25,9 @@ metadata:
     - unicode
   locale: ja
   source_locale: en
-  source_commit: 11edabf5
+  source_commit: 23c3299b
   translator: "Claude + human review"
-  translation_date: "2026-05-03"
+  translation_date: "2026-07-30"
 ---
 
 # Design CLI Output
@@ -53,15 +53,45 @@ metadata:
 
 ### ステップ1: カラーパレットを定義する
 
-chalk を使って名前付きパレットオブジェクトを作成する:
+chalk を使って名前付きパレットオブジェクトを作成する。
+
+**chalk を no-color フォールバックの背後でロードする。** フォールバックはパレットが使うすべての呼び出し形を代替しなければならず、それは文字列をそのまま通すことだけでは足りない:
+
+```javascript
+// A factory returns a *function*; a direct style returns a string. Enumerate
+// this list against the installed chalk, not from memory — chalk 6 added the
+// three underline* variants, and a list that omits them is wrong for those names.
+const FACTORIES = new Set(['ansi256', 'bgAnsi256', 'bgHex', 'bgRgb', 'hex',
+  'rgb', 'underlineAnsi256', 'underlineHex', 'underlineRgb']);
+
+function makeChalkStub() {
+  return new Proxy((text) => text, {
+    get(target, prop) {
+      if (prop === 'then') return undefined;   // must not be a thenable
+      if (prop === 'level') return 0;          // no color support, truthfully
+      if (typeof prop === 'symbol') return Reflect.get(target, prop);
+      return FACTORIES.has(prop) ? () => makeChalkStub() : makeChalkStub();
+    },
+  });
+}
+
+let chalk;
+try { chalk = (await import('chalk')).default; }
+catch { chalk = makeChalkStub(); }
+```
+
+4 つの不変条件。より短いスタブはそれぞれを取り違える:
+
+1. **Proxy のターゲットが呼び出し可能**: `{}` ではなく `(text) => text`。チェーン（`chalk.bold.cyan('x')`）はすべてのホップがインデックス可能かつ呼び出し可能であることを要求する。
+2. **ファクトリは関数を返す**: `new Proxy({}, { get: () => (s) => s })` は直接スタイルを満たしつつファクトリを壊す。`chalk.hex('#FF6B35')` はそのとき *文字列* `'#FF6B35'` であり、それを呼ぶと `TypeError: ... is not a function` を投げる。パレットはモジュールロード時に構築されるため、そのフォールバックはインポート時点でツールを落とす — プレーンテキストへの劣化こそが目的だったまさにその状況で。
+3. **`then` が `undefined`**: すべてのプロパティに関数を返すスタブは `await chalk` を永久にハングさせる。ランタイムが `.then` を呼び、誰も呼ばないコールバックを待つ。Node は `Detected unsettled top-level await` を報告して 13 で終了する。
+4. **`level` が数値**: 能力ゲートは `chalk.level >= 1` を読む。真値のスタブは背後にカラーサポートがないままそれを開けてしまう。
+
+そのインポートを生き延びたオブジェクトからパレットを構築する。
 
 **標準パレット**（トランザクション出力）:
 
 ```javascript
-let chalk;
-try { chalk = (await import('chalk')).default; }
-catch { chalk = new Proxy({}, { get: () => (s) => s }); }
-
 // Status colors
 const ok = chalk.green;       // success
 const fail = chalk.red;       // errors
@@ -86,14 +116,25 @@ const C = {
 ```
 
 パレット設計ルール:
-- 常に no-color フォールバックを提供する（上記 Proxy パターン）
+- 常に no-color フォールバックを提供し、パレットが実際に使う呼び出し形に対して検査する — 上の温かいパレットはほぼすべてファクトリである
 - カスタムパレットには hex カラーを使う（`chalk.hex('#FF6B35')`）
 - パレットテーマに関係なく fail/error カラーは赤を保つ
 - パレットエントリは見た目ではなく意味的役割で命名する
+- スタブは各インポート箇所で作り直すのではなくモジュール間で 1 つを共有する。さもなければ同じ欠陥をコピーごとに見つけて直すことになる
 
-**期待結果：** 名前付きエントリと no-color フォールバックを持つパレットオブジェクト。
+**期待結果：** 名前付きエントリを持つパレットオブジェクトと、単に書かれただけでなく実行されたフォールバック。
 
-**失敗時：** chalk が利用不能なら（パイプ出力、CI）、Proxy フォールバックは文字列を変えずに返す。`NO_COLOR=1` 環境変数でテストする。
+**失敗時：** フォールバックパスを直接実行する。壊れていることをパレットで発見するのは間違った場所である。スタブがスコープにある状態で:
+
+```javascript
+console.assert(chalk.dim('x') === 'x');            // direct style
+console.assert(chalk.hex('#fff')('x') === 'x');    // factory — the usual defect
+console.assert(chalk.bold.cyan('x') === 'x');      // chain
+console.assert(chalk.level === 0);                 // capability gate stays shut
+await chalk;                                       // must not hang
+```
+
+`NO_COLOR=1` はこれをカバーしない。それはエスケープを出さないことを選ぶ *動作している* chalk を実行するが、フォールバックはインポートに失敗した chalk を実行する。2 つのパスはコードを共有しない。注釈付きの本番スタブ、欠陥の再現、上記チェックの実行可能版は[拡張例](references/EXAMPLES.md#step-1-the-no-color-chalk-fallback)を参照。
 
 ### ステップ2: ステータスインジケーターを選ぶ
 
@@ -252,6 +293,10 @@ node cli/index.js campfire --json | jq .
 
 # In CI (typically no TTY)
 CI=true node cli/index.js audit
+
+# The no-color fallback. A failed import cannot be provoked with an env var, so
+# assert on the stub itself in the suite rather than reaching it through the CLI.
+node --test cli/test/
 ```
 
 確認事項:
@@ -260,14 +305,15 @@ CI=true node cli/index.js audit
 - JSON が有効（`jq .` にパイプして検証）
 - ターゲットターミナルで Unicode グリフが描画される
 - 内容幅が変動してもカラム整列が保たれる
+- no-color フォールバックがパレットが使うすべての呼び出し形に応答し、手作業で一度示すのではなくスイートでアサートされている
 
-**期待結果：** 5 つの文脈すべてで出力が正しい。
+**期待結果：** 6 つの文脈すべてで出力が正しい。
 
-**失敗時：** ANSI コードが漏れたら chalk が `NO_COLOR` を尊重するか確認する。Unicode が壊れたら ASCII フォールバックモードを提供する。
+**失敗時：** ANSI コードが漏れたら chalk が `NO_COLOR` を尊重するか確認する。Unicode が壊れたら ASCII フォールバックモードを提供する。緑のスイートはカラーについてどちらの意味でも何も語らないことに注意: テストランナーは stdout をパイプするため `chalk.level` は 0 になり、カラー出力と非カラー出力はバイト単位で同一になって、カラーが完全に壊れていてもアサーションは通る。カラーが動作することを証明するには `FORCE_COLOR=3` とエスケープシーケンスに対するアサーションが必要である。
 
 ## バリデーション
 
-- [ ] カラーパレットに no-color フォールバックがある
+- [ ] カラーパレットに no-color フォールバックがあり、そのフォールバックが実行済み: 直接スタイル、ファクトリ、チェーン、`level === 0`、`await` をすべて確認
 - [ ] ステータスインジケーターがカラー・no-color 両モードで動く
 - [ ] 4 つの冗長度レベルすべてが有用な出力を生む
 - [ ] JSON 出力が有効で `jq` で解析可能
@@ -277,6 +323,7 @@ CI=true node cli/index.js audit
 
 ## よくある落とし穴
 
+- **直接スタイルしか扱わない no-color フォールバック**: `new Proxy({}, { get: () => (s) => s })` は完全なものに見え、`chalk.dim` と `chalk.red` は実際にカバーするが、そのときすべてのファクトリは呼び出し元が直後に呼ぼうとする文字列を返す。パレットはモジュールロード時に構築されるため、`TypeError` はインポート時点で発生する — フォールバックはそれが存在する唯一の場面で最も激しく失敗する。スタブが満たすべき 4 つの不変条件はステップ1に列挙されている。
 - **人間テキストと JSON を混ぜる**: `--json` モードでは有効 JSON のみを出力。一行でも混じる（「DRY RUN」など）と JSON パーサーが壊れる。コマンドが両方を表示しなければならないなら、明確に分離するか JSON モードで人間テキストを抑制する。
 - **ハードコードされたカラム幅**: 内容長は変動する。`Math.max(...items.map(i => i.id.length))` を使ってパディングを動的に計算する。
 - **意味のないカラー**: カラーが成功と失敗を区別する唯一の方法なら、色覚多様性ユーザーとパイプ出力は情報を失う。常にカラーをテキストインジケーター（`+`、`OK`、`ERR`）と組み合わせる。

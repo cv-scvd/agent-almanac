@@ -2,9 +2,9 @@
 name: design-cli-output
 locale: wenyan-ultra
 source_locale: en
-source_commit: 82c77053
+source_commit: 23c3299b
 translator: "Julius Brussee homage — caveman"
-translation_date: "2026-04-19"
+translation_date: "2026-07-30"
 description: >
   Design terminal output for a CLI tool with chalk colors, Unicode glyphs,
   multiple verbosity levels (human, verbose, quiet, JSON), and consistent
@@ -53,15 +53,45 @@ metadata:
 
 ### 一：定色板
 
-以 chalk 建名板對象：
+以 chalk 建名板對象。
+
+**載 chalk 須置無色退於後。** 退須代板所用諸調用形，僅過字串不足：
+
+```javascript
+// A factory returns a *function*; a direct style returns a string. Enumerate
+// this list against the installed chalk, not from memory — chalk 6 added the
+// three underline* variants, and a list that omits them is wrong for those names.
+const FACTORIES = new Set(['ansi256', 'bgAnsi256', 'bgHex', 'bgRgb', 'hex',
+  'rgb', 'underlineAnsi256', 'underlineHex', 'underlineRgb']);
+
+function makeChalkStub() {
+  return new Proxy((text) => text, {
+    get(target, prop) {
+      if (prop === 'then') return undefined;   // must not be a thenable
+      if (prop === 'level') return 0;          // no color support, truthfully
+      if (typeof prop === 'symbol') return Reflect.get(target, prop);
+      return FACTORIES.has(prop) ? () => makeChalkStub() : makeChalkStub();
+    },
+  });
+}
+
+let chalk;
+try { chalk = (await import('chalk')).default; }
+catch { chalk = makeChalkStub(); }
+```
+
+四不變式，簡退各誤其一：
+
+1. **代理標的可調用**——`(text) => text`，非 `{}`。鏈式（`chalk.bold.cyan('x')`）每節須既可索又可調。
+2. **工廠返函。** `new Proxy({}, { get: () => (s) => s })` 足直式而壞工廠：`chalk.hex('#FF6B35')` 遂為*字串* `'#FF6B35'`，調之則擲 `TypeError: ... is not a function`。板於模組載時即建，故此退於引入之際即斃工具——正當本欲降為素文之境。
+3. **`then` 須 `undefined`。** 凡屬皆返函之退令 `await chalk` 永懸：運行時調 `.then` 而待無人喚之回調。Node 報 `Detected unsettled top-level await` 而以 13 退。
+4. **`level` 須數。** 能力閘讀 `chalk.level >= 1`；真值之退啟閘而其後實無色可支。
+
+以引入後倖存之對象建板。
 
 **標板**（事務輸出）：
 
 ```javascript
-let chalk;
-try { chalk = (await import('chalk')).default; }
-catch { chalk = new Proxy({}, { get: () => (s) => s }); }
-
 // Status colors
 const ok = chalk.green;       // success
 const fail = chalk.red;       // errors
@@ -86,14 +116,26 @@ const C = {
 ```
 
 色板設規：
-- 常供無色退（上 Proxy 模式）
+- 常供無色退，且以板實用之調用形驗之——上暖板幾盡工廠
 - 自定板用十六進（`chalk.hex('#FF6B35')`）
 - 失敗/錯色無論板主題守紅
 - 按語義角名非視外觀
+- 諸模組共一退，勿於各引入處重造，否則同瑕須逐處覓而修
 
-**得：** 板對象含名項+無色退。
+**得：** 板對象含名項，且退已行非僅書。
 
-**敗：** chalk 不可用（管輸、CI）→Proxy 退返字串不變。以 `NO_COLOR=1` 環境變量測。
+**敗：** 徑試退路；板非覺其壞之所。退在域中，則：
+
+```javascript
+console.assert(chalk.dim('x') === 'x');            // direct style
+console.assert(chalk.hex('#fff')('x') === 'x');    // factory — the usual defect
+console.assert(chalk.bold.cyan('x') === 'x');      // chain
+console.assert(chalk.level === 0);                 // capability gate stays shut
+await chalk;                                       // must not hang
+```
+
+`NO_COLOR=1` 不覆此。彼試*可用*之 chalk 而擇不發轉義；退則試引入敗之 chalk。二路無共碼。註解之生產退、瑕之複現、上諸查之可運行版，見
+[Extended Examples](references/EXAMPLES.md#step-1-the-no-color-chalk-fallback)。
 
 ### 二：擇狀態指示符
 
@@ -252,6 +294,10 @@ node cli/index.js campfire --json | jq .
 
 # In CI (typically no TTY)
 CI=true node cli/index.js audit
+
+# The no-color fallback. A failed import cannot be provoked with an env var, so
+# assert on the stub itself in the suite rather than reaching it through the CLI.
+node --test cli/test/
 ```
 
 查：
@@ -260,14 +306,15 @@ CI=true node cli/index.js audit
 - JSON 有效（管至 `jq .` 驗）
 - 目標終端渲染 Unicode 符
 - 內容寬變時列對齊守
+- 無色退答板所用諸調用形，於測套斷言，非手示一回
 
-**得：** 五上下文輸出皆正。
+**得：** 六上下文輸出皆正。
 
-**敗：** ANSI 漏→確 chalk 尊 `NO_COLOR`。Unicode 壞→供 ASCII 退模。
+**敗：** ANSI 漏→確 chalk 尊 `NO_COLOR`。Unicode 壞→供 ASCII 退模。又：測套綠不言色之有無——測運行器管 stdout，`chalk.level` 遂為 0，著色與否輸出同位元，色全壞而斷言猶立。證色實工，須 `FORCE_COLOR=3` 並斷言於轉義序列。
 
 ## 驗
 
-- [ ] 色板有無色退
+- [ ] 色板有無色退，且退已行：直式、工廠、鏈、`level === 0`、`await` 皆查
 - [ ] 狀態指示符於色+無色模式皆工作
 - [ ] 四冗繁級生有用輸出
 - [ ] JSON 有效可為 `jq` 解
@@ -277,6 +324,7 @@ CI=true node cli/index.js audit
 
 ## 忌
 
+- **僅理直式之無色退**：`new Proxy({}, { get: () => (s) => s })` 讀之若全，誠覆 `chalk.dim` 與 `chalk.red`，然每工廠遂返字串，而調用者即欲調之。板於模組載時即建，故 `TypeError` 落於引入之際——退於其所以存在之唯一境敗得最烈。退須足之四不變式，列於步一。
 - **混人文於 JSON**：`--json` 模式僅輸出有效 JSON。單雜行（如「DRY RUN」）破 JSON 解析。若命令須示兩者→明分或於 JSON 模抑人文。
 - **硬編碼列寬**：內容長變。用 `Math.max(...items.map(i => i.id.length))` 動計填充。
 - **僅色傳義**：若色為唯一別成敗者→色盲用戶+管輸出失信息。常配色+文指示（`+`、`OK`、`ERR`）。
