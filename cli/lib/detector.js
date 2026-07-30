@@ -16,8 +16,13 @@ import { homedir } from 'os';
  * Each rule specifies a marker path (relative to project or home) and metadata.
  */
 const RULES = [
-  // Universal (always check project-level)
-  { id: 'universal', displayName: 'Universal (.agents/)', check: (dir) => existsSync(resolve(dir, '.agents')) || true, marker: '.agents/', scope: 'project' },
+  // Universal is the cross-client fallback: `.agents/skills/` is the de facto
+  // interoperability path, so it is always an eligible target whether or not the
+  // directory exists yet. This was written as `existsSync(...) || true`, which is
+  // unconditionally true — the existsSync was dead, and the expression read as a
+  // debugging leftover rather than a decision (#457). Stated as a constant now,
+  // matching UniversalAdapter.detect(), which already returns true outright.
+  { id: 'universal', displayName: 'Universal (.agents/)', check: () => true, marker: '.agents/', scope: 'project' },
   // Claude Code
   { id: 'claude-code', displayName: 'Claude Code', check: (dir) => existsSync(resolve(dir, '.claude')), marker: '.claude/', scope: 'project' },
   // OpenCode

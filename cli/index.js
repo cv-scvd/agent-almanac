@@ -302,12 +302,13 @@ Examples:
     // clean bill of health (#439).
     //
     // This is currently unreachable, and deliberately kept anyway. The universal
-    // rule at cli/lib/detector.js:20 is `existsSync(...) || true`, which is
-    // always true, so detection never returns an empty list and --framework
-    // always yields exactly one adapter. Should that `|| true` be corrected,
-    // this branch starts mattering immediately; it is three lines to keep and a
-    // silent false-clean to omit. Tracked in #457 — do not read the presence of
-    // this guard as evidence that the empty case has been observed.
+    // rule in cli/lib/detector.js is `check: () => true` — a deliberate constant
+    // (#457), since `.agents/` is the cross-client fallback target — so detection
+    // never returns an empty list, and --framework always yields exactly one
+    // adapter. If universal ever becomes conditional, this branch starts
+    // mattering immediately; it is three lines to keep and a silent false-clean
+    // to omit. Do not read the presence of this guard as evidence that the empty
+    // case has been observed.
     if (results.length === 0) {
       reporter.warn('No frameworks detected — nothing was audited.');
     }
