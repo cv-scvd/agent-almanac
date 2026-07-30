@@ -25,9 +25,9 @@ metadata:
     - unicode
   locale: es
   source_locale: en
-  source_commit: 11edabf5
+  source_commit: 2630b6e9
   translator: "Claude + human review"
-  translation_date: "2026-05-03"
+  translation_date: "2026-07-30"
 ---
 
 # Design CLI Output
@@ -53,15 +53,45 @@ Diseñar salida de terminal consistente y de múltiples niveles para una herrami
 
 ### Paso 1: Definir la Paleta de Colores
 
-Usar chalk para crear un objeto de paleta nombrado:
+Usar chalk para crear un objeto de paleta nombrado.
+
+**Cargar chalk detrás de un respaldo sin color.** El respaldo tiene que suplir cada forma de llamada que usa la paleta, lo cual es más que dejar pasar los strings sin cambios:
+
+```javascript
+// A factory returns a *function*; a direct style returns a string. Enumerate
+// this list against the installed chalk, not from memory — chalk 6 added the
+// three underline* variants, and a list that omits them is wrong for those names.
+const FACTORIES = new Set(['ansi256', 'bgAnsi256', 'bgHex', 'bgRgb', 'hex',
+  'rgb', 'underlineAnsi256', 'underlineHex', 'underlineRgb']);
+
+function makeChalkStub() {
+  return new Proxy((text) => text, {
+    get(target, prop) {
+      if (prop === 'then') return undefined;   // must not be a thenable
+      if (prop === 'level') return 0;          // no color support, truthfully
+      if (typeof prop === 'symbol') return Reflect.get(target, prop);
+      return FACTORIES.has(prop) ? () => makeChalkStub() : makeChalkStub();
+    },
+  });
+}
+
+let chalk;
+try { chalk = (await import('chalk')).default; }
+catch { chalk = makeChalkStub(); }
+```
+
+Cuatro invariantes, y un stub más corto se equivoca en cada una de ellas:
+
+1. **El target del Proxy es invocable** — `(text) => text`, no `{}`. El encadenamiento (`chalk.bold.cyan('x')`) necesita que cada salto sea a la vez indexable e invocable.
+2. **Las factories retornan una función.** `new Proxy({}, { get: () => (s) => s })` satisface los estilos directos y rompe las factories: `chalk.hex('#FF6B35')` es entonces el *string* `'#FF6B35'`, y llamarlo lanza `TypeError: ... is not a function`. Las paletas se construyen al cargar el módulo, así que ese respaldo tumba la herramienta en el momento del import — precisamente en la situación donde degradar a texto plano era el objetivo.
+3. **`then` es `undefined`.** Un stub que responde a cada propiedad con una función hace que `await chalk` se cuelgue para siempre: el runtime llama a `.then` y espera un callback que nadie invoca. Node reporta `Detected unsettled top-level await` y sale con 13.
+4. **`level` es un número.** Las comprobaciones de capacidad leen `chalk.level >= 1`; un stub truthy las abre sin soporte de color detrás.
+
+Construir la paleta a partir del objeto que haya sobrevivido a ese import.
 
 **Paleta estándar** (salida transaccional):
 
 ```javascript
-let chalk;
-try { chalk = (await import('chalk')).default; }
-catch { chalk = new Proxy({}, { get: () => (s) => s }); }
-
 // Status colors
 const ok = chalk.green;       // success
 const fail = chalk.red;       // errors
@@ -86,14 +116,25 @@ const C = {
 ```
 
 Reglas de diseño de paleta:
-- Siempre proveer un respaldo sin color (el patrón Proxy de arriba)
+- Siempre proveer un respaldo sin color, y comprobarlo contra las formas de llamada que la paleta realmente usa — la paleta cálida de arriba es casi por completo factories
 - Usar colores hex para paletas personalizadas (`chalk.hex('#FF6B35')`)
 - Mantener el color fail/error rojo independientemente del tema de la paleta
 - Nombrar entradas de paleta por rol semántico, no por apariencia visual
+- Compartir un solo stub entre módulos en lugar de reconstruirlo en cada sitio de import, o el mismo defecto tendrá que encontrarse y arreglarse en cada copia
 
-**Esperado:** Un objeto de paleta con entradas nombradas y un respaldo sin color.
+**Esperado:** Un objeto de paleta con entradas nombradas, y un respaldo que ha sido ejecutado en lugar de solamente escrito.
 
-**En caso de fallo:** Si chalk no está disponible (salida con pipe, CI), el respaldo Proxy retorna strings sin cambios. Probar con la variable de entorno `NO_COLOR=1`.
+**En caso de fallo:** Ejercitar la ruta del respaldo directamente; la paleta es el lugar equivocado para descubrir que está roto. Con el stub en alcance:
+
+```javascript
+console.assert(chalk.dim('x') === 'x');            // direct style
+console.assert(chalk.hex('#fff')('x') === 'x');    // factory — the usual defect
+console.assert(chalk.bold.cyan('x') === 'x');      // chain
+console.assert(chalk.level === 0);                 // capability gate stays shut
+await chalk;                                       // must not hang
+```
+
+`NO_COLOR=1` no cubre esto. Ejercita un chalk *funcional* que elige no emitir escapes; el respaldo ejercita un chalk que falló al importarse. Las dos rutas no comparten código. Ver [Ejemplos Extendidos](references/EXAMPLES.md#step-1-the-no-color-chalk-fallback) para el stub de producción anotado, una reproducción del defecto, y una versión ejecutable de las comprobaciones de arriba.
 
 ### Paso 2: Elegir Indicadores de Estado
 
@@ -252,6 +293,11 @@ node cli/index.js campfire --json | jq .
 
 # In CI (typically no TTY)
 CI=true node cli/index.js audit
+
+# The no-color fallback. A failed import cannot be provoked with an env var, so
+# assert on the stub itself in the suite rather than reaching it through the CLI.
+# Pass a glob, not a directory: `node --test <dir>` stopped expanding at Node 22.
+node --test 'cli/test/*.test.js'
 ```
 
 Verificar:
@@ -260,14 +306,15 @@ Verificar:
 - El JSON es válido (pipe a `jq .` para verificar)
 - Los glyphs Unicode se renderizan en los terminales objetivo
 - La alineación de columnas se mantiene con anchos de contenido variables
+- El respaldo sin color responde a cada forma de llamada que usa la paleta, comprobado con aserciones en la suite en lugar de demostrado una vez a mano
 
-**Esperado:** La salida es correcta en los cinco contextos.
+**Esperado:** La salida es correcta en los seis contextos.
 
-**En caso de fallo:** Si los códigos ANSI se filtran, asegurar que chalk respeta `NO_COLOR`. Si Unicode se rompe, proveer un modo de respaldo ASCII.
+**En caso de fallo:** Si los códigos ANSI se filtran, asegurar que chalk respeta `NO_COLOR`. Si Unicode se rompe, proveer un modo de respaldo ASCII. Notar que una suite verde no dice nada sobre el color en ningún sentido: los test runners hacen pipe de stdout, lo que pone `chalk.level` en 0, así que la salida coloreada y la no coloreada son idénticas byte a byte y las aserciones se cumplen con el color completamente roto. Probar que el color funciona requiere `FORCE_COLOR=3` y una aserción sobre una secuencia de escape.
 
 ## Validación
 
-- [ ] La paleta de colores tiene un respaldo sin color
+- [ ] La paleta de colores tiene un respaldo sin color, y el respaldo se ha ejecutado: estilo directo, factory, cadena, `level === 0` y `await` todos comprobados
 - [ ] Los indicadores de estado funcionan en modos color y sin color
 - [ ] Los cuatro niveles de verbosidad producen salida útil
 - [ ] La salida JSON es válida y parseable por `jq`
@@ -277,6 +324,7 @@ Verificar:
 
 ## Errores Comunes
 
+- **Un respaldo sin color que solo maneja estilos directos**: `new Proxy({}, { get: () => (s) => s })` se lee como completo y sí cubre `chalk.dim` y `chalk.red`, pero entonces cada factory retorna un string que el llamador intenta llamar de inmediato. Como las paletas se construyen al cargar el módulo, el `TypeError` cae en el momento del import — el respaldo falla con más fuerza en el único caso para el que existe. El Paso 1 lista las cuatro invariantes que un stub tiene que satisfacer.
 - **Mezclar texto humano con JSON**: En modo `--json`, emitir solo JSON válido. Una sola línea perdida (como "DRY RUN") rompe los parseadores JSON. Si el comando debe mostrar ambos, separarlos claramente o suprimir el texto humano en modo JSON.
 - **Anchos de columna hardcodeados**: La longitud del contenido varía. Usar `Math.max(...items.map(i => i.id.length))` para calcular el padding dinámicamente.
 - **Color sin significado**: Si el color es la única forma de distinguir éxito de fallo, los usuarios daltónicos y la salida con pipe pierden información. Siempre emparejar el color con un indicador de texto (`+`, `OK`, `ERR`).

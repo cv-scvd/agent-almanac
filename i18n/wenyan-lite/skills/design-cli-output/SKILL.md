@@ -2,9 +2,9 @@
 name: design-cli-output
 locale: wenyan-lite
 source_locale: en
-source_commit: 82c77053
+source_commit: 2630b6e9
 translator: "Julius Brussee homage — caveman"
-translation_date: "2026-04-19"
+translation_date: "2026-07-30"
 description: >
   Design terminal output for a CLI tool with chalk colors, Unicode glyphs,
   multiple verbosity levels (human, verbose, quiet, JSON), and consistent
@@ -53,15 +53,45 @@ metadata:
 
 ### 步驟一：定色盤
 
-用 chalk 建命名色盤物件：
+用 chalk 建命名色盤物件。
+
+**載 chalk 於無色回退之後。** 回退須代色盤所用之每一呼叫形，非僅傳字串而已：
+
+```javascript
+// A factory returns a *function*; a direct style returns a string. Enumerate
+// this list against the installed chalk, not from memory — chalk 6 added the
+// three underline* variants, and a list that omits them is wrong for those names.
+const FACTORIES = new Set(['ansi256', 'bgAnsi256', 'bgHex', 'bgRgb', 'hex',
+  'rgb', 'underlineAnsi256', 'underlineHex', 'underlineRgb']);
+
+function makeChalkStub() {
+  return new Proxy((text) => text, {
+    get(target, prop) {
+      if (prop === 'then') return undefined;   // must not be a thenable
+      if (prop === 'level') return 0;          // no color support, truthfully
+      if (typeof prop === 'symbol') return Reflect.get(target, prop);
+      return FACTORIES.has(prop) ? () => makeChalkStub() : makeChalkStub();
+    },
+  });
+}
+
+let chalk;
+try { chalk = (await import('chalk')).default; }
+catch { chalk = makeChalkStub(); }
+```
+
+四不變式，短拙之替身各失其一：
+
+1. **代理之標的可呼叫**——`(text) => text`，非 `{}`。鏈式（`chalk.bold.cyan('x')`）須每一節既可索引亦可呼叫。
+2. **工廠須返函數。** `new Proxy({}, { get: () => (s) => s })` 足直接樣式而破工廠：`chalk.hex('#FF6B35')` 遂為*字串* `'#FF6B35'`，呼之則擲 `TypeError: ... is not a function`。色盤於模組載入時建，故此回退於 import 之際即斃其工具——正當降為純文字之所以存也。
+3. **`then` 須為 `undefined`。** 若替身以函數應每一屬性，則 `await chalk` 永懸：運行時呼 `.then` 而候一無人喚之回調。Node 報 `Detected unsettled top-level await`，出碼 13。
+4. **`level` 須為數。** 能力閘讀 `chalk.level >= 1`；真值替身啟之，而其後實無色可支。
+
+以此 import 後存留之物件建色盤。
 
 **標準色盤**（事務性輸出）：
 
 ```javascript
-let chalk;
-try { chalk = (await import('chalk')).default; }
-catch { chalk = new Proxy({}, { get: () => (s) => s }); }
-
 // Status colors
 const ok = chalk.green;       // success
 const fail = chalk.red;       // errors
@@ -86,14 +116,25 @@ const C = {
 ```
 
 色盤設計規則：
-- 恆提供無色回退（如上之 Proxy 模式）
+- 恆提供無色回退，且以色盤實用之呼叫形驗之——上之暖色盤幾盡為工廠
 - 自定色盤用 hex 色（`chalk.hex('#FF6B35')`）
 - 失敗/錯誤色保持紅色，不論色盤主題
 - 以語義角色命色盤項，非視覺外觀
+- 諸模組共一替身，勿於每一 import 處重建之，否則同一疾須於每一副本中尋而修之
 
-**預期：** 具命名項與無色回退之色盤物件。
+**預期：** 具命名項之色盤物件，且其回退已行之，非僅書之而已。
 
-**失敗時：** 若 chalk 不可用（piped 輸出、CI），Proxy 回退返字串不變。以 `NO_COLOR=1` 環境變數測之。
+**失敗時：** 直行回退之路；色盤非發覺其已破之所。替身在域中，則：
+
+```javascript
+console.assert(chalk.dim('x') === 'x');            // direct style
+console.assert(chalk.hex('#fff')('x') === 'x');    // factory — the usual defect
+console.assert(chalk.bold.cyan('x') === 'x');      // chain
+console.assert(chalk.level === 0);                 // capability gate stays shut
+await chalk;                                       // must not hang
+```
+
+`NO_COLOR=1` 不覆此事。彼行一*可用*之 chalk 而擇不發轉義；回退則行一 import 失敗之 chalk。二路無共用之碼。註釋詳備之生產替身、此疾之復現、及上諸檢之可運行本，見 [Extended Examples](references/EXAMPLES.md#step-1-the-no-color-chalk-fallback)。
 
 ### 步驟二：擇狀態指示符
 
@@ -252,6 +293,11 @@ node cli/index.js campfire --json | jq .
 
 # In CI (typically no TTY)
 CI=true node cli/index.js audit
+
+# The no-color fallback. A failed import cannot be provoked with an env var, so
+# assert on the stub itself in the suite rather than reaching it through the CLI.
+# Pass a glob, not a directory: `node --test <dir>` stopped expanding at Node 22.
+node --test 'cli/test/*.test.js'
 ```
 
 檢之於：
@@ -260,14 +306,15 @@ CI=true node cli/index.js audit
 - JSON 有效（pipe 至 `jq .` 以驗）
 - Unicode 圖符於目標終端中渲染
 - 欄對齊於內容寬度變動時仍持
+- 無色回退應色盤所用之每一呼叫形，且斷言於測試套中，非手行一次以示之
 
-**預期：** 輸出於所有五情境中皆正確。
+**預期：** 輸出於所有六情境中皆正確。
 
-**失敗時：** 若 ANSI 碼漏，確 chalk 尊 `NO_COLOR`。若 Unicode 破，提供 ASCII 回退模式。
+**失敗時：** 若 ANSI 碼漏，確 chalk 尊 `NO_COLOR`。若 Unicode 破，提供 ASCII 回退模式。又須知：綠套於色一無所證。測試運行者 pipe stdout，使 `chalk.level` 為 0，故著色與無色之輸出逐位元相同，色雖全破而斷言猶立。欲證色可用，須 `FORCE_COLOR=3` 及對轉義序列之斷言。
 
 ## 驗證
 
-- [ ] 色盤有無色回退
+- [ ] 色盤有無色回退，且回退已行之：直接樣式、工廠、鏈、`level === 0`、`await` 皆已檢
 - [ ] 狀態指示符於色與無色模式皆運作
 - [ ] 所有四冗長度層級生有用輸出
 - [ ] JSON 輸出有效且 `jq` 可解析
@@ -277,6 +324,7 @@ CI=true node cli/index.js audit
 
 ## 常見陷阱
 
+- **僅理直接樣式之無色回退**：`new Proxy({}, { get: () => (s) => s })` 讀之如全，且誠覆 `chalk.dim` 與 `chalk.red`，然每一工廠遂返一字串，而呼叫者即欲呼之。色盤於模組載入時建，故 `TypeError` 落於 import 之際——回退於其所以存之唯一情境中敗得最重。步驟一列替身須滿之四不變式。
 - **於 JSON 中混人類文字**：於 `--json` 模式僅輸出有效 JSON。單一漏行（如「DRY RUN」）破 JSON 解析器。若指令須兩者皆示，明離之或於 JSON 模式中抑人類文字。
 - **硬編碼欄寬**：內容長度變。用 `Math.max(...items.map(i => i.id.length))` 動態算填充。
 - **無義之色**：若色為區成敗之唯一法，則色盲用戶與 piped 輸出失資訊。恆以文字指示符（`+`、`OK`、`ERR`）配色。

@@ -25,9 +25,9 @@ metadata:
     - unicode
   locale: de
   source_locale: en
-  source_commit: 11edabf5
+  source_commit: 2630b6e9
   translator: "Claude + human review"
-  translation_date: "2026-05-03"
+  translation_date: "2026-07-30"
 ---
 
 # CLI-Ausgabe entwerfen
@@ -53,15 +53,58 @@ Konsistente, mehrstufige Terminal-Ausgabe fuer ein Kommandozeilen-Tool entwerfen
 
 ### Schritt 1: Die Farbpalette definieren
 
-Chalk nutzen um ein benanntes Paletten-Objekt zu erstellen:
+Chalk nutzen um ein benanntes Paletten-Objekt zu erstellen.
+
+**Chalk hinter einem No-Color-Fallback laden.** Der Fallback muss fuer jede
+Aufruf-Form einstehen die die Palette nutzt, und das ist mehr als Strings
+durchzureichen:
+
+```javascript
+// A factory returns a *function*; a direct style returns a string. Enumerate
+// this list against the installed chalk, not from memory — chalk 6 added the
+// three underline* variants, and a list that omits them is wrong for those names.
+const FACTORIES = new Set(['ansi256', 'bgAnsi256', 'bgHex', 'bgRgb', 'hex',
+  'rgb', 'underlineAnsi256', 'underlineHex', 'underlineRgb']);
+
+function makeChalkStub() {
+  return new Proxy((text) => text, {
+    get(target, prop) {
+      if (prop === 'then') return undefined;   // must not be a thenable
+      if (prop === 'level') return 0;          // no color support, truthfully
+      if (typeof prop === 'symbol') return Reflect.get(target, prop);
+      return FACTORIES.has(prop) ? () => makeChalkStub() : makeChalkStub();
+    },
+  });
+}
+
+let chalk;
+try { chalk = (await import('chalk')).default; }
+catch { chalk = makeChalkStub(); }
+```
+
+Vier Invarianten, von denen jede ein kuerzerer Stub falsch macht:
+
+1. **Das Proxy-Target ist aufrufbar** — `(text) => text`, nicht `{}`. Verkettung
+   (`chalk.bold.cyan('x')`) braucht jeden Schritt sowohl indexierbar als auch
+   aufrufbar.
+2. **Factories geben eine Funktion zurueck.** `new Proxy({}, { get: () => (s) => s })`
+   erfuellt die direkten Styles und bricht die Factories: `chalk.hex('#FF6B35')`
+   ist dann der *String* `'#FF6B35'`, und ihn aufzurufen wirft
+   `TypeError: ... is not a function`. Paletten werden beim Modul-Load gebaut, also
+   nimmt dieser Fallback das Tool zur Import-Zeit herunter — genau in der Situation
+   in der das Degradieren auf Klartext der Zweck war.
+3. **`then` ist `undefined`.** Ein Stub der jede Property mit einer Funktion
+   beantwortet laesst `await chalk` fuer immer haengen: die Runtime ruft `.then`
+   und wartet auf einen Callback den niemand aufruft. Node meldet
+   `Detected unsettled top-level await` und beendet mit 13.
+4. **`level` ist eine Zahl.** Capability-Gates lesen `chalk.level >= 1`; ein
+   truthy Stub oeffnet sie ohne Farb-Unterstuetzung dahinter.
+
+Die Palette aus dem Objekt bauen das diesen Import ueberlebt hat.
 
 **Standard-Palette** (transaktionale Ausgabe):
 
 ```javascript
-let chalk;
-try { chalk = (await import('chalk')).default; }
-catch { chalk = new Proxy({}, { get: () => (s) => s }); }
-
 // Status colors
 const ok = chalk.green;       // success
 const fail = chalk.red;       // errors
@@ -86,14 +129,35 @@ const C = {
 ```
 
 Paletten-Design-Regeln:
-- Immer einen No-Color-Fallback bereitstellen (das Proxy-Muster oben)
+- Immer einen No-Color-Fallback bereitstellen, und ihn gegen die Aufruf-Formen
+  pruefen die die Palette tatsaechlich nutzt — die warme Palette oben besteht
+  fast vollstaendig aus Factories
 - Hex-Farben fuer benutzerdefinierte Paletten verwenden (`chalk.hex('#FF6B35')`)
 - Die Fail-/Error-Farbe rot halten unabhaengig vom Paletten-Thema
 - Paletten-Eintraege nach semantischer Rolle benennen, nicht visueller Erscheinung
+- Einen Stub ueber Module hinweg teilen statt ihn an jeder Import-Stelle neu zu
+  bauen, sonst muss derselbe Defekt in jeder Kopie gefunden und behoben werden
 
-**Erwartet:** Ein Paletten-Objekt mit benannten Eintraegen und einem No-Color-Fallback.
+**Erwartet:** Ein Paletten-Objekt mit benannten Eintraegen, und ein Fallback der
+ausgefuehrt und nicht bloss geschrieben wurde.
 
-**Bei Fehler:** Wenn chalk nicht verfuegbar ist (gepipte Ausgabe, CI), gibt der Proxy-Fallback Strings unveraendert zurueck. Mit `NO_COLOR=1`-Umgebungsvariable testen.
+**Bei Fehler:** Den Fallback-Pfad direkt ausueben; die Palette ist der falsche
+Ort um zu entdecken dass er kaputt ist. Mit dem Stub im Scope:
+
+```javascript
+console.assert(chalk.dim('x') === 'x');            // direct style
+console.assert(chalk.hex('#fff')('x') === 'x');    // factory — the usual defect
+console.assert(chalk.bold.cyan('x') === 'x');      // chain
+console.assert(chalk.level === 0);                 // capability gate stays shut
+await chalk;                                       // must not hang
+```
+
+`NO_COLOR=1` deckt das nicht ab. Es uebt ein *funktionierendes* chalk aus das
+sich entscheidet keine Escapes zu senden; der Fallback uebt ein chalk aus das
+nicht importiert werden konnte. Die zwei Pfade teilen keinen Code. Siehe
+[Erweiterte Beispiele](references/EXAMPLES.md#step-1-the-no-color-chalk-fallback)
+fuer den annotierten Produktions-Stub, eine Reproduktion des Defekts und eine
+lauffaehige Version der obigen Pruefungen.
 
 ### Schritt 2: Status-Indikatoren waehlen
 
@@ -252,6 +316,11 @@ node cli/index.js campfire --json | jq .
 
 # In CI (typically no TTY)
 CI=true node cli/index.js audit
+
+# The no-color fallback. A failed import cannot be provoked with an env var, so
+# assert on the stub itself in the suite rather than reaching it through the CLI.
+# Pass a glob, not a directory: `node --test <dir>` stopped expanding at Node 22.
+node --test 'cli/test/*.test.js'
 ```
 
 Pruefen auf:
@@ -260,14 +329,23 @@ Pruefen auf:
 - JSON ist gueltig (an `jq .` pipen zur Verifikation)
 - Unicode-Glyphen rendern in den Ziel-Terminals
 - Spaltenausrichtung haelt mit variierenden Inhalts-Breiten
+- Der No-Color-Fallback beantwortet jede Aufruf-Form die die Palette nutzt,
+  zugesichert in der Suite statt einmal von Hand demonstriert
 
-**Erwartet:** Ausgabe ist in allen fuenf Kontexten korrekt.
+**Erwartet:** Ausgabe ist in allen sechs Kontexten korrekt.
 
-**Bei Fehler:** Wenn ANSI-Codes lecken, sicherstellen dass chalk `NO_COLOR` respektiert. Wenn Unicode bricht, einen ASCII-Fallback-Modus bereitstellen.
+**Bei Fehler:** Wenn ANSI-Codes lecken, sicherstellen dass chalk `NO_COLOR`
+respektiert. Wenn Unicode bricht, einen ASCII-Fallback-Modus bereitstellen. Zu
+beachten: eine gruene Suite sagt in keine Richtung etwas ueber Farbe aus —
+Test-Runner pipen stdout, was `chalk.level` auf 0 setzt, also sind gefaerbte und
+ungefaerbte Ausgabe byte-identisch und die Assertions halten mit vollstaendig
+kaputter Farbe. Zu beweisen dass Farbe funktioniert braucht `FORCE_COLOR=3` und
+eine Assertion auf einer Escape-Sequenz.
 
 ## Validierung
 
-- [ ] Farbpalette hat einen No-Color-Fallback
+- [ ] Farbpalette hat einen No-Color-Fallback, und der Fallback wurde ausgefuehrt:
+      direkter Style, Factory, Verkettung, `level === 0` und `await` alle geprueft
 - [ ] Status-Indikatoren funktionieren in beiden Farb- und No-Color-Modi
 - [ ] Alle vier Verbosity-Stufen produzieren nuetzliche Ausgabe
 - [ ] JSON-Ausgabe ist gueltig und durch `jq` parsebar
@@ -277,6 +355,7 @@ Pruefen auf:
 
 ## Haeufige Stolperfallen
 
+- **Ein No-Color-Fallback der nur direkte Styles behandelt**: `new Proxy({}, { get: () => (s) => s })` liest sich vollstaendig und deckt `chalk.dim` und `chalk.red` tatsaechlich ab, aber jede Factory gibt dann einen String zurueck den der Caller sofort aufzurufen versucht. Weil Paletten beim Modul-Load gebaut werden, landet der `TypeError` zur Import-Zeit — der Fallback versagt am haertesten in dem einen Fall fuer den er existiert. Schritt 1 listet die vier Invarianten die ein Stub erfuellen muss.
 - **Menschlichen Text mit JSON vermischen**: Im `--json`-Modus nur gueltiges JSON ausgeben. Eine einzelne verirrte Zeile (wie "DRY RUN") bricht JSON-Parser. Wenn der Befehl beides zeigen muss, sie klar trennen oder den menschlichen Text im JSON-Modus unterdruecken.
 - **Hartcodierte Spaltenbreiten**: Inhaltslaenge variiert. `Math.max(...items.map(i => i.id.length))` nutzen um Padding dynamisch zu berechnen.
 - **Farbe ohne Bedeutung**: Wenn Farbe der einzige Weg ist Erfolg von Versagen zu unterscheiden, verlieren farbenblinde Benutzer und gepipte Ausgabe Information. Farbe immer mit einem Text-Indikator paaren (`+`, `OK`, `ERR`).
