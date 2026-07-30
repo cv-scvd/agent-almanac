@@ -37,7 +37,7 @@
  * silently no-op on this repo's NTFS mount, and bare `grep` resolves to ugrep
  * locally but GNU grep in CI — the two failure modes this tool exists to catch.
  */
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, extname, relative, resolve } from 'node:path';
@@ -72,30 +72,73 @@ function git(args, opts = {}) {
 }
 
 /**
+ * Cap on captured output.
+ *
+ * spawnSync's maxBuffer used to enforce this by SIGTERM-ing the child and returning
+ * status null — which a `?? 1` coercion turned into a fake kill. Streaming spawn has
+ * no cap at all, so the bound is applied here and reported as an error rather than
+ * silently becoming a verdict.
+ */
+const MAX_OUTPUT_CHARS = 64 * 1024 * 1024;
+
+/**
  * Run a shell command and report what actually happened.
  *
- * spawnSync does NOT simply return an exit code: on maxBuffer overflow it kills the
- * child and returns status null with error.code ENOBUFS, and on spawn failure it
- * returns status null with an error. Coercing either to a number invents a red run
- * out of a green one, so both are surfaced instead.
+ * Async, not spawnSync: a synchronous child blocks the event loop, so the SIGINT
+ * handler below could not fire for the whole test run — Ctrl-C appeared to do
+ * nothing and users escalated to SIGKILL, which strands the mutant (#462).
+ *
+ * The return shape is deliberate. `status` alone is not a verdict: a spawn failure
+ * and a self-inflicted overflow kill both produce a non-zero-ish result that has
+ * nothing to do with whether tests passed. `error` and `signal` stay separate so
+ * inconclusiveReason() can tell "the suite went red" from "I killed the suite
+ * myself".
  */
-function runCommand(cmd) {
-  const res = spawnSync(cmd, {
-    shell: true,
-    encoding: 'utf8',
-    maxBuffer: 64 * 1024 * 1024,
+async function runCommand(cmd) {
+  return new Promise((settle) => {
+    const child = spawn(cmd, { shell: true });
+    let output = '';
+    let overflowed = false;
+    let spawnError = null;
+
+    const capture = (chunk) => {
+      if (overflowed) return;
+      output += chunk;
+      if (output.length > MAX_OUTPUT_CHARS) {
+        output = output.slice(0, MAX_OUTPUT_CHARS);
+        overflowed = true;
+        child.kill('SIGKILL');
+      }
+    };
+
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', capture);
+    child.stderr.on('data', capture);
+    child.on('error', (err) => { spawnError = err; });
+
+    child.on('close', (status, signal) => {
+      settle({
+        status,
+        signal,
+        // An overflow is reported as an error rather than as a verdict: the run
+        // was cut short by this tool, so its exit status describes the kill, not
+        // the tests.
+        error: spawnError ?? (overflowed
+          ? Object.assign(
+            new Error(`output exceeded ${MAX_OUTPUT_CHARS} characters and was cut short`),
+            { code: 'ENOBUFS' },
+          )
+          : null),
+        output,
+      });
+    });
   });
-  return {
-    status: res.status,
-    signal: res.signal,
-    error: res.error,
-    output: (res.stdout ?? '') + (res.stderr ?? ''),
-  };
 }
 
 /** Describe why a run could not be interpreted, or null if it can be. */
 function inconclusiveReason(run) {
-  if (run.error) return `the test command could not be run (${run.error.code ?? run.error.message})`;
+  if (run.error) return `the test command did not complete (${run.error.code ?? run.error.message})`;
   if (run.signal) return `the test command was killed by ${run.signal}, so its result is not a verdict`;
   if (run.status === null) return 'the test command produced no exit status';
   if (run.status === 127) return 'the test command was not found (exit 127) — check the --test string';
@@ -245,7 +288,7 @@ console.log(`  mutation: ${opts.deleteMatching !== undefined
 console.log(`  test:     ${opts.test}\n`);
 
 console.log('[1/5] baseline (expect green) ...');
-const baseline = runCommand(opts.test);
+const baseline = await runCommand(opts.test);
 const baselineProblem = inconclusiveReason(baseline);
 if (baselineProblem) fail(`Baseline inconclusive — ${baselineProblem}`);
 if (baseline.status !== 0) {
@@ -303,8 +346,8 @@ function restore() {
   if (existsSync(backupPath)) unlinkSync(backupPath);
 }
 
-// spawnSync blocks the event loop, so these fire only between phases — which is why
-// the on-disk backup exists rather than relying on them.
+// These now fire during the test run too, since the child is spawned asynchronously
+// (#462). The on-disk backup still exists for SIGKILL, which no handler can trap.
 process.on('SIGINT', () => { restore(); process.exit(130); });
 process.on('SIGTERM', () => { restore(); process.exit(143); });
 
@@ -326,7 +369,7 @@ try {
     console.log('      it parses.\n');
 
     console.log('[4/5] running tests against the mutant (expect red) ...');
-    const mutant = runCommand(opts.test);
+    const mutant = await runCommand(opts.test);
     const problem = inconclusiveReason(mutant);
     if (problem) {
       verdict = 'inconclusive';
