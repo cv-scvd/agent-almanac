@@ -33,32 +33,39 @@ const SKILLS_DIR = join(ROOT, 'skills');
 const GIT_BUFFER = 2048 * 1024 * 1024;
 
 /**
- * Fence info-string tags whose content must match the English source
- * byte-for-byte. These are the tags a reader copies and runs, or that an agent
- * executes as part of a procedure: localising them yields code that is wrong in
- * the target language's terms while looking authoritative.
+ * The ONLY fence info-string tags a translation may localise. Everything else
+ * is frozen — its body must match the English source byte-for-byte.
  *
- * Tags NOT listed here (text, markdown, untagged, ...) may be localised — they
- * carry illustrative output, tables and templates, where the reader is served
- * by their own language.
+ * The polarity is deliberate and is the whole design. An allowlist of "code"
+ * tags has to enumerate every language the corpus will ever use, and anything
+ * it forgets is unguarded by default. This corpus already carries `logql` (50
+ * fences), `bibtex` (20), `jsonl` (10), `traceql` (10), `powershell` (10) and
+ * `language` (10) — all of which a hand-written code list misses, all currently
+ * at zero violations, so closing the hole costs nothing today and everything
+ * later. Worse, an allowlist makes the gate's scope editable by the person
+ * being gated: retag a ```yaml fence to ```text and it stops being checked.
+ *
+ * `text` and `markdown` are exempt because they carry reference tables,
+ * decision flows and report templates that a human reads or fills in — a German
+ * reviewer should be able to emit a German report. Byte parity on `markdown`
+ * would fire 268 times to catch 3 real defects and would forbid the thing the
+ * locale exists for.
+ *
+ * Untagged fences are frozen, not exempt. Measured cost: zero — there are no
+ * untagged fence openers in either tree, because `guides/content-styleguide.md`
+ * already requires a tag. The remedy for a future one is to tag the English
+ * source.
+ *
+ * Adding a tag here requires naming which machine consumes that fence.
  *
  * Single source of truth for both the checker and the normalizer. A second copy
  * would drift, and the two disagreeing means the repair tool rewrites fences the
  * gate does not flag, or leaves flagged ones alone.
  */
-export const GATED_TAGS = new Set([
-  'bash', 'sh', 'shell', 'zsh', 'console',
-  'javascript', 'js', 'mjs', 'cjs', 'jsx', 'typescript', 'ts', 'tsx',
-  'python', 'py', 'r', 'ruby', 'rb', 'perl', 'php', 'lua',
-  'go', 'rust', 'rs', 'java', 'kotlin', 'c', 'cpp', 'csharp', 'swift',
-  'json', 'yaml', 'yml', 'toml', 'xml', 'ini', 'sql', 'graphql',
-  'dockerfile', 'docker', 'nginx', 'apache', 'terraform', 'hcl',
-  'html', 'css', 'scss', 'sass',
-  'diff', 'patch', 'makefile', 'cmake', 'gitignore', 'protobuf', 'proto',
-  'gotmpl', 'promql', 'latex', 'tex',
-]);
+export const LOCALISABLE_TAGS = new Set(['text', 'markdown', 'md']);
 
-export const isGated = (fence) => GATED_TAGS.has(fence.lang);
+/** True when a fence's body must match an English revision byte-for-byte. */
+export const isGated = (fence) => !LOCALISABLE_TAGS.has(fence.lang);
 
 /**
  * Union of every fence body that has ever appeared in each English SKILL.md,
