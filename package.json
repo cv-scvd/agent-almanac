@@ -50,6 +50,8 @@
     "validate:integrity": "bash scripts/validate-integrity.sh",
     "validate:translations": "node scripts/check-translation-freshness.js",
     "validate:i18n-parity": "node scripts/check-i18n-frontmatter-parity.js",
+    "validate:i18n-fences": "node scripts/check-i18n-fence-parity.js",
+    "normalize:i18n-fences": "node scripts/normalize-i18n-fences.js",
     "validate:content-style": "node scripts/check-content-style.js --all",
     "validate:line-endings": "node scripts/check-line-endings.js",
     "validate:skill-sections": "node scripts/audit-skill-sections.js --missing",
