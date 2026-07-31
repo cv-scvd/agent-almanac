@@ -137,7 +137,25 @@ npm run translate:scaffold -- <content-type> <id> <locale>
    - YAML frontmatter with `name`, `description`, `allowed-tools`, `metadata`
    - When to Use, Inputs, Procedure, Validation, Common Pitfalls, Related Skills
 
-5.3. Verify code blocks are identical to the English source (diff the fenced blocks).
+5.3. Verify code blocks are identical to the English source by running the checker,
+   not by reading:
+
+   ```bash
+   node scripts/check-i18n-fence-parity.js --locale <locale> --id <content-id>
+   ```
+
+   Scope it to the file you just wrote. `npm run validate:i18n-fences` runs the
+   whole corpus, which still carries a backlog (#477) and would fail for reasons
+   unrelated to your work — training exactly the ignore-the-red-check reflex
+   this gate exists to prevent.
+
+   Every fence whose tag is not `text`, `markdown` or `md` is frozen: its body must
+   match the English source byte-for-byte, comments and string literals included.
+   Repair with `npm run normalize:i18n-fences`.
+
+   This step said "diff the fenced blocks" from the day the i18n tree was created,
+   and the corpus still accumulated 1,307 violations, because reading a fence and
+   diffing it are not the same act (#472). Run the command.
 
 5.4. Check line count: skills must be ≤ 500 lines.
 
@@ -179,7 +197,7 @@ npm run translate:scaffold -- <content-type> <id> <locale>
 - [ ] `name` field matches English source exactly
 - [ ] `locale` field matches target locale
 - [ ] `source_commit` field is set to a valid git short hash
-- [ ] All code blocks are identical to English source
+- [ ] `check-i18n-fence-parity.js --locale <locale> --id <id>` passes for this file
 - [ ] All cross-referenced IDs (skills, agents, teams) are in English
 - [ ] File is under 500 lines (for skills)
 - [ ] `npm run validate:translations` reports no issues for this file

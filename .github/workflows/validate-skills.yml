@@ -2,9 +2,9 @@ name: Validate Skills
 on:
   push:
     branches: [main]
-    paths: ['skills/**', 'i18n/**/skills/**', 'scripts/audit-skill-sections.js', '.github/workflows/validate-skills.yml']
+    paths: ['skills/**', 'i18n/**', 'agents/**', 'teams/**', 'guides/**', 'scripts/**', 'package.json', 'package-lock.json', '.github/workflows/validate-skills.yml']
   pull_request:
-    paths: ['skills/**', 'i18n/**/skills/**', 'scripts/audit-skill-sections.js', '.github/workflows/validate-skills.yml']
+    paths: ['skills/**', 'i18n/**', 'agents/**', 'teams/**', 'guides/**', 'scripts/**', 'package.json', 'package-lock.json', '.github/workflows/validate-skills.yml']
   workflow_dispatch:
 
 permissions:
@@ -133,3 +133,28 @@ jobs:
       # heuristic warn-only A9. Local `npm run validate:i18n-parity` matches.
       - name: Check i18n frontmatter parity
         run: node scripts/check-i18n-frontmatter-parity.js
+
+      # Keep-code-in-English fence parity (#472).
+      #
+      # Ships WARN-ONLY, unlike the frontmatter gate above, and the difference is
+      # the corpus state at introduction. #371 could ship blocking because a
+      # 39-file catch-up in the same PR left it clean. This one lands on 1,307
+      # violations across 338 files (1,220 in skills, 87 in the agents/teams/
+      # guides mirrors), and the repair splits into reviewable batches — 1,014
+      # mechanical, 206 in 46 files that are content forks needing
+      # re-translation, some of it regulated (#478), 87 in mirrors the normalizer
+      # does not yet cover. A blocking gate here would fail every build until the
+      # last batch merges.
+      #
+      # Warn is a temporary state with a named exit: #477 flips this to blocking
+      # in the PR that clears the final batch, and the red-to-green transition is
+      # the proof the gate can fail. The day-one red output is recorded in the
+      # PR that introduced this step, per CLAUDE.md § Proving a Gate Can Fail.
+      #
+      # The gate needs full history — it accepts a translated fence body that
+      # matches ANY revision of its English source, which is what makes it immune
+      # to the staleness confound. `fetch-depth: 0` above is therefore
+      # load-bearing here too, and the script hard-exits on a shallow clone
+      # rather than passing vacuously (#279/#362).
+      - name: Check i18n code-fence parity (warn only until #477)
+        run: node scripts/check-i18n-fence-parity.js --warn

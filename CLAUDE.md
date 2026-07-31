@@ -201,6 +201,44 @@ i18n/
 - Every translated file has frontmatter fields: `locale`, `source_locale`, `source_commit`, `translator`, `translation_date`
 - Translated SKILL.md files must stay under 500 lines
 
+#### Which code fences are frozen
+
+"Code blocks stay in English" was stated in four places and violated 1,220 times,
+so it is now mechanical. A fenced block in any translated file is **frozen**
+unless its info-string tag is exactly `text`, `markdown`, or `md`. Frozen means
+the body must be byte-identical to a fence body appearing in *some* revision of
+the paired English file.
+
+The exemption list is **closed and default-deny**: an untagged fence, or any tag
+not on that list — including tags nobody has used yet — is frozen on arrival.
+Adding a tag to the list requires naming which machine consumes that fence. An
+allowlist of "code" tags would leave `logql`, `bibtex`, `jsonl`, `traceql` and
+`powershell` unguarded, and would let the scope be edited by retagging a
+```` ```yaml ```` fence to ```` ```text ````.
+
+Frozen covers everything inside the delimiters: comments, docstrings, string
+literals, YAML values, placeholder tokens. Translate the prose *around* the
+fence. If a comment carries the only statement of an instruction, lift it into
+the step's prose rather than translating it in place.
+
+`text` and `markdown` are exempt because they carry reference tables, decision
+flows and report templates a human reads or fills in — a German reviewer should
+be able to emit a German report.
+
+This applies at every compression level. `guides/caveman-spellbook.md` already
+lists code blocks under "What always survives"; compression is licensed for
+prose only.
+
+```bash
+npm run validate:i18n-fences                    # whole corpus
+node scripts/check-i18n-fence-parity.js \
+  --locale de --id create-r-package             # just the file you touched
+npm run normalize:i18n-fences                   # restore English fence bodies
+```
+
+Runs **warn-only** in CI until the 1,307-violation backlog clears (#477), then
+flips to blocking. Warn is a temporary state with a named exit, not the design.
+
 ### Translation Workflow
 
 ```bash

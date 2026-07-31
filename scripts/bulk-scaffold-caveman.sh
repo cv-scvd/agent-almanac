@@ -41,8 +41,16 @@ for locale in "${LOCALES[@]}"; do
     fi
 
     mkdir -p "$target_dir"
+    # Inject ONLY inside the YAML frontmatter block. The unscoped `/^name:/`
+    # this replaces fired on every column-0 `name:` in the file, including
+    # inside ```yaml fences — a skill documenting a GitHub Actions workflow got
+    # `locale:`/`translator:` spliced into the workflow a reader is told to copy.
+    # 64 such injections across 44 files reached main before anything compared
+    # translated fences against English (#475, found via #472).
     awk -v locale="$locale" -v commit="$SOURCE_COMMIT" -v date="$TODAY" '
-      /^name:/ {
+      NR == 1 && /^---[[:space:]]*$/ { in_fm = 1; print; next }
+      in_fm && /^---[[:space:]]*$/   { in_fm = 0; print; next }
+      in_fm && /^name:/ {
         print
         print "locale: " locale
         print "source_locale: en"

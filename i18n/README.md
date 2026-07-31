@@ -34,6 +34,38 @@ i18n/
 | **Teams** | description, Purpose, Coordination Pattern prose, Usage Scenarios | name (=ID), lead, members[].id, coordination type, CONFIG block |
 | **Guides** | title, description, all prose sections, troubleshooting | code blocks, command examples, file paths, YAML config examples |
 
+### Code fences: which are frozen
+
+"Code blocks" above is enforced, not advisory (#472). A fenced block is **frozen**
+unless its info-string tag is exactly `text`, `markdown`, or `md`. A frozen fence
+body must be byte-identical to a fence body appearing in *some* revision of the
+paired English file — any revision ever committed, so a faithful translation of an
+older English source still passes and staleness stays
+`check-translation-freshness.js`'s problem.
+
+The exemption list is closed and **default-deny**. Untagged fences are frozen. Any
+tag not named above — `logql`, `bibtex`, `powershell`, or one invented next year —
+is frozen on arrival. Adding a tag requires a PR naming which machine consumes
+that fence.
+
+Frozen covers everything between the delimiters: comments, docstrings, string
+literals, YAML values, placeholders. Translate the prose around the fence. When a
+comment carries the only statement of an instruction, lift it into the prose
+instead of translating it in place.
+
+`text` and `markdown` stay localisable because they carry tables, decision flows
+and report templates meant to be read or filled in by a person in their own
+language.
+
+```bash
+npm run validate:i18n-fences                    # whole corpus
+node scripts/check-i18n-fence-parity.js \
+  --locale de --id create-r-package             # just the file you touched
+npm run normalize:i18n-fences                   # restore English bodies from source_commit
+```
+
+Runs **warn-only** in CI until the backlog clears (#477), then flips to blocking.
+
 ## Translation Frontmatter
 
 Every translated file includes these fields in its YAML frontmatter:
