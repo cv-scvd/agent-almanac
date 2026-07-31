@@ -2,9 +2,9 @@ name: Validate Skills
 on:
   push:
     branches: [main]
-    paths: ['skills/**', 'i18n/**/skills/**', 'scripts/audit-skill-sections.js', '.github/workflows/validate-skills.yml']
+    paths: ['skills/**', 'i18n/**', 'agents/**', 'teams/**', 'guides/**', 'scripts/**', 'package.json', 'package-lock.json', '.github/workflows/validate-skills.yml']
   pull_request:
-    paths: ['skills/**', 'i18n/**/skills/**', 'scripts/audit-skill-sections.js', '.github/workflows/validate-skills.yml']
+    paths: ['skills/**', 'i18n/**', 'agents/**', 'teams/**', 'guides/**', 'scripts/**', 'package.json', 'package-lock.json', '.github/workflows/validate-skills.yml']
   workflow_dispatch:
 
 permissions:
@@ -138,11 +138,13 @@ jobs:
       #
       # Ships WARN-ONLY, unlike the frontmatter gate above, and the difference is
       # the corpus state at introduction. #371 could ship blocking because a
-      # 39-file catch-up in the same PR left it clean. This one lands on 1,220
-      # violations across 327 files, and the repair splits into reviewable
-      # batches — 1,014 mechanical, 206 in 46 files that are content forks
-      # needing re-translation, some of it regulated (#478). A blocking gate here
-      # would fail every build until the last batch merges.
+      # 39-file catch-up in the same PR left it clean. This one lands on 1,307
+      # violations across 338 files (1,220 in skills, 87 in the agents/teams/
+      # guides mirrors), and the repair splits into reviewable batches — 1,014
+      # mechanical, 206 in 46 files that are content forks needing
+      # re-translation, some of it regulated (#478), 87 in mirrors the normalizer
+      # does not yet cover. A blocking gate here would fail every build until the
+      # last batch merges.
       #
       # Warn is a temporary state with a named exit: #477 flips this to blocking
       # in the PR that clears the final batch, and the red-to-green transition is

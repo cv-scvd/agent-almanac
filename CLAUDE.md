@@ -230,9 +230,14 @@ lists code blocks under "What always survives"; compression is licensed for
 prose only.
 
 ```bash
-npm run validate:i18n-fences     # check (blocking in CI)
-npm run normalize:i18n-fences    # restore English fence bodies
+npm run validate:i18n-fences                    # whole corpus
+node scripts/check-i18n-fence-parity.js \
+  --locale de --id create-r-package             # just the file you touched
+npm run normalize:i18n-fences                   # restore English fence bodies
 ```
+
+Runs **warn-only** in CI until the 1,307-violation backlog clears (#477), then
+flips to blocking. Warn is a temporary state with a named exit, not the design.
 
 ### Translation Workflow
 

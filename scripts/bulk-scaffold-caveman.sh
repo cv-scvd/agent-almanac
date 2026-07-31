@@ -45,7 +45,7 @@ for locale in "${LOCALES[@]}"; do
     # this replaces fired on every column-0 `name:` in the file, including
     # inside ```yaml fences — a skill documenting a GitHub Actions workflow got
     # `locale:`/`translator:` spliced into the workflow a reader is told to copy.
-    # 55 such injections across 38 files reached main before anything compared
+    # 64 such injections across 44 files reached main before anything compared
     # translated fences against English (#475, found via #472).
     awk -v locale="$locale" -v commit="$SOURCE_COMMIT" -v date="$TODAY" '
       NR == 1 && /^---[[:space:]]*$/ { in_fm = 1; print; next }

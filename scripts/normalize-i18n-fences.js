@@ -14,7 +14,7 @@
  * By default the translation's own `source_commit` — the English revision it
  * was actually translated from — NOT English at HEAD.
  *
- * That is deliberate. 2,545 translations are stale: their prose describes an
+ * That is deliberate. 2,549 translations are stale: their prose describes an
  * older English source. Splicing HEAD's code into a file whose prose predates
  * it produces a document that is internally inconsistent — prose describing one
  * command sitting above a different command — and it silently entangles this
@@ -32,9 +32,14 @@
  * A fence is only rewritten when the translated file and its English basis
  * carry the SAME number of fences in the SAME language-tag sequence. Then
  * ordinal mapping is sound: the nth fence corresponds to the nth fence.
- * Otherwise the file is skipped and reported for manual repair — 50 of the 327
- * affected files at introduction, mostly translations that dropped or merged
- * blocks outright, which no positional rule can safely reconstruct.
+ * Otherwise the file is skipped and reported for manual repair — 46 of the 327
+ * affected skills at introduction (41 by fence count, 5 by tag sequence),
+ * mostly translations that dropped or merged blocks outright, which no
+ * positional rule can safely reconstruct. Those 46 carry 206 fences and are
+ * tracked as content forks in #478.
+ *
+ * Scope: skills only. The checker also covers the agents/teams/guides mirrors,
+ * whose 87 gated violations this tool does not yet repair (#477).
  *
  * Usage:
  *   node scripts/normalize-i18n-fences.js --dry          # preview only
@@ -57,11 +62,26 @@ const SKILLS_DIR = resolve(ROOT, 'skills');
 
 const argv = process.argv.slice(2);
 const DRY = argv.includes('--dry');
-const flagValue = (name) => {
+
+/**
+ * Read `--flag value`, rejecting a following flag as the value. The naive
+ * `argv[i + 1]` version silently accepted `--locale --dry` as locale `"--dry"`,
+ * which matched no locale and reported "files to change: 0" — a clean-looking
+ * no-op. It also let a trailing `--basis` fall back to the default,
+ * short-circuiting the validation immediately below it.
+ */
+function flagValue(name, fallback = null) {
   const i = argv.indexOf(name);
-  return i >= 0 ? argv[i + 1] : null;
-};
-const BASIS = flagValue('--basis') || 'source-commit';
+  if (i < 0) return fallback;
+  const v = argv[i + 1];
+  if (v === undefined || v.startsWith('--')) {
+    console.error(`ERROR: ${name} requires a value`);
+    process.exit(2);
+  }
+  return v;
+}
+
+const BASIS = flagValue('--basis', 'source-commit');
 const ONLY_LOCALE = flagValue('--locale');
 
 if (!['source-commit', 'head'].includes(BASIS)) {
@@ -158,13 +178,20 @@ for (const t of targets) {
 
   const translatedFences = extractFences(t.text);
   const basisFences = extractFences(basisText);
-  const everEnglish = history.get(t.skill);
+  // Keys are `<tree>/<id>` (see lib/fences.js contentKey). A bare `t.skill`
+  // lookup returns undefined for every file, which the `everEnglish &&` guard
+  // below silently turns into "nothing to repair" — a clean-looking zero.
+  const everEnglish = history.get(`skills/${t.skill}`);
+  if (!everEnglish) {
+    skipped.push({ file: t.relPath, reason: 'no English history for this id', n: 0 });
+    continue;
+  }
 
   // Restore exactly what the gate flags: a gated fence whose body appears in no
   // English revision. Using the same predicate as the checker is what keeps the
   // two tools from disagreeing — an ordinal-only test would rewrite fences the
   // gate considers legitimately stale.
-  const divergent = translatedFences.filter((f) => isGated(f) && everEnglish && !everEnglish.has(f.body));
+  const divergent = translatedFences.filter((f) => isGated(f) && !everEnglish.has(f.body));
   if (divergent.length === 0) continue;
 
   if (translatedFences.length !== basisFences.length) {
@@ -172,13 +199,23 @@ for (const t of targets) {
     continue;
   }
 
-  // Ordinal mapping is sound when gated-ness corresponds at every position and
-  // gated tags match. A `text` fence facing an untagged one is NOT a
-  // divergence: `normalize-content-style.js --mode fences` adds `text` tags to
-  // untagged blocks, so that pairing is an artifact of a known repo tool. Both
-  // sides are ungated, so neither is rewritten either way.
+  // Ordinal mapping is sound when the tag at every position corresponds.
+  //
+  // A `text` fence facing an untagged one is NOT a divergence:
+  // `normalize-content-style.js --mode fences` retro-tagged untagged blocks as
+  // `text`, so that pairing is an artifact of a known repo tool acting on the
+  // newer side only. `alignmentTag` folds the two together.
+  //
+  // This must NOT be expressed as `isGated(a) !== isGated(b)`. Under default-deny
+  // an untagged fence is gated while `text` is not, so that formulation makes
+  // every one of those benign pairings a misalignment — it stranded 169
+  // mechanically-repairable fences across 73 files between the two commits of
+  // this PR, while the comment above it still described the pre-inversion
+  // behaviour. Alignment is a question about ordinal correspondence, not about
+  // what the gate covers.
+  const alignmentTag = (f) => (f.lang === '' ? 'text' : f.lang);
   const misaligned = translatedFences.findIndex(
-    (f, i) => isGated(f) !== isGated(basisFences[i]) || (isGated(f) && f.lang !== basisFences[i].lang),
+    (f, i) => alignmentTag(f) !== alignmentTag(basisFences[i]),
   );
   if (misaligned >= 0) {
     const a = translatedFences[misaligned].lang || 'untagged';

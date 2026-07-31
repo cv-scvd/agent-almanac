@@ -58,9 +58,13 @@ and report templates meant to be read or filled in by a person in their own
 language.
 
 ```bash
-npm run validate:i18n-fences     # check — blocking in CI
-npm run normalize:i18n-fences    # restore English fence bodies from source_commit
+npm run validate:i18n-fences                    # whole corpus
+node scripts/check-i18n-fence-parity.js \
+  --locale de --id create-r-package             # just the file you touched
+npm run normalize:i18n-fences                   # restore English bodies from source_commit
 ```
+
+Runs **warn-only** in CI until the backlog clears (#477), then flips to blocking.
 
 ## Translation Frontmatter
 

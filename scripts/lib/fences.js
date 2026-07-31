@@ -8,7 +8,7 @@
  *
  * Two properties are load-bearing:
  *
- * 1. **CRLF is normalised before parsing.** 69 translated SKILL.md carry CRLF
+ * 1. **CRLF is normalised before parsing.** 68 translated SKILL.md carry CRLF
  *    in the working tree while the committed blob is LF — `*.md text eol=lf`
  *    normalises on the way into the index, not on disk. In a JavaScript regex
  *    `\r` is a LineTerminator, so `.` does not match it and an unanchored `$`
@@ -23,13 +23,12 @@
  *    the first ``` would splice two blocks together and invent divergences.
  */
 
-import { readFileSync, readdirSync, existsSync } from 'fs';
+import { readFileSync, readdirSync, existsSync, statSync } from 'fs';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { execFileSync, spawnSync } from 'child_process';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const SKILLS_DIR = join(ROOT, 'skills');
 const GIT_BUFFER = 2048 * 1024 * 1024;
 
 /**
@@ -40,10 +39,13 @@ const GIT_BUFFER = 2048 * 1024 * 1024;
  * tags has to enumerate every language the corpus will ever use, and anything
  * it forgets is unguarded by default. This corpus already carries `logql` (50
  * fences), `bibtex` (20), `jsonl` (10), `traceql` (10), `powershell` (10) and
- * `language` (10) — all of which a hand-written code list misses, all currently
- * at zero violations, so closing the hole costs nothing today and everything
- * later. Worse, an allowlist makes the gate's scope editable by the person
- * being gated: retag a ```yaml fence to ```text and it stops being checked.
+ * `language` (10) — all of which a hand-written code list misses. All but
+ * `language` are at zero violations today (`language` has one), so closing the
+ * hole costs one finding now and an unbounded number later. It also NARROWS the
+ * retag escape hatch: because the tag is read off the translated file and never
+ * compared to English, retagging a ```yaml fence still removes it from the gate
+ * — default-deny shrinks the escape set from unbounded to {text, markdown, md}
+ * rather than closing it. Closing it needs tag-sequence parity (#481).
  *
  * `text` and `markdown` are exempt because they carry reference tables,
  * decision flows and report templates that a human reads or fills in — a German
@@ -67,6 +69,31 @@ export const LOCALISABLE_TAGS = new Set(['text', 'markdown', 'md']);
 /** True when a fence's body must match an English revision byte-for-byte. */
 export const isGated = (fence) => !LOCALISABLE_TAGS.has(fence.lang);
 
+/** English content trees that have translated mirrors under `i18n/<locale>/`. */
+export const TREES = ['skills', 'agents', 'teams', 'guides'];
+
+/**
+ * Repo-relative English content path -> stable `<tree>/<id>` key, or null when
+ * the path is not translatable content.
+ *
+ * Uses the second-to-last segment for `SKILL.md` so that pre-flatten historical
+ * paths (`skills/<domain>/<id>/SKILL.md`, ~42% of the blobs in history) key to
+ * the same id as today's `skills/<id>/SKILL.md`.
+ */
+export function contentKey(relPath) {
+  const parts = relPath.split('/');
+  if (parts.length < 2 || !TREES.includes(parts[0])) return null;
+  if (parts[parts.length - 1] === 'SKILL.md') {
+    return parts.length >= 3 ? `${parts[0]}/${parts[parts.length - 2]}` : null;
+  }
+  if (parts.length === 2 && parts[1].endsWith('.md')) {
+    const id = parts[1].slice(0, -3);
+    if (id.startsWith('_') || id === 'README') return null;
+    return `${parts[0]}/${id}`;
+  }
+  return null;
+}
+
 /**
  * Union of every fence body that has ever appeared in each English SKILL.md,
  * keyed by skill id, plus the current working tree.
@@ -81,7 +108,7 @@ export const isGated = (fence) => !LOCALISABLE_TAGS.has(fence.lang);
  */
 export function buildEnglishFenceHistory() {
   const log = execFileSync(
-    'git', ['log', '--format=%x00%H', '--name-only', '--', 'skills'],
+    'git', ['log', '--format=%x00%H', '--name-only', '--', ...TREES],
     { cwd: ROOT, encoding: 'utf8', maxBuffer: GIT_BUFFER },
   );
 
@@ -90,7 +117,7 @@ export function buildEnglishFenceHistory() {
   let commit = null;
   for (const line of log.split('\n')) {
     if (line.startsWith('\x00')) { commit = line.slice(1).trim(); continue; }
-    if (!line || !commit || !line.endsWith('SKILL.md')) continue;
+    if (!line || !commit || contentKey(line) === null) continue;
     const spec = `${commit}:${line}`;
     if (seen.has(spec)) continue;
     seen.add(spec);
@@ -98,9 +125,10 @@ export function buildEnglishFenceHistory() {
   }
 
   const history = new Map();
-  const add = (skill, text) => {
-    if (!history.has(skill)) history.set(skill, new Set());
-    const set = history.get(skill);
+  const add = (key, text) => {
+    if (key === null) return;
+    if (!history.has(key)) history.set(key, new Set());
+    const set = history.get(key);
     for (const f of extractFences(text)) set.add(f.body);
   };
 
@@ -126,19 +154,35 @@ export function buildEnglishFenceHistory() {
       if (/ (missing|ambiguous)$/.test(header)) { index++; continue; }
       const size = Number.parseInt(header.split(' ')[2], 10);
       if (!Number.isFinite(size)) break;
-      add(specs[index].split(':')[1].split('/')[1], buf.slice(offset, offset + size).toString('utf8'));
+      add(contentKey(specs[index].slice(specs[index].indexOf(':') + 1)),
+        buf.slice(offset, offset + size).toString('utf8'));
       offset += size + 1;
       index++;
     }
   }
 
-  // An uncommitted English edit is a legal basis too.
-  for (const skill of readdirSync(SKILLS_DIR)) {
-    if (skill.startsWith('_')) continue;
-    const p = join(SKILLS_DIR, skill, 'SKILL.md');
-    if (existsSync(p)) add(skill, readFileSync(p, 'utf8'));
+  // An uncommitted English edit is a legal basis too. The working tree is also
+  // kept separately as `history.current`, keyed the same way: the deleted-fence
+  // check needs the fences English has NOW, with their tags, not the flattened
+  // union of every body that ever existed.
+  const current = new Map();
+  for (const tree of TREES) {
+    const base = join(ROOT, tree);
+    if (!existsSync(base)) continue;
+    for (const entry of readdirSync(base)) {
+      if (entry.startsWith('_')) continue;
+      const p = tree === 'skills' ? join(base, entry, 'SKILL.md') : join(base, entry);
+      if (!existsSync(p) || !statSync(p).isFile()) continue;
+      const rel = tree === 'skills' ? `${tree}/${entry}/SKILL.md` : `${tree}/${entry}`;
+      const key = contentKey(rel);
+      if (key === null) continue;
+      const text = readFileSync(p, 'utf8');
+      add(key, text);
+      current.set(key, extractFences(text));
+    }
   }
 
+  history.current = current;
   return history;
 }
 
