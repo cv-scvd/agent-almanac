@@ -41,9 +41,30 @@
  * Scope: skills only. The checker also covers the agents/teams/guides mirrors,
  * whose 87 gated violations this tool does not yet repair (#477).
  *
+ * ## Why preview is the default (#486)
+ *
+ * It writes only when `--write` is passed. The inverse — write by default,
+ * `--dry` to preview — put the destructive mode behind the obvious command, and
+ * a read-only probe agent typed it: 281 files / 1,014 fences rewritten during an
+ * investigation whose prompt forbade modifying tracked files.
+ *
+ * The edit was trivially reverted. The expensive part was that every measurement
+ * taken afterwards was wrong AND self-consistent — the parity gate read 293
+ * instead of 1,307, and 1307 − 1014 = 293 exactly. That arithmetic was read as
+ * evidence the published figure had been inflated, and a true finding about a
+ * translated 21 CFR Part 11 audit value was publicly retracted before the stray
+ * write was found. A silent write turns later measurements into confident lies,
+ * which is worse than a crash.
+ *
+ * Two further guards follow from the same incident: the tool refuses to write
+ * into a dirty tree (`git checkout -- i18n/` is the only undo, and it would
+ * destroy uncommitted work), and it announces the write on stderr before
+ * touching disk, so a stray run is visible even when stdout is redirected.
+ *
  * Usage:
- *   node scripts/normalize-i18n-fences.js --dry          # preview only
- *   node scripts/normalize-i18n-fences.js                # write
+ *   node scripts/normalize-i18n-fences.js                # preview (default)
+ *   node scripts/normalize-i18n-fences.js --dry          # preview, explicitly
+ *   node scripts/normalize-i18n-fences.js --write        # apply
  *   node scripts/normalize-i18n-fences.js --basis head
  *   node scripts/normalize-i18n-fences.js --locale de    # restrict
  */
@@ -61,7 +82,18 @@ const I18N_DIR = resolve(ROOT, 'i18n');
 const SKILLS_DIR = resolve(ROOT, 'skills');
 
 const argv = process.argv.slice(2);
+
+// Writing is opt-in. `--dry` predates the inversion and is kept as an explicit
+// no-op so documented commands and muscle memory keep working; it is the
+// default, not a mode. Passing both is a contradiction rather than a preference
+// — guessing which one the caller meant is how a "preview" becomes a write.
+const WRITE = argv.includes('--write');
 const DRY = argv.includes('--dry');
+if (WRITE && DRY) {
+  console.error('ERROR: --write and --dry contradict each other. Pass one.');
+  process.exit(2);
+}
+const PREVIEW = !WRITE;
 
 /**
  * Read `--flag value`, rejecting a following flag as the value. The naive
@@ -87,6 +119,44 @@ const ONLY_LOCALE = flagValue('--locale');
 if (!['source-commit', 'head'].includes(BASIS)) {
   console.error(`ERROR: --basis must be 'source-commit' or 'head' (got '${BASIS}')`);
   process.exit(2);
+}
+
+/** Every path this run may rewrite. Also the pathspec the dirty check uses. */
+const WRITE_SCOPE = ONLY_LOCALE ? `i18n/${ONLY_LOCALE}` : 'i18n';
+
+// A locale that matches no directory yields "files to change: 0" — the same
+// clean-looking no-op `flagValue` above exists to prevent, arriving by typo
+// rather than by flag parsing.
+if (ONLY_LOCALE && !existsSync(resolve(ROOT, WRITE_SCOPE))) {
+  console.error(`ERROR: --locale '${ONLY_LOCALE}' matches no directory (${WRITE_SCOPE}/).`);
+  console.error('Nothing would be scanned, and the run would report a clean-looking zero.');
+  process.exit(2);
+}
+
+// Refuse to write into a dirty tree. `git checkout -- i18n/` is the only undo
+// for this tool, and it discards uncommitted work along with the repair — so a
+// stray run over unstaged edits is unrecoverable in exactly the case where
+// recovery matters most. Checked before the ~90s history build so it fails fast.
+if (WRITE) {
+  const status = spawnSync('git', ['status', '--porcelain', '--', WRITE_SCOPE], {
+    cwd: ROOT, encoding: 'utf8',
+  });
+  if (status.status !== 0) {
+    console.error(`ERROR: could not read git status for ${WRITE_SCOPE}/ — refusing to write.`);
+    console.error(status.stderr?.toString().slice(0, 500));
+    process.exit(2);
+  }
+  const dirty = status.stdout.trim();
+  if (dirty) {
+    const lines = dirty.split('\n');
+    console.error(`ERROR: ${WRITE_SCOPE}/ has uncommitted changes:`);
+    for (const line of lines.slice(0, 10)) console.error(`  ${line}`);
+    if (lines.length > 10) console.error(`  ... and ${lines.length - 10} more`);
+    console.error('');
+    console.error('This tool rewrites files in place, and `git checkout -- ' + WRITE_SCOPE + '` is the');
+    console.error('only undo — it would discard the changes above too. Commit or stash them first.');
+    process.exit(2);
+  }
 }
 
 const GIT_BUFFER = 512 * 1024 * 1024;
@@ -166,6 +236,9 @@ let filesChanged = 0;
 let fencesRestored = 0;
 const skipped = [];
 const changedByLocale = new Map();
+// Every edit is planned first and applied afterwards, so preview and write walk
+// identical code and the preview cannot describe a run the write does not make.
+const plan = [];
 
 for (const t of targets) {
   let basisText = null;
@@ -240,17 +313,28 @@ for (const t of targets) {
   filesChanged++;
   fencesRestored += restoredHere;
   changedByLocale.set(t.locale, (changedByLocale.get(t.locale) || 0) + restoredHere);
-  if (DRY) {
-    console.log(`would restore ${String(restoredHere).padStart(2)} fence(s) in ${t.relPath}  (basis ${basisLabel})`);
-  } else {
-    writeFileSync(t.path, lines.join('\n'), 'utf8');
-  }
+  plan.push({ path: t.path, relPath: t.relPath, text: lines.join('\n'), n: restoredHere, basisLabel });
 }
 
-console.log(`\n${DRY ? 'DRY RUN — nothing written' : 'Wrote changes'}`);
+if (!PREVIEW && plan.length) {
+  // stderr, deliberately: every other line here goes to stdout, so `--write >
+  // log.txt` would hide them all. A run that rewrites hundreds of corpus files
+  // must leave a mark in the transcript no redirection can swallow.
+  console.error(`WRITING ${plan.length} file(s) / ${fencesRestored} fence(s) under ${WRITE_SCOPE}/ ...`);
+}
+
+for (const p of plan) {
+  console.log(`${PREVIEW ? 'would restore' : '   restoring'} ${String(p.n).padStart(2)} fence(s) in ${p.relPath}  (basis ${p.basisLabel})`);
+}
+
+if (!PREVIEW) {
+  for (const p of plan) writeFileSync(p.path, p.text, 'utf8');
+}
+
+console.log(`\n${PREVIEW ? 'PREVIEW — nothing written (pass --write to apply)' : 'Wrote changes'}`);
 console.log(`basis: ${BASIS}`);
-console.log(`files ${DRY ? 'to change' : 'changed'}: ${filesChanged}`);
-console.log(`fences ${DRY ? 'to restore' : 'restored'}: ${fencesRestored}`);
+console.log(`files ${PREVIEW ? 'to change' : 'changed'}: ${filesChanged}`);
+console.log(`fences ${PREVIEW ? 'to restore' : 'restored'}: ${fencesRestored}`);
 if (changedByLocale.size) {
   console.log(`by locale: ${[...changedByLocale.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}=${v}`).join('  ')}`);
 }
