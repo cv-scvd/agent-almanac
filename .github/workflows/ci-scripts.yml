@@ -1,0 +1,34 @@
+name: CI Scripts
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ci-scripts.yml'
+  pull_request:
+    paths:
+      - 'scripts/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ci-scripts.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scripts-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - run: npm ci
+      # These tests build their own throwaway git repos, so they need neither
+      # the corpus nor full history — `fetch-depth: 0` would only slow them.
+      # A test that read the real i18n/ tree would need it, and would take ~90s.
+      - run: npm run test:scripts
