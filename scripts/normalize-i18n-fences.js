@@ -121,17 +121,39 @@ if (!['source-commit', 'head'].includes(BASIS)) {
   process.exit(2);
 }
 
-/** Every path this run may rewrite. Also the pathspec the dirty check uses. */
-const WRITE_SCOPE = ONLY_LOCALE ? `i18n/${ONLY_LOCALE}` : 'i18n';
+/**
+ * The locales this tool can actually scan: a directory under `i18n/` carrying a
+ * `skills/` subtree. Derived once and used BOTH to validate `--locale` and to
+ * drive the scan below, so the two cannot disagree about what a locale is.
+ *
+ * Validating instead by `existsSync` on the constructed `i18n/<value>` path —
+ * the first version of this guard — accepted every input that named some
+ * existing path, which is not the same question. `--locale de/skills`,
+ * `--locale ..` and `--locale glossaries` (a real directory with no `skills/`)
+ * all passed a guard whose entire job is to reject a run that scans nothing,
+ * and all three then reported the clean-looking zero it exists to prevent.
+ * Membership in the scan's own list is the only formulation that cannot drift
+ * from the scan.
+ */
+const SCANNABLE_LOCALES = readdirSync(I18N_DIR).filter((entry) => {
+  const localeSkills = join(I18N_DIR, entry, 'skills');
+  return existsSync(localeSkills) && statSync(localeSkills).isDirectory();
+});
 
-// A locale that matches no directory yields "files to change: 0" — the same
-// clean-looking no-op `flagValue` above exists to prevent, arriving by typo
-// rather than by flag parsing.
-if (ONLY_LOCALE && !existsSync(resolve(ROOT, WRITE_SCOPE))) {
-  console.error(`ERROR: --locale '${ONLY_LOCALE}' matches no directory (${WRITE_SCOPE}/).`);
+if (ONLY_LOCALE && !SCANNABLE_LOCALES.includes(ONLY_LOCALE)) {
+  console.error(`ERROR: --locale '${ONLY_LOCALE}' is not a translated locale under i18n/.`);
   console.error('Nothing would be scanned, and the run would report a clean-looking zero.');
+  console.error(`Available: ${SCANNABLE_LOCALES.join(', ') || '(none)'}`);
   process.exit(2);
 }
+
+/**
+ * Every path this run may rewrite, and the pathspec the dirty check uses.
+ * Safe to interpolate only because `ONLY_LOCALE` is now a validated direct child
+ * name — as a bare `--locale` value, `..` made this `i18n/..`, silently widening
+ * the dirty check to the whole repository.
+ */
+const WRITE_SCOPE = ONLY_LOCALE ? `i18n/${ONLY_LOCALE}` : 'i18n';
 
 // Refuse to write into a dirty tree. `git checkout -- i18n/` is the only undo
 // for this tool, and it discards uncommitted work along with the repair — so a
@@ -207,10 +229,9 @@ const history = buildEnglishFenceHistory();
 
 // ---- gather targets ----
 const targets = [];
-for (const locale of readdirSync(I18N_DIR)) {
+for (const locale of SCANNABLE_LOCALES) {
   if (ONLY_LOCALE && locale !== ONLY_LOCALE) continue;
   const localeSkills = join(I18N_DIR, locale, 'skills');
-  if (!existsSync(localeSkills) || !statSync(localeSkills).isDirectory()) continue;
   for (const skill of readdirSync(localeSkills)) {
     const translated = join(localeSkills, skill, 'SKILL.md');
     const english = join(SKILLS_DIR, skill, 'SKILL.md');

@@ -199,14 +199,38 @@ test('a preview run is unaffected by a dirty tree', async (t) => {
 
 // ── the no-op guards ────────────────────────────────────────────────────────
 
-test('--locale matching no directory is an error, not a clean-looking zero', async (t) => {
+test('--locale matching no locale is an error, not a clean-looking zero', async (t) => {
   const { dir } = makeFixture(t);
 
   const r = run(dir, ['--locale', 'nope', '--write']);
 
   assert.equal(r.status, 2);
-  assert.match(r.stderr, /matches no directory/);
+  assert.match(r.stderr, /is not a translated locale/);
+  assert.match(r.stderr, /Available: de/);
 });
+
+// The first version of this guard asked "does `i18n/<value>` exist?", which is a
+// different question from "would the scan accept this locale?". Each input below
+// answered yes to the first and no to the second, and so reached the vacuous
+// `files to change: 0` the guard exists to reject.
+for (const [label, locale] of [
+  ['a path segment', 'de/skills'],
+  ['a dot-segment', '..'],
+  ['a directory with no skills/ subtree', 'glossaries'],
+]) {
+  test(`--locale rejects ${label} ('${locale}')`, async (t) => {
+    const { dir } = makeFixture(t);
+    // A real i18n/ sibling that is a directory but carries no translations —
+    // `i18n/glossaries/` in the working repo.
+    mkdirSync(join(dir, 'i18n', 'glossaries'), { recursive: true });
+    writeFileSync(join(dir, 'i18n', 'glossaries', 'de.yml'), 'term: Begriff\n', 'utf8');
+
+    const r = run(dir, ['--locale', locale, '--write']);
+
+    assert.equal(r.status, 2, `'${locale}' was accepted: ${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /is not a translated locale/);
+  });
+}
 
 test('--locale scopes the dirty check to that locale', async (t) => {
   const { dir, translated } = makeFixture(t);
