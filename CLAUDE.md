@@ -233,8 +233,14 @@ prose only.
 npm run validate:i18n-fences                    # whole corpus
 node scripts/check-i18n-fence-parity.js \
   --locale de --id create-r-package             # just the file you touched
-npm run normalize:i18n-fences                   # restore English fence bodies
+npm run normalize:i18n-fences                   # PREVIEW the English-body repair
+npm run normalize:i18n-fences -- --write        # apply it
 ```
+
+The normalizer previews by default and writes only with `--write`, and refuses
+to write into a dirty `i18n/` at all (#486) — a read-only probe agent once typed
+the bare command and silently rewrote 281 files, after which every measurement
+of the backlog was wrong and self-consistent.
 
 Runs **warn-only** in CI until the 1,307-violation backlog clears (#477), then
 flips to blocking. Warn is a temporary state with a named exit, not the design.

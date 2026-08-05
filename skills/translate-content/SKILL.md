@@ -151,7 +151,8 @@ npm run translate:scaffold -- <content-type> <id> <locale>
 
    Every fence whose tag is not `text`, `markdown` or `md` is frozen: its body must
    match the English source byte-for-byte, comments and string literals included.
-   Repair with `npm run normalize:i18n-fences`.
+   Repair with `npm run normalize:i18n-fences`, which previews; add `-- --write`
+   to apply once the preview looks right.
 
    This step said "diff the fenced blocks" from the day the i18n tree was created,
    and the corpus still accumulated 1,307 violations, because reading a fence and
