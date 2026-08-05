@@ -184,6 +184,25 @@ test('the dirty-tree refusal fires before any scanning', async (t) => {
   assert.equal(r.stdout, '', 'the guard let the run reach the scanning stage');
 });
 
+test('--write refuses on an UNTRACKED file, the one case git cannot restore', async (t) => {
+  // The modified-file case is recoverable: `git checkout -- i18n/` brings it
+  // back. An untracked translation has no copy in git at all, so overwriting it
+  // destroys the only one — this is the case the guard most needs to catch, and
+  // `git status --porcelain` reports it as `??` rather than ` M`.
+  const { dir } = makeFixture(t);
+  const untracked = join(dir, 'i18n', 'de', 'skills', 'demo-skill', 'DRAFT.md');
+  writeFileSync(untracked, 'Work in progress, never committed.\n', 'utf8');
+
+  const r = run(dir, ['--write']);
+
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /\?\? i18n\/de\/skills\/demo-skill\/DRAFT\.md/);
+  // Plain `git stash` leaves untracked files behind, so advising it here would
+  // hand back a tree the guard still refuses.
+  assert.match(r.stderr, /git stash -u/);
+  assert.equal(readFileSync(untracked, 'utf8'), 'Work in progress, never committed.\n');
+});
+
 test('a preview run is unaffected by a dirty tree', async (t) => {
   // The guard exists to protect uncommitted work from being overwritten. A
   // preview overwrites nothing, so blocking it would only train callers to
@@ -195,6 +214,76 @@ test('a preview run is unaffected by a dirty tree', async (t) => {
 
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /PREVIEW — nothing written/);
+  // The count, not just the banner. Both the banner and exit 0 are emitted
+  // unconditionally, so asserting only those cannot tell "previewed the dirty
+  // tree normally" from "previewed it and silently found nothing" — and preview
+  // is now the default mode, so this count is the number a caller acts on.
+  assert.match(r.stdout, /files to change: 1/);
+});
+
+// ── argument parsing ────────────────────────────────────────────────────────
+
+test('--locale=de is honoured, not silently dropped', async (t) => {
+  // `indexOf('--locale')` does not match `--locale=de`, so the locale scoping
+  // vanished and the run silently covered every locale. On the real corpus that
+  // was 281 files where 63 were asked for — with --write, a stray broad write
+  // reached by spelling a correct command the ordinary way.
+  const { dir, translated } = makeFixture(t);
+  mkdirSync(join(dir, 'i18n', 'es', 'skills', 'demo-skill'), { recursive: true });
+  writeFileSync(
+    join(dir, 'i18n', 'es', 'skills', 'demo-skill', 'SKILL.md'),
+    readFileSync(translated, 'utf8').replace('locale: de', 'locale: es'),
+    'utf8',
+  );
+  git(dir, ['add', '-A']);
+  git(dir, ['commit', '-m', 'es translation, also divergent']);
+
+  const both = run(dir);
+  assert.match(both.stdout, /files to change: 2/, 'fixture should have two divergent locales');
+
+  const scoped = run(dir, ['--locale=de']);
+
+  assert.equal(scoped.status, 0, scoped.stderr);
+  assert.match(scoped.stdout, /files to change: 1/, '--locale=de did not scope the run');
+  assert.match(scoped.stdout, /by locale: de=1/);
+});
+
+test('--basis=head is honoured too', async (t) => {
+  const { dir } = makeFixture(t);
+
+  const r = run(dir, ['--basis=head']);
+
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /basis: head/);
+});
+
+test('an unknown argument is an error, not a silent no-op', async (t) => {
+  const { dir } = makeFixture(t);
+
+  for (const arg of ['--wrte', '--locale-de', 'stray-positional', '--writeq']) {
+    const r = run(dir, [arg]);
+    assert.equal(r.status, 2, `'${arg}' was accepted`);
+    assert.match(r.stderr, /unknown argument/);
+  }
+});
+
+test('a value passed to a boolean flag is an error', async (t) => {
+  const { dir } = makeFixture(t);
+
+  const r = run(dir, ['--write=true']);
+
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /takes no value/);
+});
+
+test('a value flag with no value is still an error', async (t) => {
+  const { dir } = makeFixture(t);
+
+  for (const args of [['--locale'], ['--locale', '--dry'], ['--locale=']]) {
+    const r = run(dir, args);
+    assert.equal(r.status, 2, `${JSON.stringify(args)} was accepted`);
+    assert.match(r.stderr, /requires a value/);
+  }
 });
 
 // ── the no-op guards ────────────────────────────────────────────────────────
