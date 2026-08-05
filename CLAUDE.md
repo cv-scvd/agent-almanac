@@ -59,6 +59,7 @@ Guides, skills, agents, and teams are cross-referenced. The parent project `CLAU
 - The `references/` subdirectory pattern follows [agentskills.io progressive disclosure](https://agentskills.io/specification) — large code blocks (>15 lines), full configs, and multi-variant examples go in `references/EXAMPLES.md` with cross-references from the main SKILL.md
 - CI enforces validation on all PRs touching `skills/` (`.github/workflows/validate-skills.yml`): frontmatter fields, required sections, line counts, and registry sync
 - CI also runs a repo-wide line-endings gate (`.github/workflows/validate-line-endings.yml`) that fails any PR whose committed blobs contain CRLF. Check locally with `npm run validate:line-endings` (reads the index, non-mutating). Repair: `git add --renormalize .` — and if a new file type is flagged, declare it in `.gitattributes` as `text eol=lf`
+- Changes under `scripts/` run `npm run test:scripts` (`.github/workflows/ci-scripts.yml`), the node:test suite in `scripts/test/`. Its `pretest:scripts` hook fails when the suite is empty — `node --test` exits 0 reporting `tests 0` when its glob matches nothing, so without that hook a rename or deletion leaves the job green having run nothing (#486)
 - To validate locally before committing:
   ```bash
   # Check a single skill
@@ -240,7 +241,9 @@ npm run normalize:i18n-fences -- --write        # apply it
 The normalizer previews by default and writes only with `--write`, and refuses
 to write into a dirty `i18n/` at all (#486) — a read-only probe agent once typed
 the bare command and silently rewrote 281 files, after which every measurement
-of the backlog was wrong and self-consistent.
+of the backlog was wrong and self-consistent. It repairs `skills/` only; the
+checker covers all four trees, so an agent, team or guide violation shows up as
+`files to change: 0` and needs repairing by hand (#477).
 
 Runs **warn-only** in CI until the 1,307-violation backlog clears (#477), then
 flips to blocking. Warn is a temporary state with a named exit, not the design.
