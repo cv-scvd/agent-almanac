@@ -387,6 +387,23 @@ test('verify without a snapshot is an error, never a pass', async (t) => {
   assert.match(r.stderr, /no snapshot/);
 });
 
+test('a snapshot that cannot be WRITTEN exits 2, not 1', async (t) => {
+  // An uncaught throw exits 1, which in this tool's vocabulary means "the
+  // repository changed" — so a disk or permission failure would masquerade as a
+  // verdict. Occupying the snapshot path with a directory makes the write fail
+  // deterministically on any filesystem.
+  const dir = makeRepo(t);
+  mkdirSync(snapshotPath(dir), { recursive: true });
+
+  // A directory at that path also trips the "already exists" refusal, which is
+  // a different branch — `--force` gets past it to the write itself.
+  const r = guard(dir, ['snapshot', '--force']);
+
+  assert.equal(r.status, 2, 'must read as uncertainty, never as a verdict');
+  assert.match(r.stderr, /could not write the snapshot/);
+  assert.match(r.stderr, /NOT guarded/);
+});
+
 test('an unreadable snapshot is an error, never a pass', async (t) => {
   const dir = makeRepo(t);
   guard(dir, ['snapshot']);

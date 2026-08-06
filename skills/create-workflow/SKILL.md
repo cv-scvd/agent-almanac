@@ -186,7 +186,14 @@ job, around the `Workflow(...)` call:
 ```bash
 npm run guard:snapshot   # before launching the workflow
 npm run guard:verify     # after it returns
+npm run guard:release    # when the run is genuinely over
 ```
+
+`verify` keeps the snapshot and `snapshot` refuses to overwrite one, so skipping
+`guard:release` leaves the next run failing with "a snapshot already exists".
+That is deliberate — re-arming mid-run would rebaseline the damage — but it means
+release is part of the loop, not an optional tidy-up. Note also that npm swallows
+`--release` as its own config, which is why there is a script rather than a flag.
 
 It compares HEAD, branch, worktree status, the content of every changed or
 untracked file, and index flags. Exit 1 prints the difference; exit 2 means it

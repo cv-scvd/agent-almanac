@@ -227,11 +227,19 @@ if (command === 'snapshot') {
       'Finish that run with `repo-guard.js verify --release`, or pass --force.');
   }
   const state = captureState();
-  writeFileSync(
-    SNAPSHOT_PATH,
-    JSON.stringify({ formatVersion: FORMAT_VERSION, ...state, takenAt: new Date().toISOString() }, null, 2) + '\n',
-    'utf8',
-  );
+  try {
+    writeFileSync(
+      SNAPSHOT_PATH,
+      JSON.stringify({ formatVersion: FORMAT_VERSION, ...state, takenAt: new Date().toISOString() }, null, 2) + '\n',
+      'utf8',
+    );
+  } catch (error) {
+    // An uncaught throw here exits 1, which in this tool's vocabulary means
+    // "the repository changed" — the fail-closed contract requires that an
+    // inability to record the baseline reads as uncertainty, not as a verdict.
+    die(`could not write the snapshot to ${SNAPSHOT_PATH}: ${error.message}\n` +
+      'The run is NOT guarded. Fix this before fanning out.');
+  }
   if (!QUIET) {
     console.log(`repo-guard: snapshot at ${state.head.slice(0, 8)} on ${state.branch}` +
       ` (${state.status.length} pending change(s), ${state.indexFlags.length} index flag(s))`);

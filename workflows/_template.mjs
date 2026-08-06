@@ -83,9 +83,15 @@ const items =
 // `SyntaxError: Unexpected token 'export'` inside the wrapper — the template
 // would fail its own step 4 before an author had written a line.
 const REPO_SAFETY = `SAFETY — you are running inside a live git repository.
-Work only in a directory you created yourself with \`mktemp -d\`; never a shared
-or fixed path, because parallel agents pick the same obvious filename.
-- Write \`cd "$DIR" || exit 1\`. A bare \`cd\` that fails does not stop the script.
+Work only in a directory you created yourself; never a shared or fixed path,
+because parallel agents pick the same obvious filename and clobber each other.
+Start every shell block that touches files with exactly this:
+
+    DIR="$(mktemp -d)" || exit 1
+    cd "$DIR" || exit 1
+
+- The \`|| exit 1\` on \`cd\` is load-bearing: a bare \`cd\` that fails does NOT stop
+  the script, and every relative path after it resolves against the repository.
 - Before any \`git add\`, \`git commit\`, or a tool run with a write flag, assert:
     [ "$(git rev-parse --show-toplevel)" = "$DIR" ] || exit 1
 - Never run \`git commit\`, \`git update-index\`, or \`git checkout --\` against the
