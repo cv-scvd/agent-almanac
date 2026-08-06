@@ -60,9 +60,7 @@ export const meta = {
 const items =
   Array.isArray(args?.items) && args.items.length ? args.items : ['example-a', 'example-b']
 
-// A JSON Schema turns agent() into structured output: the subagent is forced to
-// call StructuredOutput and agent() returns the validated object (no parsing).
-// Prepend to the prompt of any agent that may run shell commands.
+// REPO_SAFETY — prepend to the prompt of any agent that may run shell commands.
 //
 // Every agent inherits the repository as its working directory, and the
 // advisory/implementing contract constrains the agent TYPE a stage declares, not
@@ -75,9 +73,11 @@ const items =
 // The prompt in that run already said "build fixtures under /tmp", and the agent
 // complied with it. These lines are mechanical instead: they remove the shared
 // path, make the failed `cd` fatal, and assert the target before anything
-// destructive. Bracket the whole run with `npm run guard:snapshot` /
-// `npm run guard:verify`, which is the only check that catches a stray COMMIT —
-// `git status` reads clean once a stray write has been committed.
+// destructive. Bracket the whole run with `npm run guard:snapshot`, then
+// `npm run guard:verify` and `npm run guard:release` — the HEAD comparison is the
+// only check that catches a stray COMMIT, since `git status` reads clean once a
+// stray write has been committed. Release is part of the loop, not a tidy-up:
+// verify keeps the snapshot and snapshot refuses to overwrite one.
 // NOT exported. The documented syntax check wraps the file in an async IIFE and
 // rewrites only `export const meta`, so any other top-level `export` becomes
 // `SyntaxError: Unexpected token 'export'` inside the wrapper — the template
@@ -97,6 +97,8 @@ Start every shell block that touches files with exactly this:
 - Never run \`git commit\`, \`git update-index\`, or \`git checkout --\` against the
   repository itself, and never invoke a repo tool with a write flag there.`
 
+// A JSON Schema turns agent() into structured output: the subagent is forced to
+// call StructuredOutput and agent() returns the validated object (no parsing).
 const FINDING_SCHEMA = {
   type: 'object',
   required: ['item', 'summary', 'confidence'],

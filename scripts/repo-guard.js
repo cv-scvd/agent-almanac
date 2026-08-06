@@ -86,7 +86,7 @@ const SNAPSHOT_NAME = 'repo-guard.json';
  * happened the guard said `snapshot is missing 'contents'`, which is accurate
  * and useless. Refusing is right; naming the reason is what makes it actionable.
  */
-const FORMAT_VERSION = 2;
+const FORMAT_VERSION = 3;
 /** Sentinel for a repository with no commits yet. */
 const UNBORN = '(unborn)';
 // Named in the npm form because `die()` appends this to every argument error,
@@ -99,7 +99,7 @@ const USAGE = `Usage:
   npm run guard:release               verify, then drop the snapshot if unchanged
 
   npm run guard:snapshot -- --force   replace an existing snapshot (refused by default)
-  npm run guard:verify   -- --quiet   suppress the success line; differences always print
+  npm run guard:snapshot -- --quiet   suppress the success line (also valid on verify)
 
   (flags must follow \`--\`; npm swallows them otherwise)`;
 
@@ -146,7 +146,10 @@ const GIT_DIR = git(['rev-parse', '--absolute-git-dir']).trim();
 const SNAPSHOT_PATH = join(GIT_DIR, SNAPSHOT_NAME);
 const atRoot = (args) => git(args, { cwd: TOPLEVEL });
 
-const sha = (buffer) => createHash('sha256').update(buffer).digest('hex').slice(0, 16);
+// Full digest. Truncating to 64 bits saved nothing that matters — only changed
+// and untracked paths are hashed, so the snapshot stays small either way — while
+// narrowing the margin on the one comparison the whole tool rests upon.
+const sha = (buffer) => createHash('sha256').update(buffer).digest('hex');
 
 /**
  * Hash of every path git reports as changed or untracked.

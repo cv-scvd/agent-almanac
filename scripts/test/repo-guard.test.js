@@ -449,7 +449,9 @@ test('a snapshot in an older format is an error naming the reason', async (t) =>
   const r = guard(dir, ['verify']);
 
   assert.equal(r.status, 2);
-  assert.match(r.stderr, /format v1, but this is v2/);
+  // Version-agnostic: hardcoding the pair meant every FORMAT_VERSION bump broke
+  // this test, which is noise rather than signal.
+  assert.match(r.stderr, /format v1, but this is v\d+/);
   assert.match(r.stderr, /guard:snapshot/, 'should say how to recover');
 });
 
