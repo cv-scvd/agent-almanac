@@ -87,6 +87,27 @@ test('--release drops the snapshot when the run is genuinely over', async (t) =>
   assert.match(after.stderr, /no snapshot/);
 });
 
+test('--release KEEPS the snapshot when the run failed', async (t) => {
+  // Releasing after a failure destroys the evidence exactly when it is needed:
+  // you could not re-verify after a partial recovery, and the only way back
+  // would be a fresh snapshot — which rebaselines the damage as the new normal,
+  // the laundering hole the refuse-to-overwrite rule exists to close.
+  const dir = makeRepo(t);
+  guard(dir, ['snapshot']);
+  writeFileSync(join(dir, 'strayed.txt'), 'damage\n', 'utf8');
+
+  const r = guard(dir, ['verify', '--release']);
+
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /snapshot was KEPT despite --release/);
+  assert.ok(existsSync(snapshotPath(dir)), 'the baseline must survive a failed verify');
+
+  // And it is still usable: the same failure is still detectable afterwards.
+  const again = guard(dir, ['verify']);
+  assert.equal(again.status, 1);
+  assert.match(again.stderr, /strayed\.txt/);
+});
+
 test('snapshot refuses to overwrite, so a nested run cannot rebaseline damage', async (t) => {
   // The laundering path: run A arms, an agent strays, run B arms afresh — now
   // the stray write is part of B's baseline and A's verify reports green.
@@ -455,8 +476,13 @@ test('every command this tool suggests is copy-pasteable', async (t) => {
   const noSnapshot = guard(dir, ['verify']).stderr;
   guard(dir, ['snapshot']);
   const alreadyExists = guard(dir, ['snapshot']).stderr;
+  // `die()` appends USAGE to every argument error, so these carry it too — the
+  // first version of this test checked only the two messages above and so missed
+  // that USAGE itself still named the non-runnable form.
+  const unknownArg = guard(dir, ['verify', '--nope']).stderr;
+  const unknownCommand = guard(dir, ['inspect']).stderr;
 
-  for (const stderr of [noSnapshot, alreadyExists]) {
+  for (const stderr of [noSnapshot, alreadyExists, unknownArg, unknownCommand]) {
     // `(?!on)` because the snapshot FILE is `repo-guard.json`, of which
     // `repo-guard.js` is a prefix — the first version of this test flagged its
     // own subject's filename.

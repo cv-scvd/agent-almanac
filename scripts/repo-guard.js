@@ -89,15 +89,19 @@ const SNAPSHOT_NAME = 'repo-guard.json';
 const FORMAT_VERSION = 2;
 /** Sentinel for a repository with no commits yet. */
 const UNBORN = '(unborn)';
+// Named in the npm form because `die()` appends this to every argument error,
+// and a usage block contradicting the rest of the tool's advice is how a caller
+// ends up running the one form that swallows its flags. Flags need `--` to cross
+// `npm run` at all.
 const USAGE = `Usage:
-  node scripts/repo-guard.js snapshot [--force] [--quiet]
-  node scripts/repo-guard.js verify   [--release] [--quiet]
+  npm run guard:snapshot              record HEAD, branch, status, contents, index flags
+  npm run guard:verify                compare the repository against that record
+  npm run guard:release               verify, then drop the snapshot if unchanged
 
-  snapshot   record HEAD, branch, status, file contents and index flags
-  --force    replace an existing snapshot (refused by default)
-  verify     compare the repository against that record
-  --release  delete the snapshot afterwards (kept by default)
-  --quiet    suppress the success line; differences always print`;
+  npm run guard:snapshot -- --force   replace an existing snapshot (refused by default)
+  npm run guard:verify   -- --quiet   suppress the success line; differences always print
+
+  (flags must follow \`--\`; npm swallows them otherwise)`;
 
 function die(message, code = 2) {
   console.error(`repo-guard: ${message}`);
@@ -324,7 +328,12 @@ if (contentChanged.length) {
 changed = reportList('index flags (skip-worktree / assume-unchanged)',
   before.indexFlags, after.indexFlags) || changed;
 
-if (argv.includes('--release')) {
+// Release only a CLEAN run. Dropping the baseline after a failure destroys the
+// evidence at the exact moment it is needed: you cannot re-verify after a
+// partial recovery, and the only way back is a fresh snapshot — which
+// rebaselines the damage as the new normal, the laundering hole the
+// refuse-to-overwrite rule exists to close.
+if (argv.includes('--release') && !changed) {
   try {
     unlinkSync(SNAPSHOT_PATH);
   } catch (error) {
@@ -351,6 +360,10 @@ if (changed) {
     // not be suggested when HEAD never moved.
     console.error('HEAD did not move, so this is a worktree change — inspect it before assuming');
     console.error('it was yours:  git diff  /  git status --porcelain -uall');
+  }
+  if (argv.includes('--release')) {
+    console.error('\nThe snapshot was KEPT despite --release, so you can re-verify after');
+    console.error('recovering. Re-snapshotting instead would rebaseline whatever changed.');
   }
   process.exit(1);
 }
