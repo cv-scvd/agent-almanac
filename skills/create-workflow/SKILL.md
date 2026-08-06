@@ -179,36 +179,63 @@ The advisory/implementing contract in Step 7 governs the agent type a stage
 tree, and a "read-only" review fleet is exactly where that gap bites: every agent
 inherits the repository as its default working directory.
 
-Apply all four before fanning out against a repo you care about:
+**Bracket the run with `repo-guard`** — this is the mechanical control. A workflow
+body cannot run shell (no filesystem or Node API), so this is the *invoker's*
+job, around the `Workflow(...)` call:
 
-1. **Give each agent its own scratch namespace.** Parallel agents told to build
-   fixtures independently converge on the same obvious filename. Instruct them to
-   `mktemp -d` unconditionally, or hand each a distinct directory — never a shared
-   fixed path.
-2. **Require `cd <dir> || exit 1`.** A bare `cd` that fails does not reliably
-   abort the surrounding script, and every following relative path then resolves
-   against the repository.
-3. **Require a cwd assertion before any destructive step** — `git add -A`,
-   `git commit`, or a tool run with a write flag:
+```bash
+npm run guard:snapshot   # before launching the workflow
+npm run guard:verify     # after it returns
+npm run guard:release    # when the run is genuinely over
+```
+
+`verify` keeps the snapshot and `snapshot` refuses to overwrite one, so skipping
+`guard:release` leaves the next run failing with "a snapshot already exists".
+That is deliberate — re-arming mid-run would rebaseline the damage — but it means
+release is part of the loop, not an optional tidy-up. Note also that npm swallows
+`--release` as its own config, which is why there is a script rather than a flag.
+
+It compares HEAD, branch, worktree status, the content of every changed or
+untracked file, and index flags. Exit 1 prints the difference; exit 2 means it
+could not answer and must never be read as a pass. Two comparisons carry most of
+the weight: HEAD, the only one that catches a subagent that *committed* (the tree
+reads clean afterwards), and file content, without which a stray write to an
+already-modified file is invisible — its status line does not move.
+
+It does **not** cover ignored paths; walking them would mean hashing
+`node_modules`.
+
+**Contain the agents themselves.** Prepend the `REPO_SAFETY` preamble from
+`workflows/_template.mjs` to the prompt of every agent that may run shell
+commands — verifiers included, since a verifier reproducing a finding is the
+agent most likely to build a fixture. Copying the template gets this by default.
+It carries three rules:
+
+1. **`mktemp -d`, never a shared fixed path.** Parallel agents told to build
+   fixtures independently converge on the same obvious filename, and the second
+   clobbers the first.
+2. **`cd "$DIR" || exit 1`.** A bare `cd` that fails does not reliably abort the
+   surrounding script, and every following relative path then resolves against
+   the repository.
+3. **A cwd assertion before any destructive step** — `git add`, `git commit`, or
+   a tool run with a write flag:
 
    ```bash
-   [ "$(git rev-parse --show-toplevel)" = "$FIXTURE_DIR" ] || exit 1
+   [ "$(git rev-parse --show-toplevel)" = "$DIR" ] || exit 1
    ```
 
-4. **Record `HEAD` before the run and compare after.** This is the only check that
-   catches a subagent that *committed*: `git status` reads clean afterwards, so
-   every dirty-tree check passes.
+Prefer `isolation: 'worktree'` for any stage that might mutate. Treat the preamble
+as documentation and the guard as the control — the prompt in #493 already named
+the directory, the tool and the file to copy, and the agent complied with all
+three.
 
-Prefer `isolation: 'worktree'` for any stage that might mutate, and treat a prompt
-sentence as documentation rather than as a control.
+**Expected:** `npm run guard:verify` exits 0 after the run.
 
-**Expected:** A repo-touching fan-out leaves `git rev-parse HEAD` and
-`git status --porcelain` exactly as it found them.
-
-**On failure:** If HEAD moved, find the commit before pushing —
-`git log --oneline <recorded-head>..HEAD`. A stray commit is unpushed and
-recoverable; state what a reset destroys, confirm it is unpushed, then
-`git reset --mixed <recorded-head>` and remove the stray files.
+**On failure:** Exit 1 prints what moved and the recovery command. A stray commit
+is recoverable while unpushed: confirm it is unpushed, state what the reset
+destroys, then `git reset --mixed <recorded-head>` and remove the stray files.
+Exit 2 means the guard could not compare — re-snapshot and re-run rather than
+treating it as a pass.
 
 ## Validation
 
@@ -221,7 +248,7 @@ recoverable; state what a reset destroys, confirm it is unpushed, then
 - [ ] Verification stages gate on a confirmation quorum and `filter(Boolean)` null results.
 - [ ] No forbidden calls: `Date.now()`, `Math.random()`, argless `new Date()`; no TypeScript syntax; no filesystem/Node APIs.
 - [ ] The wrap-then-`node --check` recipe passes.
-- [ ] A repo-touching fan-out carries the Step 11 containment, and `HEAD` is verified unchanged after the run.
+- [ ] A repo-touching fan-out is bracketed by `npm run guard:snapshot` / `guard:verify`, and agents with shell access carry the `REPO_SAFETY` preamble (Step 11).
 - [ ] No `workflows/_registry.yml` entry or translation scaffold was created (both are Phase 2 / i18n-excluded).
 
 ## Common Pitfalls

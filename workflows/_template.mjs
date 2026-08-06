@@ -60,6 +60,43 @@ export const meta = {
 const items =
   Array.isArray(args?.items) && args.items.length ? args.items : ['example-a', 'example-b']
 
+// REPO_SAFETY — prepend to the prompt of any agent that may run shell commands.
+//
+// Every agent inherits the repository as its working directory, and the
+// advisory/implementing contract constrains the agent TYPE a stage declares, not
+// what Bash does once the agent has it. In #493 a review subagent's fixture
+// landed in the corpus and was committed: two parallel agents had written the
+// same shared scratchpad filename, the second clobbered the first, and the
+// victim's `cd` into a directory that was never created failed WITHOUT stopping
+// the script — so every following relative path resolved against the repo.
+//
+// The prompt in that run already said "build fixtures under /tmp", and the agent
+// complied with it. These lines are mechanical instead: they remove the shared
+// path, make the failed `cd` fatal, and assert the target before anything
+// destructive. Bracket the whole run with `npm run guard:snapshot`, then
+// `npm run guard:verify` and `npm run guard:release` — the HEAD comparison is the
+// only check that catches a stray COMMIT, since `git status` reads clean once a
+// stray write has been committed. Release is part of the loop, not a tidy-up:
+// verify keeps the snapshot and snapshot refuses to overwrite one.
+// NOT exported. The documented syntax check wraps the file in an async IIFE and
+// rewrites only `export const meta`, so any other top-level `export` becomes
+// `SyntaxError: Unexpected token 'export'` inside the wrapper — the template
+// would fail its own step 4 before an author had written a line.
+const REPO_SAFETY = `SAFETY — you are running inside a live git repository.
+Work only in a directory you created yourself; never a shared or fixed path,
+because parallel agents pick the same obvious filename and clobber each other.
+Start every shell block that touches files with exactly this:
+
+    DIR="$(mktemp -d)" || exit 1
+    cd "$DIR" || exit 1
+
+- The \`|| exit 1\` on \`cd\` is load-bearing: a bare \`cd\` that fails does NOT stop
+  the script, and every relative path after it resolves against the repository.
+- Before any \`git add\`, \`git commit\`, or a tool run with a write flag, assert:
+    [ "$(git rev-parse --show-toplevel)" = "$DIR" ] || exit 1
+- Never run \`git commit\`, \`git update-index\`, or \`git checkout --\` against the
+  repository itself, and never invoke a repo tool with a write flag there.`
+
 // A JSON Schema turns agent() into structured output: the subagent is forced to
 // call StructuredOutput and agent() returns the validated object (no parsing).
 const FINDING_SCHEMA = {
@@ -98,8 +135,12 @@ const results = await pipeline(
   // that MUTATES artifacts (Write/Edit/Bash, or isolation: 'worktree') must
   // target an `implementing` agent type — the workflow analogue of the #285
   // team-assignment rule (advisory vs implementing capability contract).
+  //
+  // Prepend REPO_SAFETY to any prompt whose agent may run shell commands: the
+  // capability contract governs the agent type a stage DECLARES, not what a
+  // Bash-capable agent does to the working tree (#493).
   (item) =>
-    agent(`Examine "${item}" and report one finding.`, {
+    agent(`${REPO_SAFETY}\n\nExamine "${item}" and report one finding.`, {
       label: `scan:${item}`,
       phase: 'Scan',
       agentType: 'Explore', // advisory: Read/Grep/Glob/Bash, no Write/Edit — honors the contract above
@@ -111,7 +152,10 @@ const results = await pipeline(
   // this is what kills the false-positive flood in naive multi-agent review.
   (finding, item) =>
     agent(
-      `Independently verify this finding about "${item}": ${finding?.summary}. ` +
+      // Every Bash-capable stage carries the preamble, not just the first —
+      // a verifier that reproduces a finding is exactly the agent most likely
+      // to build a fixture, which is how #493 happened.
+      `${REPO_SAFETY}\n\nIndependently verify this finding about "${item}": ${finding?.summary}. ` +
         `Default to confirmed=false unless you can reproduce it.`,
       { label: `verify:${item}`, phase: 'Verify', agentType: 'Explore', schema: VERDICT_SCHEMA },
     ).then((verdict) => ({ ...finding, verdict })),

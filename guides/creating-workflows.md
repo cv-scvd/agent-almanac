@@ -153,7 +153,50 @@ and never created the directory. Its `cd "$1"` then failed, execution continued
 regardless, and `mkdir`, `cat >`, `git add -A` and `git commit` all landed on the
 real repository.
 
-Four containments, in order of how much they buy:
+### Bracket the run
+
+`repo-guard` is the mechanical half. Run it either side of any fan-out with Bash
+access:
+
+```bash
+npm run guard:snapshot   # before
+# ... the fan-out ...
+npm run guard:verify     # after
+```
+
+It compares HEAD, the current branch, the worktree status, **the content of every
+changed or untracked file**, and the index flags, exiting 1 with the difference
+printed if any moved. It fails closed: a missing, unreadable, or foreign snapshot
+exits 2 rather than reporting success, because a guard that answers "unchanged"
+when it could not look is worse than none.
+
+Two of those comparisons are subtler than they look, and both were added after
+the first version shipped without them:
+
+- **Content, not just status lines.** Overwriting a file that was *already*
+  modified leaves ` M CLAUDE.md` byte-identical before and after. Since this repo
+  is usually mid-edit, a line-only comparison misses the common case.
+- **HEAD.** The only check that catches an agent that **committed** — `git status`
+  reads clean once a stray write is committed, so every dirty-tree check passes.
+  Index flags matter for the same reason: `git update-index --skip-worktree`
+  makes git report a modified file as clean from that point on.
+
+Scope limit, stated so you do not over-trust it: **ignored paths are not
+covered.** Walking them would mean hashing `node_modules`. In this repo that
+means a stray write to `CONTINUE_HERE.md` would not be seen.
+
+`snapshot` refuses to overwrite an existing snapshot, and `verify` keeps it
+until `npm run guard:release`. Both exist because a single global slot otherwise lets a
+nested run rebaseline the outer run's damage into a green.
+
+### Contain the agents
+
+`workflows/_template.mjs` defines a `REPO_SAFETY` preamble — a plain `const`, not
+an export, since the documented wrap-then-check recipe rewrites only
+`export const meta` and any other top-level export breaks it. Prepend it to the
+prompt of **every** agent that may run shell commands, verifiers included — a
+verifier reproducing a finding is the agent most likely to build a fixture.
+Copying the template gets you this by default.
 
 | Control | Catches |
 |---|---|
@@ -162,11 +205,8 @@ Four containments, in order of how much they buy:
 | `cd <dir> \|\| exit 1` in generated scripts | A failed `cd` silently redirecting relative paths at the repo |
 | `git rev-parse --show-toplevel` assertion before `git add -A` / `git commit` / any write flag | A destructive step aimed at the wrong tree |
 
-Then record `HEAD` before the run and compare after. That last check is the only
-one that catches an agent that **committed** — `git status` reads clean once a
-stray write has been committed, so every dirty-tree check passes.
-
-A prompt sentence is documentation, not a control. The prompt in that run named
+A prompt sentence is documentation, not a control — which is why the preamble is
+paired with the guard rather than trusted on its own. The prompt in that run named
 the directory, the tool, and the file to copy, and specificity did not help,
 because the failure was mechanical rather than a matter of the agent's compliance.
 
@@ -189,7 +229,9 @@ The Workflow **run model** is generally available on paid Claude Code plans (~v2
 | `meta must be a pure literal` | `meta` references a variable or call | Inline every value into the `export const meta` object literal |
 | Workflow not found by name | `meta.name` ≠ filename stem, or not installed in `.claude/workflows/` | Make the triple (filename ↔ sidecar `name:` ↔ `meta.name`) identical and install the file |
 | A mutating stage is rejected / misbehaves | Stage targets an advisory `agentType` but needs to write | Target an `implementing` agent type for any Write/Edit/Bash or `worktree` stage |
-| A "read-only" run left the repo changed | Agents inherit the repo as their cwd; the declared `intent` does not constrain Bash | Apply the containments in [Fanning Out Against a Live Repository](#fanning-out-against-a-live-repository); compare `HEAD` before and after |
+| A "read-only" run left the repo changed | Agents inherit the repo as their cwd; the declared `intent` does not constrain Bash | Apply the containments in [Fanning Out Against a Live Repository](#fanning-out-against-a-live-repository) and bracket the run with `npm run guard:snapshot` / `guard:verify` |
+| `guard:verify` says "no snapshot" | The snapshot was released, or never taken | Re-snapshot and re-run. Never read exit 2 as a pass — it means the comparison did not happen |
+| `guard:snapshot` says one already exists | Another guarded run is open, or an earlier one was never released | Close it with `npm run guard:release`. Do not `--force` unless you know the other run is dead: re-arming rebaselines its damage |
 | `Date.now is not a function` | Used a forbidden non-deterministic call | Pass the value via `args`; vary by index/label instead |
 
 ## Related Resources
