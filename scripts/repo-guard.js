@@ -287,14 +287,16 @@ if (before.branch !== after.branch) {
 
 changed = reportList('working tree', before.status, after.status) || changed;
 
-// Compare the UNION of both content maps, not just the paths still present in
-// `after`. Iterating `after` alone made the vanishing direction unreachable: a
-// path dropped from the map — because it stopped being a regular file — was
-// never visited, and its status line had not moved either. Over-reporting a
-// path already named above is the safe direction; under-reporting is the bug
-// this whole tool exists to prevent.
-const watchedPaths = new Set([...Object.keys(before.contents), ...Object.keys(after.contents)]);
-const contentChanged = [...watchedPaths]
+// Iterating `after` is sufficient ONLY because every status-listed path now gets
+// an entry — including the `(absent)` and `(not-a-regular-file)` sentinels. The
+// sentinels are what make this safe: previously a path that stopped being a
+// regular file was skipped from the map entirely, so the comparison never
+// visited it while its status line stayed identical.
+//
+// A path in `before` but not in `after` cannot hide here: the key set of each
+// map is exactly its status list, so the path must also have left the status
+// list, which the working-tree diff above already reports.
+const contentChanged = Object.keys(after.contents)
   .filter((path) => before.contents[path] !== after.contents[path])
   .sort();
 if (contentChanged.length) {
