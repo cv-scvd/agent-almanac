@@ -172,6 +172,44 @@ If contributing a reviewed seed to agent-almanac, place it in `workflows/`, cros
 
 **On failure:** If a tool expects `workflows/_registry.yml`, you are ahead of the promotion gate — stop and confirm Phase 2 has shipped.
 
+### Step 11: Contain a Fan-Out That Runs Against a Live Repository
+
+The advisory/implementing contract in Step 7 governs the agent type a stage
+*declares*. It does not constrain what a `Bash`-capable agent does to the working
+tree, and a "read-only" review fleet is exactly where that gap bites: every agent
+inherits the repository as its default working directory.
+
+Apply all four before fanning out against a repo you care about:
+
+1. **Give each agent its own scratch namespace.** Parallel agents told to build
+   fixtures independently converge on the same obvious filename. Instruct them to
+   `mktemp -d` unconditionally, or hand each a distinct directory — never a shared
+   fixed path.
+2. **Require `cd <dir> || exit 1`.** A bare `cd` that fails does not reliably
+   abort the surrounding script, and every following relative path then resolves
+   against the repository.
+3. **Require a cwd assertion before any destructive step** — `git add -A`,
+   `git commit`, or a tool run with a write flag:
+
+   ```bash
+   [ "$(git rev-parse --show-toplevel)" = "$FIXTURE_DIR" ] || exit 1
+   ```
+
+4. **Record `HEAD` before the run and compare after.** This is the only check that
+   catches a subagent that *committed*: `git status` reads clean afterwards, so
+   every dirty-tree check passes.
+
+Prefer `isolation: 'worktree'` for any stage that might mutate, and treat a prompt
+sentence as documentation rather than as a control.
+
+**Expected:** A repo-touching fan-out leaves `git rev-parse HEAD` and
+`git status --porcelain` exactly as it found them.
+
+**On failure:** If HEAD moved, find the commit before pushing —
+`git log --oneline <recorded-head>..HEAD`. A stray commit is unpushed and
+recoverable; state what a reset destroys, confirm it is unpushed, then
+`git reset --mixed <recorded-head>` and remove the stray files.
+
 ## Validation
 
 - [ ] File exists at `workflows/<name>.mjs` (or `.claude/workflows/<name>.mjs` for personal use).
@@ -183,6 +221,7 @@ If contributing a reviewed seed to agent-almanac, place it in `workflows/`, cros
 - [ ] Verification stages gate on a confirmation quorum and `filter(Boolean)` null results.
 - [ ] No forbidden calls: `Date.now()`, `Math.random()`, argless `new Date()`; no TypeScript syntax; no filesystem/Node APIs.
 - [ ] The wrap-then-`node --check` recipe passes.
+- [ ] A repo-touching fan-out carries the Step 11 containment, and `HEAD` is verified unchanged after the run.
 - [ ] No `workflows/_registry.yml` entry or translation scaffold was created (both are Phase 2 / i18n-excluded).
 
 ## Common Pitfalls
@@ -194,6 +233,9 @@ If contributing a reviewed seed to agent-almanac, place it in `workflows/`, cros
 - **"Fixing" the top-level `return`.** It is valid Workflow dialect; rewriting it to satisfy raw `node --check` breaks the script. Use the wrap-check.
 - **Forbidden non-determinism.** `Date.now()` / `Math.random()` / argless `new Date()` break workflow resume. Pass timestamps via `args`; vary randomness by agent index or label.
 - **Building Phase-2 machinery early.** Do not add a `workflows/_registry.yml` or scaffold translations for a workflow — registries/CLI/validation are gated, and workflows are i18n-excluded.
+- **Treating a prompt sentence as a safety control.** "Build your fixture under `/tmp`" is documentation. An agent can follow it exactly and still write to the repository when its `cd` fails, and no amount of specificity in the prompt changes that. Constrain with worktree isolation, a cwd assertion, and a HEAD check.
+- **Sharing one scratch path across parallel agents.** Agents solving the same problem pick the same filename. A second agent overwriting `$SCRATCH/fixture.sh` between the first agent writing it and running it turns a correct invocation into someone else's script.
+- **Believing `git status` proves a fan-out was read-only.** It cannot see an agent that committed. Compare `HEAD`, and treat unexplained staleness in any generated artifact derived from the corpus as evidence the corpus moved.
 
 ## Related Skills
 

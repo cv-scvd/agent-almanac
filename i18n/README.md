@@ -61,8 +61,15 @@ language.
 npm run validate:i18n-fences                    # whole corpus
 node scripts/check-i18n-fence-parity.js \
   --locale de --id create-r-package             # just the file you touched
-npm run normalize:i18n-fences                   # restore English bodies from source_commit
+npm run normalize:i18n-fences                   # PREVIEW the restore from source_commit
+npm run normalize:i18n-fences -- --write        # apply it
 ```
+
+The normalizer previews unless `--write` is passed, and refuses to write into a
+dirty `i18n/` — `git checkout -- i18n/` is its only undo, and it would take your
+uncommitted work with it (#486). It repairs `skills/` only; agent, team and
+guide violations are reported by the checker but show up here as
+`files to change: 0`, and need repairing by hand (#477).
 
 Runs **warn-only** in CI until the backlog clears (#477), then flips to blocking.
 

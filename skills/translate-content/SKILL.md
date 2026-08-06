@@ -151,7 +151,13 @@ npm run translate:scaffold -- <content-type> <id> <locale>
 
    Every fence whose tag is not `text`, `markdown` or `md` is frozen: its body must
    match the English source byte-for-byte, comments and string literals included.
-   Repair with `npm run normalize:i18n-fences`.
+   Repair with `npm run normalize:i18n-fences`, which previews; add `-- --write`
+   to apply once the preview looks right.
+
+   **The normalizer only repairs `skills/`.** The checker covers all four trees,
+   so an agent, team or guide translation can fail the gate and still produce
+   `files to change: 0` here — a clean-looking zero that is not a clean bill of
+   health. Repair those by hand against the English source until #477 lands.
 
    This step said "diff the fenced blocks" from the day the i18n tree was created,
    and the corpus still accumulated 1,307 violations, because reading a fence and

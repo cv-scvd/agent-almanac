@@ -59,6 +59,7 @@ Guides, skills, agents, and teams are cross-referenced. The parent project `CLAU
 - The `references/` subdirectory pattern follows [agentskills.io progressive disclosure](https://agentskills.io/specification) — large code blocks (>15 lines), full configs, and multi-variant examples go in `references/EXAMPLES.md` with cross-references from the main SKILL.md
 - CI enforces validation on all PRs touching `skills/` (`.github/workflows/validate-skills.yml`): frontmatter fields, required sections, line counts, and registry sync
 - CI also runs a repo-wide line-endings gate (`.github/workflows/validate-line-endings.yml`) that fails any PR whose committed blobs contain CRLF. Check locally with `npm run validate:line-endings` (reads the index, non-mutating). Repair: `git add --renormalize .` — and if a new file type is flagged, declare it in `.gitattributes` as `text eol=lf`
+- Changes under `scripts/` run `npm run test:scripts` (`.github/workflows/ci-scripts.yml`), the node:test suite in `scripts/test/`. Its `pretest:scripts` hook fails when the suite is empty — `node --test` exits 0 reporting `tests 0` when its glob matches nothing, so without that hook a rename or deletion leaves the job green having run nothing (#486)
 - To validate locally before committing:
   ```bash
   # Check a single skill
@@ -95,6 +96,10 @@ Three traps it exists to catch, all of which have shipped here:
 - **A mutation that silently matched nothing** makes the exercise pass vacuously while looking correct. In-place `sed`/`perl -0pi` no-op on the NTFS mount, and bare `grep` resolves to ugrep locally but GNU grep in CI — which is why the tool is Node and compares content in memory rather than trusting the edit.
 - **A mutation that merely breaks parsing is not coverage.** Deleting a line carrying a brace makes the file fail to load, and node:test reports that as one failing test — indistinguishable from a real kill. Mutants are syntax-checked first and reported `INVALID` if they do not parse. Note `node --check` parses a `.js` file as CommonJS, so the check is done through a temp file whose extension matches the package's module type; without that this guard is dead for every `.js` file in an ESM package.
 - **A manual break-and-check proves the feature, not the coverage.** Running the CLI by hand and seeing the right behaviour is a demo; "removing this line fails these N tests" is coverage. In #458 the exit code was verified end to end by hand and written up in the commit, while deleting the fix line still left all 101 tests green.
+- **A suite that discovers nothing reports success.** `node --test <glob>` prints `tests 0` and exits 0 when the glob matches no files, so a renamed or moved suite leaves its CI job green having run nothing. `test:scripts` guards this with a `pretest:scripts` hook; `test:cli` instead names its file, which fails loudly on rename but silently skips any *newly added* file. Whichever you pick, know which silence you bought (#486).
+- **A guard must test the accept-rule itself, not a proxy for it.** `--locale` on the fence normalizer was validated with `existsSync('i18n/' + value)` while the scan accepted only directories carrying a `skills/` subtree. `de/skills`, `..` and `glossaries` all passed the guard and scanned nothing — the vacuous result the guard existed to reject. Hoist the consumer's own predicate into one list and validate membership in it, so the two cannot drift.
+
+The same asymmetry applies to the *subject* of a check: a green gate proves something about the gate, and an unexplained **stale generated file** proves something about the corpus. `check-readmes` going stale is how a stray fixture commit was caught after `git status` read clean — investigate such staleness before regenerating it away.
 
 ## Adding a New Skill
 
@@ -233,8 +238,16 @@ prose only.
 npm run validate:i18n-fences                    # whole corpus
 node scripts/check-i18n-fence-parity.js \
   --locale de --id create-r-package             # just the file you touched
-npm run normalize:i18n-fences                   # restore English fence bodies
+npm run normalize:i18n-fences                   # PREVIEW the English-body repair
+npm run normalize:i18n-fences -- --write        # apply it
 ```
+
+The normalizer previews by default and writes only with `--write`, and refuses
+to write into a dirty `i18n/` at all (#486) — a read-only probe agent once typed
+the bare command and silently rewrote 281 files, after which every measurement
+of the backlog was wrong and self-consistent. It repairs `skills/` only; the
+checker covers all four trees, so an agent, team or guide violation shows up as
+`files to change: 0` and needs repairing by hand (#477).
 
 Runs **warn-only** in CI until the 1,307-violation backlog clears (#477), then
 flips to blocking. Warn is a temporary state with a named exit, not the design.
