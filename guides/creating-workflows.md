@@ -191,7 +191,9 @@ nested run rebaseline the outer run's damage into a green.
 
 ### Contain the agents
 
-`workflows/_template.mjs` exports a `REPO_SAFETY` preamble; prepend it to the
+`workflows/_template.mjs` defines a `REPO_SAFETY` preamble — a plain `const`, not
+an export, since the documented wrap-then-check recipe rewrites only
+`export const meta` and any other top-level export breaks it. Prepend it to the
 prompt of **every** agent that may run shell commands, verifiers included — a
 verifier reproducing a finding is the agent most likely to build a fixture.
 Copying the template gets you this by default.

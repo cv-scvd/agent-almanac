@@ -229,6 +229,27 @@ test('detects an untracked file swapped for a DANGLING symlink', async (t) => {
   assert.match(r.stderr, /notes\.md/);
 });
 
+test('hashes the DESTINATION path of a rename, not the vanished original', async (t) => {
+  // Porcelain -z emits `R  <destination>\0<original>\0` — destination first,
+  // which is the file that exists on disk. Verified directly:
+  //   $ git status --porcelain -z   ->  R  renamed.txt\0original.txt\0
+  //   $ git status --porcelain      ->  R  original.txt -> renamed.txt
+  // Reading the second field instead would hash a path that no longer exists,
+  // leaving a renamed file's contents unguarded. Pinning it because a reviewer
+  // asserted the opposite order.
+  const dir = makeRepo(t);
+  git(dir, ['mv', 'src/a.txt', 'src/b.txt']);
+  guard(dir, ['snapshot']);
+
+  const snap = JSON.parse(readFileSync(snapshotPath(dir), 'utf8'));
+
+  assert.ok(Object.keys(snap.contents).includes('src/b.txt'),
+    `destination not hashed; contents were ${JSON.stringify(Object.keys(snap.contents))}`);
+  assert.ok(!Object.keys(snap.contents).includes('src/a.txt'),
+    'the vanished original must not be hashed — it does not exist on disk');
+  assert.equal(snap.status.length, 1, 'a rename is ONE status entry, not two');
+});
+
 test('detects a new file inside an already-untracked directory', async (t) => {
   // `git status --porcelain` collapses an untracked directory to a single entry,
   // so without -uall a file added inside it moves no line.
@@ -320,6 +341,28 @@ test('recovery advice does not suggest a reset when HEAD never moved', async (t)
   assert.equal(r.status, 1);
   assert.doesNotMatch(r.stderr, /git reset --mixed/);
   assert.match(r.stderr, /HEAD did not move/);
+});
+
+test('an unborn baseline gets advice that is a runnable command', async (t) => {
+  // The code explicitly supports snapshotting a repo with no commits, so the
+  // failure guidance must not print `git reset --mixed (unborn)`.
+  const dir = mkdtempSync(join(tmpdir(), 'repo-guard-unborn-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  git(dir, ['init', '-b', 'main']);
+  git(dir, ['config', 'user.email', 'test@example.invalid']);
+  git(dir, ['config', 'user.name', 'Fixture']);
+  guard(dir, ['snapshot']);
+
+  writeFileSync(join(dir, 'first.txt'), 'x\n', 'utf8');
+  git(dir, ['add', '-A']);
+  git(dir, ['commit', '-m', 'a commit that arrived during the run']);
+
+  const r = guard(dir, ['verify']);
+
+  assert.equal(r.status, 1);
+  assert.doesNotMatch(r.stderr, /\(unborn\)\.\.HEAD|reset --mixed \(unborn\)/,
+    'must not print an invalid revision in a copy-pasteable command');
+  assert.match(r.stderr, /no earlier revision to reset to/);
 });
 
 test('detects a branch switch', async (t) => {

@@ -81,6 +81,8 @@ const SNAPSHOT_NAME = 'repo-guard.json';
  * and useless. Refusing is right; naming the reason is what makes it actionable.
  */
 const FORMAT_VERSION = 2;
+/** Sentinel for a repository with no commits yet. */
+const UNBORN = '(unborn)';
 const USAGE = `Usage:
   node scripts/repo-guard.js snapshot [--force] [--quiet]
   node scripts/repo-guard.js verify   [--release] [--quiet]
@@ -198,8 +200,8 @@ function captureState() {
 
   return {
     toplevel: TOPLEVEL,
-    head: head === null ? '(unborn)' : head.trim(),
-    branch: branch === null ? '(unborn)' : branch.trim(),
+    head: head === null ? UNBORN : head.trim(),
+    branch: branch === null ? UNBORN : branch.trim(),
     status,
     contents,
     indexFlags,
@@ -319,7 +321,14 @@ if (argv.includes('--release')) {
 
 if (changed) {
   console.error('\nrepo-guard: the repository CHANGED during the run.');
-  if (headMoved) {
+  if (headMoved && before.head === UNBORN) {
+    // The baseline had no commits at all, so there is no revision to reset to —
+    // printing `git reset --mixed (unborn)` would be an invalid command offered
+    // at precisely the moment the caller is deciding what to trust.
+    console.error('The baseline had no commits, so every commit now present arrived during the run:');
+    console.error('  git log --oneline');
+    console.error('Inspect them before pushing; there is no earlier revision to reset to.');
+  } else if (headMoved) {
     console.error('Investigate before pushing. A stray commit is recoverable while unpushed:');
     console.error(`  git log --oneline ${before.head.slice(0, 8)}..HEAD`);
     console.error(`  git reset --mixed ${before.head.slice(0, 8)}   # keeps the files, drops the commit`);
