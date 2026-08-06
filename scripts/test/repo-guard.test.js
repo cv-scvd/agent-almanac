@@ -61,17 +61,47 @@ test('verify passes when nothing happened', async (t) => {
   assert.match(r.stdout, /unchanged at/);
 });
 
-test('verify consumes the snapshot, so a second verify cannot pass on a stale one', async (t) => {
-  // Otherwise a snapshot left behind by an earlier run would answer a later
-  // question it never observed — a green that means nothing.
+test('verify KEEPS the snapshot, so a run cannot be silently disarmed', async (t) => {
+  // Consuming by default was the original design and it disarmed the guard the
+  // first time it was dogfooded: something ran verify mid-run, and the real
+  // check afterwards had nothing to compare against. A retained snapshot can
+  // only ever over-report, never under-report, so keeping is the safe direction.
   const dir = makeRepo(t);
   guard(dir, ['snapshot']);
-  assert.equal(guard(dir, ['verify']).status, 0);
 
+  assert.equal(guard(dir, ['verify']).status, 0);
   const second = guard(dir, ['verify']);
 
-  assert.equal(second.status, 2);
-  assert.match(second.stderr, /no snapshot/);
+  assert.equal(second.status, 0, 'the snapshot should still be there');
+  assert.match(second.stdout, /unchanged at/);
+});
+
+test('--release drops the snapshot when the run is genuinely over', async (t) => {
+  const dir = makeRepo(t);
+  guard(dir, ['snapshot']);
+
+  assert.equal(guard(dir, ['verify', '--release']).status, 0);
+
+  const after = guard(dir, ['verify']);
+  assert.equal(after.status, 2);
+  assert.match(after.stderr, /no snapshot/);
+});
+
+test('snapshot refuses to overwrite, so a nested run cannot rebaseline damage', async (t) => {
+  // The laundering path: run A arms, an agent strays, run B arms afresh — now
+  // the stray write is part of B's baseline and A's verify reports green.
+  const dir = makeRepo(t);
+  guard(dir, ['snapshot']);
+  writeFileSync(join(dir, 'strayed.txt'), 'damage\n', 'utf8');
+
+  const second = guard(dir, ['snapshot']);
+
+  assert.equal(second.status, 2, 'a second snapshot must not silently replace the first');
+  assert.match(second.stderr, /already exists/);
+  // The original baseline must survive and still see the damage.
+  const v = guard(dir, ['verify']);
+  assert.equal(v.status, 1);
+  assert.match(v.stderr, /strayed\.txt/);
 });
 
 // ── the four mechanisms from the incident ───────────────────────────────────
@@ -95,6 +125,43 @@ test('detects a stray COMMIT — the case git status cannot see', async (t) => {
   assert.match(r.stderr, /HEAD moved/);
   assert.match(r.stderr, /de translation/, 'should name the stray commit');
   assert.match(r.stderr, /git reset --mixed/, 'should give the recovery command');
+});
+
+test('detects a stray write to an ALREADY-modified file', async (t) => {
+  // The blocking defect the first version shipped with. Comparing status LINES
+  // alone, ` M src/a.txt` reads identical before and after an overwrite, so the
+  // guard reported "unchanged" while the file had been rewritten. This repo is
+  // normally mid-edit, which makes it the common case rather than the exotic one.
+  const dir = makeRepo(t);
+  writeFileSync(join(dir, 'src', 'a.txt'), 'my own work in progress\n', 'utf8');
+  guard(dir, ['snapshot']);
+
+  const statusBefore = git(dir, ['status', '--porcelain']);
+  writeFileSync(join(dir, 'src', 'a.txt'), 'CLOBBERED BY A STRAY AGENT\n', 'utf8');
+  assert.equal(git(dir, ['status', '--porcelain']), statusBefore,
+    'precondition: the porcelain line is byte-identical before and after');
+
+  const r = guard(dir, ['verify']);
+
+  assert.equal(r.status, 1, 'a status-line-only comparison would pass here');
+  assert.match(r.stderr, /contents changed/);
+  assert.match(r.stderr, /src\/a\.txt/);
+});
+
+test('detects a new file inside an already-untracked directory', async (t) => {
+  // `git status --porcelain` collapses an untracked directory to a single entry,
+  // so without -uall a file added inside it moves no line.
+  const dir = makeRepo(t);
+  mkdirSync(join(dir, 'scratch'), { recursive: true });
+  writeFileSync(join(dir, 'scratch', 'one.txt'), 'first\n', 'utf8');
+  guard(dir, ['snapshot']);
+
+  writeFileSync(join(dir, 'scratch', 'two.txt'), 'snuck in\n', 'utf8');
+
+  const r = guard(dir, ['verify']);
+
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /scratch\/two\.txt/);
 });
 
 test('detects a modified tracked file', async (t) => {
@@ -138,6 +205,40 @@ test('detects a skip-worktree bit — which makes git status LIE afterwards', as
   assert.equal(r.status, 1);
   assert.match(r.stderr, /index flags/);
   assert.match(r.stderr, /src\/a\.txt/);
+});
+
+test('detects a skip-worktree bit set from a SUBDIRECTORY', async (t) => {
+  // `git ls-files -v` is cwd-scoped: run from a subdirectory it lists only that
+  // subtree, so a bit set elsewhere would be invisible and the guard would cover
+  // less than it claims. Every git call therefore runs from the toplevel.
+  const dir = makeRepo(t);
+  mkdirSync(join(dir, 'other'), { recursive: true });
+  writeFileSync(join(dir, 'other', 'b.txt'), 'b\n', 'utf8');
+  git(dir, ['add', '-A']);
+  git(dir, ['commit', '-m', 'add other']);
+  guard(dir, ['snapshot']);
+
+  git(dir, ['update-index', '--skip-worktree', 'src/a.txt']);
+
+  // Verify from a subdirectory that does NOT contain the flagged file.
+  const r = guard(join(dir, 'other'), ['verify']);
+
+  assert.equal(r.status, 1, 'cwd-scoped ls-files would miss this');
+  assert.match(r.stderr, /src\/a\.txt/);
+});
+
+test('recovery advice does not suggest a reset when HEAD never moved', async (t) => {
+  // `git reset --mixed` would unstage the caller's own work. Printing it for a
+  // pure worktree change is advice that destroys data.
+  const dir = makeRepo(t);
+  guard(dir, ['snapshot']);
+  writeFileSync(join(dir, 'stray.txt'), 'x\n', 'utf8');
+
+  const r = guard(dir, ['verify']);
+
+  assert.equal(r.status, 1);
+  assert.doesNotMatch(r.stderr, /git reset --mixed/);
+  assert.match(r.stderr, /HEAD did not move/);
 });
 
 test('detects a branch switch', async (t) => {
@@ -188,7 +289,7 @@ test('a snapshot from a different repository is an error', async (t) => {
 test('an unknown argument is an error, not a silently narrower check', async (t) => {
   const dir = makeRepo(t);
 
-  for (const args of [['snapshot', '--force'], ['verify', '--all'], ['inspect']]) {
+  for (const args of [['snapshot', '--release'], ['verify', '--force'], ['verify', '--all'], ['inspect']]) {
     const r = guard(dir, args);
     assert.equal(r.status, 2, `${JSON.stringify(args)} was accepted`);
     assert.match(r.stderr, /unknown (argument|command)/);
@@ -206,8 +307,8 @@ test('the snapshot lives outside the working tree, so it cannot dirty it', async
   assert.equal(git(dir, ['status', '--porcelain']), '',
     'taking a snapshot must not dirty the working tree');
 
-  const r = guard(dir, ['verify', '--keep']);
+  const r = guard(dir, ['verify']);
 
   assert.equal(r.status, 0, r.stderr);
-  assert.ok(existsSync(snapshotPath(dir)), '--keep should preserve it');
+  assert.ok(existsSync(snapshotPath(dir)), 'verify keeps the snapshot by default');
 });

@@ -2,8 +2,9 @@
 /**
  * repo-guard.js — prove a multi-agent run left the repository untouched.
  *
- *   node scripts/repo-guard.js snapshot   # before the fan-out
- *   node scripts/repo-guard.js verify     # after it returns
+ *   node scripts/repo-guard.js snapshot           # before the fan-out
+ *   node scripts/repo-guard.js verify             # after it returns
+ *   node scripts/repo-guard.js verify --release   # ... and drop the snapshot
  *
  * Exit 0 = the repository is exactly as it was. Exit 1 = it moved, with the
  * difference printed. Exit 2 = the question could not be answered honestly.
@@ -30,103 +31,158 @@
  * afterwards, and every dirty-tree check passes. In the real incident it was a
  * stale generated README that gave the write away, which is luck, not a control.
  *
- * So this compares four things, each corresponding to a way the incident hid:
+ * So this compares five things, each corresponding to a way a change can hide:
  *
- *   HEAD          a stray commit (the tree looks clean afterwards)
- *   branch        a checkout that moved the working branch
- *   status        stray writes and stray new files
- *   index flags   `git update-index --skip-worktree`, which the incident really
- *                 did run, and which makes git report a modified file as clean
- *                 from that point on — poisoning every later check
+ *   HEAD            a stray commit (the tree looks clean afterwards)
+ *   branch          a checkout that moved the working branch
+ *   status lines    files appearing, vanishing, or changing state
+ *   file contents   a stray write to a file that was ALREADY modified. Comparing
+ *                   status lines alone misses this entirely: ` M CLAUDE.md` reads
+ *                   identical before and after the overwrite. This repo is
+ *                   normally mid-edit, so that is the common case, not the
+ *                   exotic one.
+ *   index flags     `git update-index --skip-worktree`, which the incident really
+ *                   ran, and which makes git report a modified file as clean from
+ *                   then on — poisoning every later check
+ *
+ * ## What it does NOT cover
+ *
+ * Ignored paths. `git status --porcelain` omits them by design and walking them
+ * would mean hashing `node_modules`. A stray write to a gitignored file (in this
+ * repo, `CONTINUE_HERE.md`) is invisible here. Everything else under the working
+ * tree is compared by content.
  *
  * ## Failing closed
  *
  * A guard that answers "unchanged" when it could not look is worse than none.
- * Every uncertainty here exits 2, never 0: a missing or unreadable snapshot, a
- * snapshot taken in a different repository, a git invocation that fails, or an
- * unrecognised argument.
+ * Every uncertainty exits 2, never 0: a missing, unreadable, or foreign snapshot,
+ * a git invocation that fails, or an unrecognised argument.
+ *
+ * Two rules keep a second run from laundering the first run's damage into a
+ * green, which a single global snapshot slot otherwise invites:
+ *
+ *   - `snapshot` REFUSES to overwrite an existing snapshot (`--force` to
+ *     override). Re-arming mid-run would rebaseline the damage as the new normal.
+ *   - `verify` KEEPS the snapshot unless `--release`. Consuming it by default
+ *     silently disarms every later check — and a stale snapshot can only ever
+ *     over-report, never under-report, so keeping is the safe direction.
  */
 
-import { readFileSync, writeFileSync, existsSync, unlinkSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { readFileSync, writeFileSync, existsSync, unlinkSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 
-/**
- * The snapshot lives inside the git directory, not the working tree.
- *
- * The first version put it at the repo root, and a test caught two consequences:
- * it appeared in `git status` as an untracked file (so the guard had to special-
- * case its own artifact), and an agent running `git add -A` — precisely the
- * command from the incident — would have committed it. `.git/` is not part of
- * the working tree, so none of that can happen.
- */
 const SNAPSHOT_NAME = 'repo-guard.json';
 const USAGE = `Usage:
-  node scripts/repo-guard.js snapshot [--quiet]
-  node scripts/repo-guard.js verify   [--keep] [--quiet]
+  node scripts/repo-guard.js snapshot [--force] [--quiet]
+  node scripts/repo-guard.js verify   [--release] [--quiet]
 
-  snapshot  record HEAD, branch, worktree status and index flags
-  verify    compare the repository against that record (and delete it)
-  --keep    verify without deleting the snapshot (for repeated checks)
-  --quiet   suppress the success line; differences always print`;
+  snapshot   record HEAD, branch, status, file contents and index flags
+  --force    replace an existing snapshot (refused by default)
+  verify     compare the repository against that record
+  --release  delete the snapshot afterwards (kept by default)
+  --quiet    suppress the success line; differences always print`;
 
 function die(message, code = 2) {
   console.error(`repo-guard: ${message}`);
   process.exit(code);
 }
 
-// ── argument parsing: default-deny, because a silently ignored flag is how a
-// guard ends up not guarding what the caller believed it did.
+// ── arguments: default-deny, and per-command, so a flag that means nothing to
+// this subcommand is an error rather than a silently narrower check.
 const argv = process.argv.slice(2);
-const COMMANDS = new Set(['snapshot', 'verify']);
-const FLAGS = new Set(['--keep', '--quiet']);
+const FLAGS_FOR = { snapshot: ['--force', '--quiet'], verify: ['--release', '--quiet'] };
 
 const command = argv.find((a) => !a.startsWith('-'));
 if (!command) die(`no command given.\n${USAGE}`);
-if (!COMMANDS.has(command)) die(`unknown command '${command}'.\n${USAGE}`);
+if (!FLAGS_FOR[command]) die(`unknown command '${command}'.\n${USAGE}`);
 for (const arg of argv) {
   if (arg === command) continue;
-  if (!FLAGS.has(arg)) die(`unknown argument '${arg}'.\n${USAGE}`);
+  if (!FLAGS_FOR[command].includes(arg)) {
+    die(`unknown argument '${arg}' for '${command}'.\n${USAGE}`);
+  }
 }
-const KEEP = argv.includes('--keep');
 const QUIET = argv.includes('--quiet');
 
-/** Run git, or exit 2. A guard must never treat a failed probe as "nothing changed". */
-function git(args) {
-  const result = spawnSync('git', args, { encoding: 'utf8' });
+/**
+ * Run git from the repository ROOT, never the caller's cwd.
+ *
+ * `git ls-files` is cwd-scoped: run from a subdirectory it lists only that
+ * subtree, so a `skip-worktree` bit set elsewhere would be invisible and the
+ * guard would silently cover less than it claims.
+ */
+function git(args, { cwd = undefined, allowFailure = false } = {}) {
+  const result = spawnSync('git', args, { encoding: 'utf8', cwd, maxBuffer: 512 * 1024 * 1024 });
   if (result.error) die(`could not run git: ${result.error.message}`);
   if (result.status !== 0) {
+    if (allowFailure) return null;
     die(`git ${args.join(' ')} failed (exit ${result.status}): ${(result.stderr || '').trim()}`);
   }
   return result.stdout;
 }
 
 const TOPLEVEL = git(['rev-parse', '--show-toplevel']).trim();
-// `--absolute-git-dir` resolves correctly in a linked worktree, where `.git` is
-// a file pointing elsewhere rather than a directory.
-const SNAPSHOT_PATH = join(git(['rev-parse', '--absolute-git-dir']).trim(), SNAPSHOT_NAME);
+const GIT_DIR = git(['rev-parse', '--absolute-git-dir']).trim();
+const SNAPSHOT_PATH = join(GIT_DIR, SNAPSHOT_NAME);
+const atRoot = (args) => git(args, { cwd: TOPLEVEL });
 
-/** The repository's observable state. */
+const sha = (buffer) => createHash('sha256').update(buffer).digest('hex').slice(0, 16);
+
+/**
+ * Hash of every path git reports as changed or untracked.
+ *
+ * This is what makes a stray write to an already-dirty file visible. `-uall`
+ * lists untracked files individually rather than collapsing a directory to one
+ * entry, so a new file inside an already-untracked directory is caught too.
+ */
 function captureState() {
-  const status = git(['status', '--porcelain'])
-    .split('\n')
-    .filter((line) => line.trim() !== '')
-    .sort();
+  const statusRaw = atRoot(['status', '--porcelain', '-uall']);
+  const status = statusRaw.split('\n').filter((line) => line.trim() !== '').sort();
+
+  const contents = {};
+  for (const line of status) {
+    // Porcelain v1: 2 status chars, a space, then the path. Renames use
+    // "old -> new"; the post-rename path is the one on disk.
+    let path = line.slice(3);
+    const arrow = path.indexOf(' -> ');
+    if (arrow >= 0) path = path.slice(arrow + 4);
+    if (path.startsWith('"') && path.endsWith('"')) {
+      try { path = JSON.parse(path); } catch { /* keep the quoted form */ }
+    }
+    const abs = join(TOPLEVEL, path);
+    try {
+      // Deleted paths have no content; the status line already records them.
+      if (!existsSync(abs) || !statSync(abs).isFile()) continue;
+      contents[path] = sha(readFileSync(abs));
+    } catch (error) {
+      // Unreadable is a state too — record it rather than silently skipping,
+      // so a file becoming unreadable during a run still shows up.
+      contents[path] = `unreadable:${error.code || 'error'}`;
+    }
+  }
 
   // `git ls-files -v` marks anything not plainly cached with a tag other than
   // 'H'. 'S' is skip-worktree; a lowercase tag is assume-unchanged. Both make
   // git report a modified file as clean, so they must be part of the baseline —
   // otherwise setting one is itself an undetectable change.
-  const indexFlags = git(['ls-files', '-v'])
+  const indexFlags = atRoot(['ls-files', '-v'])
     .split('\n')
     .filter((line) => line && line[0] !== 'H')
     .sort();
 
+  // A repository with no commits yet has neither a resolvable HEAD nor an
+  // abbrev-ref for it. That is a legitimate state to snapshot, not an error —
+  // dying here would make the guard unusable on a fresh fixture.
+  const head = git(['rev-parse', 'HEAD'], { cwd: TOPLEVEL, allowFailure: true });
+  const branch = git(['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: TOPLEVEL, allowFailure: true });
+
   return {
     toplevel: TOPLEVEL,
-    head: git(['rev-parse', 'HEAD']).trim(),
-    branch: git(['rev-parse', '--abbrev-ref', 'HEAD']).trim(),
+    head: head === null ? '(unborn)' : head.trim(),
+    branch: branch === null ? '(unborn)' : branch.trim(),
     status,
+    contents,
     indexFlags,
   };
 }
@@ -142,8 +198,15 @@ function reportList(label, before, after) {
 }
 
 if (command === 'snapshot') {
+  // Refusing to clobber is what stops a nested or concurrent run from
+  // rebaselining the outer run's damage as the new normal.
+  if (existsSync(SNAPSHOT_PATH) && !argv.includes('--force')) {
+    die(`a snapshot already exists at ${SNAPSHOT_NAME}.\n` +
+      'Another guarded run may be in progress — overwriting it would rebaseline its damage.\n' +
+      'Finish that run with `repo-guard.js verify --release`, or pass --force.');
+  }
   const state = captureState();
-  writeFileSync(SNAPSHOT_PATH, JSON.stringify(state, null, 2) + '\n', 'utf8');
+  writeFileSync(SNAPSHOT_PATH, JSON.stringify({ ...state, takenAt: new Date().toISOString() }, null, 2) + '\n', 'utf8');
   if (!QUIET) {
     console.log(`repo-guard: snapshot at ${state.head.slice(0, 8)} on ${state.branch}` +
       ` (${state.status.length} pending change(s), ${state.indexFlags.length} index flag(s))`);
@@ -164,7 +227,7 @@ try {
 } catch (error) {
   die(`snapshot at ${SNAPSHOT_NAME} is unreadable: ${error.message}`);
 }
-for (const field of ['toplevel', 'head', 'branch', 'status', 'indexFlags']) {
+for (const field of ['toplevel', 'head', 'branch', 'status', 'contents', 'indexFlags']) {
   if (before[field] === undefined) die(`snapshot is missing '${field}' — refusing to compare.`);
 }
 if (before.toplevel !== TOPLEVEL) {
@@ -173,17 +236,19 @@ if (before.toplevel !== TOPLEVEL) {
 
 const after = captureState();
 let changed = false;
+let headMoved = false;
 
 if (before.head !== after.head) {
   changed = true;
+  headMoved = true;
   console.error(`\n  HEAD moved: ${before.head.slice(0, 8)} -> ${after.head.slice(0, 8)}`);
   // The commits themselves are the actionable part: this is the case `git
   // status` cannot see, because a committed stray write leaves a clean tree.
-  const range = spawnSync('git', ['log', '--format=  %h %an  %s', `${before.head}..${after.head}`],
-    { encoding: 'utf8' });
-  if (range.status === 0 && range.stdout.trim()) {
+  const range = git(['log', '--format=  %h %an  %s', `${before.head}..${after.head}`],
+    { cwd: TOPLEVEL, allowFailure: true });
+  if (range && range.trim()) {
     console.error('  commits added:');
-    console.error(range.stdout.trimEnd());
+    console.error(range.trimEnd());
   }
 }
 
@@ -193,18 +258,49 @@ if (before.branch !== after.branch) {
 }
 
 changed = reportList('working tree', before.status, after.status) || changed;
+
+// Content comparison, restricted to paths present in both status lists — a path
+// that appeared or vanished is already reported above, and repeating it adds
+// noise without adding information.
+const contentChanged = Object.keys(after.contents)
+  .filter((path) => before.contents[path] !== undefined)
+  .filter((path) => before.contents[path] !== after.contents[path])
+  .sort();
+if (contentChanged.length) {
+  changed = true;
+  console.error('\n  contents changed (file was already modified, so its status line did not move):');
+  for (const path of contentChanged) console.error(`    ~ ${path}`);
+}
+
 changed = reportList('index flags (skip-worktree / assume-unchanged)',
   before.indexFlags, after.indexFlags) || changed;
 
-if (!KEEP) unlinkSync(SNAPSHOT_PATH);
+if (argv.includes('--release')) {
+  try {
+    unlinkSync(SNAPSHOT_PATH);
+  } catch (error) {
+    // Do not let a cleanup failure masquerade as "the repository changed".
+    console.error(`repo-guard: warning — could not remove the snapshot: ${error.message}`);
+  }
+}
 
 if (changed) {
-  console.error(`\nrepo-guard: the repository CHANGED during the run.`);
-  console.error('Investigate before pushing. A stray commit is recoverable while unpushed:');
-  console.error(`  git log --oneline ${before.head.slice(0, 8)}..HEAD`);
-  console.error(`  git reset --mixed ${before.head.slice(0, 8)}   # keeps the files, drops the commit`);
+  console.error('\nrepo-guard: the repository CHANGED during the run.');
+  if (headMoved) {
+    console.error('Investigate before pushing. A stray commit is recoverable while unpushed:');
+    console.error(`  git log --oneline ${before.head.slice(0, 8)}..HEAD`);
+    console.error(`  git reset --mixed ${before.head.slice(0, 8)}   # keeps the files, drops the commit`);
+  } else {
+    // `git reset --mixed` would unstage the caller's own work here, so it must
+    // not be suggested when HEAD never moved.
+    console.error('HEAD did not move, so this is a worktree change — inspect it before assuming');
+    console.error('it was yours:  git diff  /  git status --porcelain -uall');
+  }
   process.exit(1);
 }
 
-if (!QUIET) console.log(`repo-guard: unchanged at ${after.head.slice(0, 8)} on ${after.branch}.`);
+if (!QUIET) {
+  const age = before.takenAt ? ` (snapshot taken ${before.takenAt})` : '';
+  console.log(`repo-guard: unchanged at ${after.head.slice(0, 8)} on ${after.branch}${age}.`);
+}
 process.exit(0);
