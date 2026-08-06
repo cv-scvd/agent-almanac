@@ -274,6 +274,23 @@ test('an unreadable snapshot is an error, never a pass', async (t) => {
   assert.match(r.stderr, /unreadable/);
 });
 
+test('a snapshot in an older format is an error naming the reason', async (t) => {
+  // Hit for real: a snapshot armed before the `contents` field was added made
+  // verify die with "missing 'contents'" — accurate and useless.
+  const dir = makeRepo(t);
+  guard(dir, ['snapshot']);
+  const snap = JSON.parse(readFileSync(snapshotPath(dir), 'utf8'));
+  delete snap.formatVersion;
+  delete snap.contents;
+  writeFileSync(snapshotPath(dir), JSON.stringify(snap), 'utf8');
+
+  const r = guard(dir, ['verify']);
+
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /format v1, but this is v2/);
+  assert.match(r.stderr, /guard:snapshot/, 'should say how to recover');
+});
+
 test('a snapshot from a different repository is an error', async (t) => {
   const a = makeRepo(t);
   const b = makeRepo(t);

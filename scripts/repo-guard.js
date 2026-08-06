@@ -74,6 +74,13 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 
 const SNAPSHOT_NAME = 'repo-guard.json';
+/**
+ * Bump whenever `captureState()` changes shape. A snapshot written by an older
+ * build cannot be compared against a newer capture — the first time that
+ * happened the guard said `snapshot is missing 'contents'`, which is accurate
+ * and useless. Refusing is right; naming the reason is what makes it actionable.
+ */
+const FORMAT_VERSION = 2;
 const USAGE = `Usage:
   node scripts/repo-guard.js snapshot [--force] [--quiet]
   node scripts/repo-guard.js verify   [--release] [--quiet]
@@ -206,7 +213,11 @@ if (command === 'snapshot') {
       'Finish that run with `repo-guard.js verify --release`, or pass --force.');
   }
   const state = captureState();
-  writeFileSync(SNAPSHOT_PATH, JSON.stringify({ ...state, takenAt: new Date().toISOString() }, null, 2) + '\n', 'utf8');
+  writeFileSync(
+    SNAPSHOT_PATH,
+    JSON.stringify({ formatVersion: FORMAT_VERSION, ...state, takenAt: new Date().toISOString() }, null, 2) + '\n',
+    'utf8',
+  );
   if (!QUIET) {
     console.log(`repo-guard: snapshot at ${state.head.slice(0, 8)} on ${state.branch}` +
       ` (${state.status.length} pending change(s), ${state.indexFlags.length} index flag(s))`);
@@ -226,6 +237,11 @@ try {
   before = JSON.parse(readFileSync(SNAPSHOT_PATH, 'utf8'));
 } catch (error) {
   die(`snapshot at ${SNAPSHOT_NAME} is unreadable: ${error.message}`);
+}
+if (before.formatVersion !== FORMAT_VERSION) {
+  die(`snapshot was written in format v${before.formatVersion ?? 1}, but this is v${FORMAT_VERSION}.\n` +
+    'It predates a change to what is recorded, so the comparison would be incomplete.\n' +
+    `Re-arm and re-run:  rm ${SNAPSHOT_PATH} && npm run guard:snapshot`);
 }
 for (const field of ['toplevel', 'head', 'branch', 'status', 'contents', 'indexFlags']) {
   if (before[field] === undefined) die(`snapshot is missing '${field}' — refusing to compare.`);
