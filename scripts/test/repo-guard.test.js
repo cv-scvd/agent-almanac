@@ -444,6 +444,54 @@ test('a snapshot from a different repository is an error', async (t) => {
   assert.match(r.stderr, /was taken in/);
 });
 
+test('every command this tool suggests is copy-pasteable', async (t) => {
+  // Advice that does not run is advice that does not get followed, and this tool
+  // only ever speaks at the moment something has gone wrong. Three separate
+  // messages suggested `repo-guard.js …`, which is not runnable from the repo
+  // root, and one interpolated an unquoted path that breaks on a directory name
+  // containing a space.
+  const dir = makeRepo(t);
+
+  const noSnapshot = guard(dir, ['verify']).stderr;
+  guard(dir, ['snapshot']);
+  const alreadyExists = guard(dir, ['snapshot']).stderr;
+
+  for (const stderr of [noSnapshot, alreadyExists]) {
+    // `(?!on)` because the snapshot FILE is `repo-guard.json`, of which
+    // `repo-guard.js` is a prefix — the first version of this test flagged its
+    // own subject's filename.
+    const suggested = stderr.split('\n').filter((l) => /repo-guard\.js(?!on)/.test(l));
+    assert.deepEqual(suggested, [],
+      `message suggests a non-runnable command:\n${stderr}`);
+    assert.match(stderr, /npm run guard:/, `message names no runnable entrypoint:\n${stderr}`);
+  }
+});
+
+test('a path containing spaces is quoted in the recovery command', async (t) => {
+  const parent = mkdtempSync(join(tmpdir(), 'repo guard spaces-'));
+  t.after(() => rmSync(parent, { recursive: true, force: true }));
+  const dir = join(parent, 'repo');
+  mkdirSync(dir, { recursive: true });
+  git(dir, ['init', '-b', 'main']);
+  git(dir, ['config', 'user.email', 'test@example.invalid']);
+  git(dir, ['config', 'user.name', 'Fixture']);
+  writeFileSync(join(dir, 'a.txt'), 'x\n', 'utf8');
+  git(dir, ['add', '-A']);
+  git(dir, ['commit', '-m', 'init']);
+  guard(dir, ['snapshot']);
+
+  // Force the format-mismatch branch, which is the one that prints an `rm`.
+  const snap = JSON.parse(readFileSync(snapshotPath(dir), 'utf8'));
+  snap.formatVersion = 1;
+  writeFileSync(snapshotPath(dir), JSON.stringify(snap), 'utf8');
+
+  const r = guard(dir, ['verify']);
+
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /rm -f "[^"]*repo guard spaces[^"]*"/,
+    'the interpolated path must be quoted');
+});
+
 test('an unknown argument is an error, not a silently narrower check', async (t) => {
   const dir = makeRepo(t);
 

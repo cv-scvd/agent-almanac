@@ -2,9 +2,15 @@
 /**
  * repo-guard.js — prove a multi-agent run left the repository untouched.
  *
- *   node scripts/repo-guard.js snapshot           # before the fan-out
- *   node scripts/repo-guard.js verify             # after it returns
- *   node scripts/repo-guard.js verify --release   # ... and drop the snapshot
+ *   npm run guard:snapshot   # before the fan-out
+ *   npm run guard:verify    # after it returns
+ *   npm run guard:release   # ... and drop the snapshot
+ *
+ * The npm scripts are the supported entrypoint, and every message this tool
+ * prints names them rather than the raw `node scripts/repo-guard.js …` form:
+ * advice that is not copy-pasteable at the moment something broke is advice that
+ * does not get followed. (`--release` in particular cannot cross `npm run` —
+ * npm swallows it as its own config — which is why it has a script of its own.)
  *
  * Exit 0 = the repository is exactly as it was. Exit 1 = it moved, with the
  * difference printed. Exit 2 = the question could not be answered honestly.
@@ -224,7 +230,7 @@ if (command === 'snapshot') {
   if (existsSync(SNAPSHOT_PATH) && !argv.includes('--force')) {
     die(`a snapshot already exists at ${SNAPSHOT_NAME}.\n` +
       'Another guarded run may be in progress — overwriting it would rebaseline its damage.\n' +
-      'Finish that run with `repo-guard.js verify --release`, or pass --force.');
+      'Finish that run with `npm run guard:release`, or pass --force.');
   }
   const state = captureState();
   try {
@@ -250,7 +256,7 @@ if (command === 'snapshot') {
 // ── verify ───────────────────────────────────────────────────────────────────
 
 if (!existsSync(SNAPSHOT_PATH)) {
-  die(`no snapshot at ${SNAPSHOT_NAME}. Run \`repo-guard.js snapshot\` before the run.\n` +
+  die(`no snapshot at ${SNAPSHOT_NAME}. Run \`npm run guard:snapshot\` before the run.\n` +
     'Refusing to report "unchanged" for a comparison that never happened.');
 }
 
@@ -263,7 +269,7 @@ try {
 if (before.formatVersion !== FORMAT_VERSION) {
   die(`snapshot was written in format v${before.formatVersion ?? 1}, but this is v${FORMAT_VERSION}.\n` +
     'It predates a change to what is recorded, so the comparison would be incomplete.\n' +
-    `Re-arm and re-run:  rm ${SNAPSHOT_PATH} && npm run guard:snapshot`);
+    `Re-arm and re-run:  rm -f "${SNAPSHOT_PATH}" && npm run guard:snapshot`);
 }
 for (const field of ['toplevel', 'head', 'branch', 'status', 'contents', 'indexFlags']) {
   if (before[field] === undefined) die(`snapshot is missing '${field}' — refusing to compare.`);
