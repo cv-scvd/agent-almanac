@@ -138,6 +138,45 @@ The runtime enforces these — violating them breaks the run:
 - **No filesystem or Node API.** Standard JS built-ins (`JSON`, `Math`, `Array`) only; agents do the file and shell work.
 - The body runs in an async context — use top-level `await` and a top-level `return` directly.
 
+## Fanning Out Against a Live Repository
+
+The `intent` contract above governs the agent type a stage **declares**. It says
+nothing about what a `Bash`-capable agent actually does to the working tree, and
+every agent inherits the repository as its default working directory. A fleet you
+think of as "read-only reviewers" can still write to it.
+
+This is not hypothetical. During an adversarial review of the i18n normalizer, two
+parallel agents each wrote `$SCRATCH/fixture.sh` — the same path in the shared
+scratchpad, sixteen seconds apart. The second clobbered the first, so the first
+agent's `bash fixture.sh /tmp/nf-skipwt` ran a script that ignored its argument
+and never created the directory. Its `cd "$1"` then failed, execution continued
+regardless, and `mkdir`, `cat >`, `git add -A` and `git commit` all landed on the
+real repository.
+
+Four containments, in order of how much they buy:
+
+| Control | Catches |
+|---|---|
+| `isolation: 'worktree'` on any stage that might mutate | Everything below, structurally |
+| Per-agent scratch dirs (`mktemp -d`, never a shared fixed path) | Filename collisions between parallel agents |
+| `cd <dir> \|\| exit 1` in generated scripts | A failed `cd` silently redirecting relative paths at the repo |
+| `git rev-parse --show-toplevel` assertion before `git add -A` / `git commit` / any write flag | A destructive step aimed at the wrong tree |
+
+Then record `HEAD` before the run and compare after. That last check is the only
+one that catches an agent that **committed** — `git status` reads clean once a
+stray write has been committed, so every dirty-tree check passes.
+
+A prompt sentence is documentation, not a control. The prompt in that run named
+the directory, the tool, and the file to copy, and specificity did not help,
+because the failure was mechanical rather than a matter of the agent's compliance.
+
+> **Generated artifacts are integrity checks.** What surfaced that stray commit was
+> not any deliberate check but `npm run check-readmes` going stale: the README
+> translation table counts `i18n/<locale>/skills/*/SKILL.md` by existence, so one
+> extra fixture directory moved a locale's coverage by one. Unexplained staleness
+> in a file generated *from* the corpus is evidence the corpus moved. Investigate
+> it before regenerating and committing.
+
 ## Vendor-API Caveat
 
 The Workflow **run model** is generally available on paid Claude Code plans (~v2.1.154+). The **script-authoring surface** — the injected primitives and the `args` / `budget` globals — is an evolving vendor API. Everything in this guide reflects Claude Code **v2.1.x** behavior and is **subject to change**; it is documentation, never CI-enforced. Only Claude Code has the Workflow tool; other frameworks have no equivalent and skip workflows entirely.
@@ -150,6 +189,7 @@ The Workflow **run model** is generally available on paid Claude Code plans (~v2
 | `meta must be a pure literal` | `meta` references a variable or call | Inline every value into the `export const meta` object literal |
 | Workflow not found by name | `meta.name` ≠ filename stem, or not installed in `.claude/workflows/` | Make the triple (filename ↔ sidecar `name:` ↔ `meta.name`) identical and install the file |
 | A mutating stage is rejected / misbehaves | Stage targets an advisory `agentType` but needs to write | Target an `implementing` agent type for any Write/Edit/Bash or `worktree` stage |
+| A "read-only" run left the repo changed | Agents inherit the repo as their cwd; the declared `intent` does not constrain Bash | Apply the containments in [Fanning Out Against a Live Repository](#fanning-out-against-a-live-repository); compare `HEAD` before and after |
 | `Date.now is not a function` | Used a forbidden non-deterministic call | Pass the value via `args`; vary by index/label instead |
 
 ## Related Resources
