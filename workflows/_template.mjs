@@ -78,7 +78,11 @@ const items =
 // destructive. Bracket the whole run with `npm run guard:snapshot` /
 // `npm run guard:verify`, which is the only check that catches a stray COMMIT —
 // `git status` reads clean once a stray write has been committed.
-export const REPO_SAFETY = `SAFETY — you are running inside a live git repository.
+// NOT exported. The documented syntax check wraps the file in an async IIFE and
+// rewrites only `export const meta`, so any other top-level `export` becomes
+// `SyntaxError: Unexpected token 'export'` inside the wrapper — the template
+// would fail its own step 4 before an author had written a line.
+const REPO_SAFETY = `SAFETY — you are running inside a live git repository.
 Work only in a directory you created yourself with \`mktemp -d\`; never a shared
 or fixed path, because parallel agents pick the same obvious filename.
 - Write \`cd "$DIR" || exit 1\`. A bare \`cd\` that fails does not stop the script.

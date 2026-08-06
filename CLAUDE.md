@@ -107,12 +107,13 @@ The same asymmetry applies to the *subject* of a check: a green gate proves some
 
 ```bash
 npm run guard:snapshot   # before
-npm run guard:verify     # after — exit 1 if anything moved; --release when done
+npm run guard:verify     # after — exit 1 if anything moved
+npm run guard:release    # when the run is genuinely over
 ```
 
 It compares HEAD, branch, worktree status, **the content of every changed or untracked file**, and index flags. Content is load-bearing: overwriting a file that was already modified leaves its ` M path` status line byte-identical, and this repo is usually mid-edit. Index flags are included because `git update-index --skip-worktree` makes git report a modified file as clean from that point on, disarming every later check.
 
-It fails closed — a missing, unreadable, or foreign snapshot exits 2 rather than reporting success, and exit 2 must never be read as a pass. `snapshot` refuses to overwrite and `verify` keeps the snapshot unless `--release`, so a nested run cannot rebaseline the outer run's damage into a green. **Ignored paths are out of scope** (walking them means hashing `node_modules`), so a stray write to `CONTINUE_HERE.md` would not be seen (#493).
+It fails closed — a missing, unreadable, or foreign snapshot exits 2 rather than reporting success, and exit 2 must never be read as a pass. `snapshot` refuses to overwrite and `verify` keeps the snapshot until `guard:release`, so a nested run cannot rebaseline the outer run's damage into a green. **Ignored paths are out of scope** (walking them means hashing `node_modules`), so a stray write to `CONTINUE_HERE.md` would not be seen (#493).
 
 Agents that may run shell commands should also carry the `REPO_SAFETY` preamble from `workflows/_template.mjs` — `mktemp -d` rather than a shared path, `cd "$DIR" || exit 1`, and a `git rev-parse --show-toplevel` assertion before anything destructive. The preamble is documentation; the guard is the control.
 

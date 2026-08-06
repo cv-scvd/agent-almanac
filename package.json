@@ -59,6 +59,7 @@
     "validate:security": "node scripts/scan-skill-content.js",
     "guard:snapshot": "node scripts/repo-guard.js snapshot",
     "guard:verify": "node scripts/repo-guard.js verify",
+    "guard:release": "node scripts/repo-guard.js verify --release",
     "coverage:evals": "node scripts/eval-coverage.js",
     "mutation-check": "node scripts/mutation-check.js",
     "translation:status": "node scripts/generate-translation-status.js",

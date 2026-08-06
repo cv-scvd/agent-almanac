@@ -186,7 +186,7 @@ covered.** Walking them would mean hashing `node_modules`. In this repo that
 means a stray write to `CONTINUE_HERE.md` would not be seen.
 
 `snapshot` refuses to overwrite an existing snapshot, and `verify` keeps it
-unless `--release`. Both exist because a single global slot otherwise lets a
+until `npm run guard:release`. Both exist because a single global slot otherwise lets a
 nested run rebaseline the outer run's damage into a green.
 
 ### Contain the agents
@@ -229,7 +229,7 @@ The Workflow **run model** is generally available on paid Claude Code plans (~v2
 | A mutating stage is rejected / misbehaves | Stage targets an advisory `agentType` but needs to write | Target an `implementing` agent type for any Write/Edit/Bash or `worktree` stage |
 | A "read-only" run left the repo changed | Agents inherit the repo as their cwd; the declared `intent` does not constrain Bash | Apply the containments in [Fanning Out Against a Live Repository](#fanning-out-against-a-live-repository) and bracket the run with `npm run guard:snapshot` / `guard:verify` |
 | `guard:verify` says "no snapshot" | The snapshot was released, or never taken | Re-snapshot and re-run. Never read exit 2 as a pass — it means the comparison did not happen |
-| `guard:snapshot` says one already exists | Another guarded run is open, or an earlier one was never released | Close it with `guard:verify --release`. Do not `--force` unless you know the other run is dead: re-arming rebaselines its damage |
+| `guard:snapshot` says one already exists | Another guarded run is open, or an earlier one was never released | Close it with `npm run guard:release`. Do not `--force` unless you know the other run is dead: re-arming rebaselines its damage |
 | `Date.now is not a function` | Used a forbidden non-deterministic call | Pass the value via `args`; vary by index/label instead |
 
 ## Related Resources

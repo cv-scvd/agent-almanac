@@ -144,27 +144,39 @@ const sha = (buffer) => createHash('sha256').update(buffer).digest('hex').slice(
  * entry, so a new file inside an already-untracked directory is caught too.
  */
 function captureState() {
-  const statusRaw = atRoot(['status', '--porcelain', '-uall']);
-  const status = statusRaw.split('\n').filter((line) => line.trim() !== '').sort();
+  // `-z` rather than line-splitting. Without it git applies `core.quotePath`,
+  // which C-quotes any path containing a byte >= 0x80 using OCTAL escapes —
+  // ` M "i18n/ja/\350\252\255\343\201\277.md"`. JSON has no octal escape, so
+  // parsing that back with JSON.parse threw, the path stayed quoted, the file
+  // was not found on disk, and it was skipped from the content map in silence.
+  // In a repository whose entire i18n tree is non-ASCII that is not an edge
+  // case: a clobbered `i18n/ja/読み.md` verified as "unchanged", exit 0.
+  // `-z` emits raw bytes with NUL separators and no quoting at all.
+  const parts = atRoot(['status', '--porcelain', '-uall', '-z']).split('\0');
+  const entries = [];
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (!part) continue;
+    const code = part.slice(0, 2);
+    entries.push({ code, path: part.slice(3) });
+    // Under -z a rename or copy is TWO fields: the new path, then the original.
+    if (code[0] === 'R' || code[0] === 'C') i++;
+  }
+
+  const status = entries.map((e) => `${e.code} ${e.path}`).sort();
 
   const contents = {};
-  for (const line of status) {
-    // Porcelain v1: 2 status chars, a space, then the path. Renames use
-    // "old -> new"; the post-rename path is the one on disk.
-    let path = line.slice(3);
-    const arrow = path.indexOf(' -> ');
-    if (arrow >= 0) path = path.slice(arrow + 4);
-    if (path.startsWith('"') && path.endsWith('"')) {
-      try { path = JSON.parse(path); } catch { /* keep the quoted form */ }
-    }
+  for (const { path } of entries) {
     const abs = join(TOPLEVEL, path);
     try {
-      // Deleted paths have no content; the status line already records them.
-      if (!existsSync(abs) || !statSync(abs).isFile()) continue;
-      contents[path] = sha(readFileSync(abs));
+      // Every status-listed path gets an entry, including ones with no readable
+      // content. Skipping them instead would make a path that STOPS being a
+      // regular file — a file swapped for a symlink, say — vanish from the map
+      // while its status line stayed identical, and so go unreported.
+      if (!existsSync(abs)) contents[path] = '(absent)';
+      else if (!statSync(abs).isFile()) contents[path] = '(not-a-regular-file)';
+      else contents[path] = sha(readFileSync(abs));
     } catch (error) {
-      // Unreadable is a state too — record it rather than silently skipping,
-      // so a file becoming unreadable during a run still shows up.
       contents[path] = `unreadable:${error.code || 'error'}`;
     }
   }
@@ -275,11 +287,14 @@ if (before.branch !== after.branch) {
 
 changed = reportList('working tree', before.status, after.status) || changed;
 
-// Content comparison, restricted to paths present in both status lists — a path
-// that appeared or vanished is already reported above, and repeating it adds
-// noise without adding information.
-const contentChanged = Object.keys(after.contents)
-  .filter((path) => before.contents[path] !== undefined)
+// Compare the UNION of both content maps, not just the paths still present in
+// `after`. Iterating `after` alone made the vanishing direction unreachable: a
+// path dropped from the map — because it stopped being a regular file — was
+// never visited, and its status line had not moved either. Over-reporting a
+// path already named above is the safe direction; under-reporting is the bug
+// this whole tool exists to prevent.
+const watchedPaths = new Set([...Object.keys(before.contents), ...Object.keys(after.contents)]);
+const contentChanged = [...watchedPaths]
   .filter((path) => before.contents[path] !== after.contents[path])
   .sort();
 if (contentChanged.length) {

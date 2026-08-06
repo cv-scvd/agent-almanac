@@ -14,7 +14,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -146,6 +146,60 @@ test('detects a stray write to an ALREADY-modified file', async (t) => {
   assert.equal(r.status, 1, 'a status-line-only comparison would pass here');
   assert.match(r.stderr, /contents changed/);
   assert.match(r.stderr, /src\/a\.txt/);
+});
+
+test('detects a stray write to a NON-ASCII path', async (t) => {
+  // `core.quotePath` C-quotes such paths with octal escapes, which the first
+  // implementation could not parse — it silently recorded no content for them.
+  // Verified live: a clobbered `i18n/ja/読み.md` reported "unchanged", exit 0.
+  // In a repo whose whole i18n tree is non-ASCII that is the common path.
+  const dir = makeRepo(t);
+  mkdirSync(join(dir, 'i18n', 'ja'), { recursive: true });
+  const cjk = join(dir, 'i18n', 'ja', '読み.md');
+  writeFileSync(cjk, 'original\n', 'utf8');
+  git(dir, ['add', '-A']);
+  git(dir, ['commit', '-m', 'add japanese skill']);
+  writeFileSync(cjk, 'my own edit\n', 'utf8');
+  guard(dir, ['snapshot']);
+
+  writeFileSync(cjk, 'CLOBBERED\n', 'utf8');
+
+  const r = guard(dir, ['verify']);
+
+  assert.equal(r.status, 1, 'a quoted-path parse failure would report unchanged');
+  assert.match(r.stderr, /contents changed/);
+});
+
+test('detects a same-LENGTH content substitution', async (t) => {
+  // Pins content at byte level, not size. Without this a refactor to a
+  // stat/size fingerprint would pass the whole suite while reinstating the
+  // original blind spot.
+  const dir = makeRepo(t);
+  writeFileSync(join(dir, 'src', 'a.txt'), 'AAAA\n', 'utf8');
+  guard(dir, ['snapshot']);
+
+  writeFileSync(join(dir, 'src', 'a.txt'), 'BBBB\n', 'utf8');
+
+  const r = guard(dir, ['verify']);
+
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /contents changed/);
+});
+
+test('detects a tracked file swapped for a symlink', async (t) => {
+  // The status line does not move, and the path stops being a regular file — so
+  // a comparison that iterates only the surviving content keys never visits it.
+  const dir = makeRepo(t);
+  writeFileSync(join(dir, 'src', 'a.txt'), 'work in progress\n', 'utf8');
+  guard(dir, ['snapshot']);
+
+  rmSync(join(dir, 'src', 'a.txt'));
+  symlinkSync('/etc/hostname', join(dir, 'src', 'a.txt'));
+
+  const r = guard(dir, ['verify']);
+
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /contents changed/);
 });
 
 test('detects a new file inside an already-untracked directory', async (t) => {
