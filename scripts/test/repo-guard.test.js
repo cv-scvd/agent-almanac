@@ -186,20 +186,47 @@ test('detects a same-LENGTH content substitution', async (t) => {
   assert.match(r.stderr, /contents changed/);
 });
 
-test('detects a tracked file swapped for a symlink', async (t) => {
-  // The status line does not move, and the path stops being a regular file — so
-  // a comparison that iterates only the surviving content keys never visits it.
+test('detects an untracked file swapped for a symlink to a DIRECTORY', async (t) => {
+  // The `(not-a-regular-file)` sentinel exists for exactly this. git does not
+  // descend into or dereference the symlink, so `?? notes.md` is byte-identical
+  // before and after; and the path stops being a regular file, so skipping it
+  // from the content map would leave nothing to compare. A symlink to a FILE
+  // does not exercise this — it still hashes, via the target.
   const dir = makeRepo(t);
-  writeFileSync(join(dir, 'src', 'a.txt'), 'work in progress\n', 'utf8');
+  writeFileSync(join(dir, 'notes.md'), 'my notes\n', 'utf8');
+  mkdirSync(join(dir, 'elsewhere'), { recursive: true });
   guard(dir, ['snapshot']);
 
-  rmSync(join(dir, 'src', 'a.txt'));
-  symlinkSync('/etc/hostname', join(dir, 'src', 'a.txt'));
+  const statusBefore = git(dir, ['status', '--porcelain']);
+  rmSync(join(dir, 'notes.md'));
+  symlinkSync(join(dir, 'elsewhere'), join(dir, 'notes.md'));
+  assert.equal(git(dir, ['status', '--porcelain']), statusBefore,
+    'precondition: the status line is unchanged');
 
   const r = guard(dir, ['verify']);
 
   assert.equal(r.status, 1);
   assert.match(r.stderr, /contents changed/);
+  assert.match(r.stderr, /notes\.md/);
+});
+
+test('detects an untracked file swapped for a DANGLING symlink', async (t) => {
+  // The `(absent)` sentinel. Same shape: git still reports `?? notes.md`, but
+  // the path no longer resolves to anything readable.
+  const dir = makeRepo(t);
+  writeFileSync(join(dir, 'notes.md'), 'my notes\n', 'utf8');
+  guard(dir, ['snapshot']);
+
+  const statusBefore = git(dir, ['status', '--porcelain']);
+  rmSync(join(dir, 'notes.md'));
+  symlinkSync(join(dir, 'no-such-target'), join(dir, 'notes.md'));
+  assert.equal(git(dir, ['status', '--porcelain']), statusBefore,
+    'precondition: the status line is unchanged');
+
+  const r = guard(dir, ['verify']);
+
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /notes\.md/);
 });
 
 test('detects a new file inside an already-untracked directory', async (t) => {
