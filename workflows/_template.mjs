@@ -62,6 +62,31 @@ const items =
 
 // A JSON Schema turns agent() into structured output: the subagent is forced to
 // call StructuredOutput and agent() returns the validated object (no parsing).
+// Prepend to the prompt of any agent that may run shell commands.
+//
+// Every agent inherits the repository as its working directory, and the
+// advisory/implementing contract constrains the agent TYPE a stage declares, not
+// what Bash does once the agent has it. In #493 a review subagent's fixture
+// landed in the corpus and was committed: two parallel agents had written the
+// same shared scratchpad filename, the second clobbered the first, and the
+// victim's `cd` into a directory that was never created failed WITHOUT stopping
+// the script — so every following relative path resolved against the repo.
+//
+// The prompt in that run already said "build fixtures under /tmp", and the agent
+// complied with it. These lines are mechanical instead: they remove the shared
+// path, make the failed `cd` fatal, and assert the target before anything
+// destructive. Bracket the whole run with `npm run guard:snapshot` /
+// `npm run guard:verify`, which is the only check that catches a stray COMMIT —
+// `git status` reads clean once a stray write has been committed.
+const REPO_SAFETY = `SAFETY — you are running inside a live git repository.
+Work only in a directory you created yourself with \`mktemp -d\`; never a shared
+or fixed path, because parallel agents pick the same obvious filename.
+- Write \`cd "$DIR" || exit 1\`. A bare \`cd\` that fails does not stop the script.
+- Before any \`git add\`, \`git commit\`, or a tool run with a write flag, assert:
+    [ "$(git rev-parse --show-toplevel)" = "$DIR" ] || exit 1
+- Never run \`git commit\`, \`git update-index\`, or \`git checkout --\` against the
+  repository itself, and never invoke a repo tool with a write flag there.`
+
 const FINDING_SCHEMA = {
   type: 'object',
   required: ['item', 'summary', 'confidence'],
@@ -98,8 +123,12 @@ const results = await pipeline(
   // that MUTATES artifacts (Write/Edit/Bash, or isolation: 'worktree') must
   // target an `implementing` agent type — the workflow analogue of the #285
   // team-assignment rule (advisory vs implementing capability contract).
+  //
+  // Prepend REPO_SAFETY to any prompt whose agent may run shell commands: the
+  // capability contract governs the agent type a stage DECLARES, not what a
+  // Bash-capable agent does to the working tree (#493).
   (item) =>
-    agent(`Examine "${item}" and report one finding.`, {
+    agent(`${REPO_SAFETY}\n\nExamine "${item}" and report one finding.`, {
       label: `scan:${item}`,
       phase: 'Scan',
       agentType: 'Explore', // advisory: Read/Grep/Glob/Bash, no Write/Edit — honors the contract above
