@@ -78,7 +78,7 @@ const items =
 // destructive. Bracket the whole run with `npm run guard:snapshot` /
 // `npm run guard:verify`, which is the only check that catches a stray COMMIT —
 // `git status` reads clean once a stray write has been committed.
-const REPO_SAFETY = `SAFETY — you are running inside a live git repository.
+export const REPO_SAFETY = `SAFETY — you are running inside a live git repository.
 Work only in a directory you created yourself with \`mktemp -d\`; never a shared
 or fixed path, because parallel agents pick the same obvious filename.
 - Write \`cd "$DIR" || exit 1\`. A bare \`cd\` that fails does not stop the script.
@@ -140,7 +140,10 @@ const results = await pipeline(
   // this is what kills the false-positive flood in naive multi-agent review.
   (finding, item) =>
     agent(
-      `Independently verify this finding about "${item}": ${finding?.summary}. ` +
+      // Every Bash-capable stage carries the preamble, not just the first —
+      // a verifier that reproduces a finding is exactly the agent most likely
+      // to build a fixture, which is how #493 happened.
+      `${REPO_SAFETY}\n\nIndependently verify this finding about "${item}": ${finding?.summary}. ` +
         `Default to confirmed=false unless you can reproduce it.`,
       { label: `verify:${item}`, phase: 'Verify', agentType: 'Explore', schema: VERDICT_SCHEMA },
     ).then((verdict) => ({ ...finding, verdict })),
