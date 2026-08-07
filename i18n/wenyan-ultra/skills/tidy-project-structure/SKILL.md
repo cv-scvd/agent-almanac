@@ -161,7 +161,7 @@ markdown-link-check README.md
 5. 更權年
 
 **README 模構**：
-```markdown
+````markdown
 # Project Name
 
 Brief description (1-2 sentences).
@@ -189,7 +189,7 @@ Link to CONTRIBUTING.md or inline guidelines.
 ## License
 
 LICENSE badge and link.
-```text
+````
 
 得：諸 README 更；例驗行
 

@@ -134,7 +134,7 @@ P0-Funktionen blockieren das Release. P1-Funktionen sollten eingeschlossen werde
 
 Definieren, wie Release Candidates erzeugt und getestet werden:
 
-```markdown
+````markdown
 ### Release Candidate Process
 
 1. **RC1 Tag**: Tag from the stabilization branch after all P0 features merged and CI green
@@ -162,7 +162,7 @@ Definieren, wie Release Candidates erzeugt und getestet werden:
    ```bash
    git tag -a v2.0.0-rc.2 -m "Release candidate 2 for v2.0.0"
    ```
-```text
+````
 
 **Erwartet:** RC-Prozess dokumentiert mit Tagging-Konvention, Verteilungsmethode, Test-Checkliste und Eskalationskriterien.
 

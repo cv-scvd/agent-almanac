@@ -94,7 +94,7 @@ Is it purely cosmetic? → LOW
 捕關境供專閱。
 
 **議報模**：
-```markdown
+````markdown
 # Issue: [Brief Title]
 
 **Severity**: CRITICAL | HIGH | MEDIUM | LOW
@@ -138,7 +138,7 @@ Clear description of the problem in 2-3 sentences.
 
 - [Link to related documentation]
 - [Link to similar past issues]
-```text
+````
 
 得：議以全境錄於 `ESCALATION_REPORTS/issue_YYYYMMDD_HHMM.md`。
 

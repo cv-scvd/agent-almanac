@@ -49,7 +49,7 @@ metadata:
 
 置 `CLAUDE.md` 於案根：
 
-```markdown
+````markdown
 # Project Name
 
 Brief description of what this project is and its purpose.
@@ -78,7 +78,7 @@ Key architectural decisions and patterns used in this project.
 - Always use descriptive variable names
 - Follow [language-specific style guide]
 - Write tests for all new functionality
-```text
+````
 
 得：`CLAUDE.md` 存於案根，至少含案述、速啟命、構覽、規節。
 

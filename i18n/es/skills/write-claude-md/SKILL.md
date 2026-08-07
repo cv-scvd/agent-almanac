@@ -49,7 +49,7 @@ Crea un archivo CLAUDE.md que proporcione a los asistentes de IA contexto efecti
 
 Colocar `CLAUDE.md` en la raíz del proyecto:
 
-```markdown
+````markdown
 # Nombre del Proyecto
 
 Breve descripción de qué es este proyecto y su propósito.
@@ -78,7 +78,7 @@ Decisiones arquitectónicas clave y patrones utilizados en este proyecto.
 - Usar siempre nombres de variables descriptivos
 - Seguir la [guía de estilo específica del lenguaje]
 - Escribir pruebas para toda nueva funcionalidad
-```text
+````
 
 **Esperado:** Existe un archivo `CLAUDE.md` en la raíz del proyecto con al menos una descripción del proyecto, comandos de inicio rápido, resumen de arquitectura y sección de convenciones.
 

@@ -94,7 +94,7 @@ If err: uncertain → default HIGH, escalate human re-triage.
 Capture context for specialist.
 
 **Report Template**:
-```markdown
+````markdown
 # Issue: [Brief Title]
 
 **Severity**: CRITICAL | HIGH | MEDIUM | LOW
@@ -138,7 +138,7 @@ Clear description of the problem in 2-3 sentences.
 
 - [Link to related documentation]
 - [Link to similar past issues]
-```text
+````
 
 → Documented w/ full context → `ESCALATION_REPORTS/issue_YYYYMMDD_HHMM.md`.
 

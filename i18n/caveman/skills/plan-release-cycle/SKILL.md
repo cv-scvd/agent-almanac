@@ -133,7 +133,7 @@ P0 features block release. P1 features included if ready. P2 features deferred w
 
 Define how release candidates produced and tested:
 
-```markdown
+````markdown
 ### Release Candidate Process
 
 1. **RC1 Tag**: Tag from the stabilization branch after all P0 features merged and CI green
@@ -161,7 +161,7 @@ Define how release candidates produced and tested:
    ```bash
    git tag -a v2.0.0-rc.2 -m "Release candidate 2 for v2.0.0"
    ```
-```text
+````
 
 **Got:** RC process documented with tagging convention, distribution method, testing checklist, escalation criteria.
 
