@@ -46,7 +46,7 @@ metadata:
 
 将 `CLAUDE.md` 放在项目根目录：
 
-```markdown
+````markdown
 # Project Name
 
 Brief description of what this project is and its purpose.
@@ -75,7 +75,7 @@ Key architectural decisions and patterns used in this project.
 - Always use descriptive variable names
 - Follow [language-specific style guide]
 - Write tests for all new functionality
-```text
+````
 
 **预期结果：** 项目根目录存在 `CLAUDE.md` 文件，至少包含项目描述、快速启动命令、架构概述和约定规范章节。
 
@@ -85,7 +85,7 @@ Key architectural decisions and patterns used in this project.
 
 **R 包项目**：
 
-```markdown
+````markdown
 ## Development Workflow
 
 ```r
@@ -107,7 +107,7 @@ devtools::check()       # Full package check
 - `.Rprofile` - Session configuration
 - `.Renviron` - Environment variables (git-ignored)
 - `renv.lock` - Locked dependencies
-```text
+````
 
 **Node.js/TypeScript 项目**：
 

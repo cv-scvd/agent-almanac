@@ -88,7 +88,7 @@ Wichtige Architekturentscheidungen und in diesem Projekt verwendete Muster.
 
 **Fuer R-Pakete**:
 
-```markdown
+````markdown
 ## Entwicklungsworkflow
 
 ```r
@@ -110,7 +110,7 @@ devtools::check()       # Vollstaendige Paketpruefung
 - `.Rprofile` - Sitzungskonfiguration
 - `.Renviron` - Umgebungsvariablen (per git ignoriert)
 - `renv.lock` - Gesperrte Abhaengigkeiten
-```text
+````
 
 **Fuer Node.js/TypeScript**:
 

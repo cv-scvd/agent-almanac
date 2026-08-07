@@ -88,7 +88,7 @@ Key architectural decisions and patterns used in this project.
 
 **R 包**：
 
-```markdown
+````markdown
 ## Development Workflow
 
 ```r
@@ -110,7 +110,7 @@ devtools::check()       # Full package check
 - `.Rprofile` - Session configuration
 - `.Renviron` - Environment variables (git-ignored)
 - `renv.lock` - Locked dependencies
-```text
+````
 
 **Node.js/TypeScript**：
 

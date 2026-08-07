@@ -103,22 +103,29 @@ Summarize and point to other vignettes or resources.
 
 Use chunk options for different purposes:
 
-```r
-# Standard evaluated chunk
-{r example-basic}
+````markdown
+Standard evaluated chunk:
+
+```{r example-basic}
 result <- compute_something(1:10)
 result
+```
 
-# Show code but don't run (for illustrative purposes)
-{r api-example, eval=FALSE}
+Show code but don't run, for illustrative purposes:
+
+```{r api-example, eval=FALSE}
 connect_to_api(key = "your_key_here")
+```
 
-# Run but hide code (show only output)
-{r hidden-setup, echo=FALSE}
+Run but hide the code, showing only output:
+
+```{r hidden-setup, echo=FALSE}
 library(packagename)
+```
 
-# Set global options
-{r setup, include=FALSE}
+Set global options, once, at the top of the document:
+
+```{r setup, include=FALSE}
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
@@ -126,6 +133,7 @@ knitr::opts_chunk$set(
   fig.height = 5
 )
 ```
+````
 
 **Expected:** A setup chunk with `include=FALSE` sets global options (`collapse`, `comment`, `fig.width`, `fig.height`). Chunks are configured appropriately: `eval=FALSE` for illustrative code, `echo=FALSE` for hidden setup, and standard chunks for interactive examples.
 

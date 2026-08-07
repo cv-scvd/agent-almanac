@@ -88,7 +88,7 @@ Decisiones arquitectónicas clave y patrones utilizados en este proyecto.
 
 **Para paquetes R**:
 
-```markdown
+````markdown
 ## Flujo de Trabajo de Desarrollo
 
 ```r
@@ -110,7 +110,7 @@ devtools::check()       # Verificación completa del paquete
 - `.Rprofile` - Configuración de sesión
 - `.Renviron` - Variables de entorno (ignorado por git)
 - `renv.lock` - Dependencias bloqueadas
-```text
+````
 
 **Para Node.js/TypeScript**:
 
