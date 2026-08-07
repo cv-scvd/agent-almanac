@@ -126,7 +126,7 @@ message Measurement {
   string sensor_id = 1;
   double value = 2;
   string unit = 3;
-  int64 timestamp_ms = 4;  // Unix-Millisekunden
+  int64 timestamp_ms = 4;  // Unix milliseconds
 }
 
 message MeasurementBatch {

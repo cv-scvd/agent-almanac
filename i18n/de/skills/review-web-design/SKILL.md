@@ -80,7 +80,7 @@ Visuelle Hierarchie fuehrt das Auge des Nutzers durch Inhalte nach Wichtigkeit.
 - [ ] **Schriftgroesse**: Basis-Schriftgroesse betraegt mindestens 16px fuer Fliesstext
 
 ```css
-/* Beispiel gut strukturierte Typoskala (Verhaeltnis 1,25) */
+/* Example well-structured type scale (1.25 ratio) */
 :root {
   --text-xs: 0.64rem;    /* 10.24px */
   --text-sm: 0.8rem;     /* 12.8px */

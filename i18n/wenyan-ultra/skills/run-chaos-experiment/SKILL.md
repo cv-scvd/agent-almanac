@@ -186,8 +186,13 @@ kubectl get events -n production --sort-by=.metadata.creationTimestamp | grep ap
 察影於 Grafana：
 
 ```promql
+# Error rate during experiment
 rate(http_requests_total{status=~"5..", job="api"}[1m])
+
+# Latency spike
 histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="api"}[1m]))
+
+# Pod restarts
 rate(kube_pod_container_status_restarts_total{pod=~"api-.*"}[5m])
 ```
 

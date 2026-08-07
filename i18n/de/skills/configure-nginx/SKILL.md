@@ -196,7 +196,7 @@ docker compose run --rm certbot certonly \
 
 ```nginx
 server {
-    # ... SSL-Konfiguration oben ...
+    # ... SSL config above ...
 
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
@@ -205,7 +205,7 @@ server {
     add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" always;
     add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';" always;
 
-    # Nginx-Version verbergen
+    # Hide Nginx version
     server_tokens off;
 }
 ```
@@ -214,7 +214,7 @@ server {
 
 ```nginx
 http {
-    # Rate-Limit-Zonen definieren
+    # Define rate limit zones
     limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
     limit_req_zone $binary_remote_addr zone=login:10m rate=1r/s;
 

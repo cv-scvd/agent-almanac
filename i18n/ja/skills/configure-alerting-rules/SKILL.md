@@ -193,7 +193,7 @@ curl -X POST http://localhost:9090/-/reload
 {{ end }}
 {{ end }}
 
-# ... (完全なメールとPagerDutyのテンプレートはEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete email and PagerDuty templates)
 ```
 
 **レシーバーでテンプレートを使用**：

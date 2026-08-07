@@ -80,7 +80,7 @@ La jerarquía visual guía el ojo del usuario a través del contenido en orden d
 - [ ] **Tamaño de fuente**: El tamaño base de fuente es al menos 16px para el texto del cuerpo
 
 ```css
-/* Ejemplo de escala tipográfica bien estructurada (ratio 1.25) */
+/* Example well-structured type scale (1.25 ratio) */
 :root {
   --text-xs: 0.64rem;    /* 10.24px */
   --text-sm: 0.8rem;     /* 12.8px */

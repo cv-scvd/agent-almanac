@@ -115,18 +115,23 @@ program
 
 ```javascript
 .action(async (name, options) => {
+  // 1. Get shared context (registries, adapters, paths)
   const ctx = getContext(options);
 
+  // 2. Resolve what to operate on
   const items = resolveItems(ctx, name, options);
   if (!items || items.length === 0) {
     reporter.error('Nothing found.');
     process.exit(1);
   }
 
+  // 3. Preview if dry-run
   if (options.dryRun) reporter.printDryRun();
 
+  // 4. Execute the operation
   const results = await executeOperation(items, ctx, options);
 
+  // 5. Output results (3 modes)
   if (options.json) {
     console.log(JSON.stringify(results, null, 2));
   } else if (options.quiet) {
@@ -187,6 +192,7 @@ if (options.quiet) {
   reporter.printResults(results);
   return;
 }
+// Default: human-readable output
 printHumanReadable(results, options);
 ```
 
@@ -231,11 +237,13 @@ if (options.json) {
 ### 六：理誤與邊例
 
 ```javascript
+// Unknown item
 if (!item) {
   reporter.error(`Unknown: ${name}. Use 'tool list' to browse.`);
   process.exit(1);
 }
 
+// Confirmation for destructive actions
 if (!options.yes && !options.quiet && !options.dryRun) {
   const answer = await askYesNo('Proceed?');
   if (!answer) {
@@ -244,6 +252,7 @@ if (!options.yes && !options.quiet && !options.dryRun) {
   }
 }
 
+// State validation
 if (!state.fires[name]) {
   reporter.error(`Not active. Nothing to remove.`);
   process.exit(1);
@@ -273,7 +282,7 @@ function run(args) {
 }
 
 describe('new-command', () => {
-  after(() => { });
+  after(() => { /* cleanup created files/state */ });
 
   it('dry-run shows preview', () => {
     const out = run('new-command arg --dry-run');

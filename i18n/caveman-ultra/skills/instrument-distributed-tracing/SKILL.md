@@ -171,7 +171,7 @@ import (
     "context"
     "github.com/gin-gonic/gin"
     "go.opentelemetry.io/otel"
-# ... (see EXAMPLES.md)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **Node.js w/ Express**:
@@ -190,7 +190,7 @@ const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc')
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { Resource } = require('@opentelemetry/resources');
 const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
-# ... (see EXAMPLES.md)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 → Traces from svcs appear in Jaeger UI / Grafana. HTTP req → spans auto.
@@ -227,7 +227,7 @@ import (
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/codes"
     "go.opentelemetry.io/otel/trace"
-# ... (see EXAMPLES.md)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **Span attrs best practice**:
@@ -269,7 +269,7 @@ import (
     "go.opentelemetry.io/otel/propagation"
 )
 
-# ... (see EXAMPLES.md)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **Msg queue propagation** (Kafka):

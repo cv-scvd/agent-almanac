@@ -78,7 +78,7 @@ metadata:
 - [ ] **字号**：正文文本基础字号至少为 16px
 
 ```css
-/* 示例良好结构的字号比例（1.25 比率） */
+/* Example well-structured type scale (1.25 ratio) */
 :root {
   --text-xs: 0.64rem;    /* 10.24px */
   --text-sm: 0.8rem;     /* 12.8px */
