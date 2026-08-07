@@ -263,7 +263,7 @@ Real-time operational view for on-call engineers monitoring the API service.
   "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
   "targets": [
     {
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **ヒートマップパネル**（レイテンシ分布）：
@@ -275,7 +275,7 @@ Real-time operational view for on-call engineers monitoring the API service.
   "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
   "targets": [
     {
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 パネル選択ガイド：
@@ -307,7 +307,7 @@ Real-time operational view for on-call engineers monitoring the API service.
       "type": "row",
       "title": "High-Level Metrics",
       "collapsed": false,
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 レイアウトのベストプラクティス：
@@ -338,7 +338,7 @@ JSONのダッシュボードレベルのリンク：
       "title": "Service Details",
       "type": "link",
       "icon": "external link",
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 パネルレベルのデータリンク：
@@ -350,7 +350,7 @@ JSONのダッシュボードレベルのリンク：
       "links": [
         {
           "title": "View Logs for ${__field.labels.instance}",
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 リンク変数：
@@ -386,7 +386,7 @@ datasources:
   - name: Prometheus
     type: prometheus
     access: proxy
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 ダッシュボードのプロビジョニング（`/etc/grafana/provisioning/dashboards/default.yml`）：

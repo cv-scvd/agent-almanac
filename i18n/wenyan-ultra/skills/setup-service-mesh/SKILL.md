@@ -79,6 +79,7 @@ spec:
     pilot:
       k8s:
         resources: { requests: { cpu: 500m, memory: 2Gi } }
+# See EXAMPLES.md Step 1 for complete configuration
 ```
 
 得：控面 pod 行於 istio-system 或 linkerd 名空。`istioctl version` 或 `linkerd version` 示客服合本。
@@ -116,6 +117,7 @@ spec:
       containers:
       - name: app
         image: nginx:alpine
+# See EXAMPLES.md Step 2 for complete test deployment
 ```
 
 施驗：
@@ -148,6 +150,7 @@ metadata:
 spec:
   mtls:
     mode: STRICT
+# See EXAMPLES.md Step 3 for per-namespace and permissive mode examples
 ```
 
 **Linkerd：**
@@ -187,6 +190,7 @@ spec:
     - destination: { host: api-service, subset: v1 }
       weight: 90
     retries: { attempts: 3, perTryTimeout: 2s }
+# See EXAMPLES.md Step 4 for complete routing, circuit breaker, and gateway configs
 ```
 
 **Linkerd 流分：**
@@ -247,6 +251,7 @@ spec:
   endpoints:
   - port: http-monitoring
     interval: 30s
+# See EXAMPLES.md Step 5 for Grafana dashboards and telemetry config
 ```
 
 達板：

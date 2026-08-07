@@ -70,27 +70,27 @@ global:
     cluster: 'production'
     region: 'us-east-1'
 
-# Alertmanager 配置
+# Alertmanager configuration
 alerting:
   alertmanagers:
     - static_configs:
         - targets:
             - localhost:9093
 
-# 加载记录规则和告警规则
+# Load recording and alerting rules
 rule_files:
   - "rules/*.yml"
 
-# 抓取配置
+# Scrape configurations
 scrape_configs:
-  # Prometheus 自监控
+  # Prometheus self-monitoring
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
         labels:
           env: 'production'
 
-  # 主机指标的 Node exporter
+  # Node exporter for host metrics
   - job_name: 'node'
     static_configs:
       - targets:
@@ -99,7 +99,7 @@ scrape_configs:
         labels:
           env: 'production'
 
-  # 基于文件的服务发现的应用指标
+  # Application metrics with file-based service discovery
   - job_name: 'app-services'
     file_sd_configs:
       - files:
@@ -130,20 +130,20 @@ scrape_configs:
     kubernetes_sd_configs:
       - role: pod
     relabel_configs:
-      # 仅抓取带有 prometheus.io/scrape 注解的 Pod
+      # Only scrape pods with prometheus.io/scrape annotation
       - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
         action: keep
         regex: true
-      # 如果指定了自定义端口，则使用该端口
+      # Use custom port if specified
       - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
         action: replace
         target_label: __address__
         regex: ([^:]+)(?::\d+)?;(\d+)
         replacement: $1:$2
-      # 将命名空间添加为标签
+      # Add namespace as label
       - source_labels: [__meta_kubernetes_namespace]
         target_label: kubernetes_namespace
-      # 将 Pod 名称添加为标签
+      # Add pod name as label
       - source_labels: [__meta_kubernetes_pod_name]
         target_label: kubernetes_pod_name
 ```
@@ -177,7 +177,7 @@ scrape_configs:
   - job_name: 'consul-services'
     consul_sd_configs:
       - server: 'consul.example.com:8500'
-        services: []  # 空列表表示发现所有服务
+        services: []  # Empty list means discover all services
     relabel_configs:
       - source_labels: [__meta_consul_service]
         target_label: job
@@ -204,14 +204,14 @@ groups:
   - name: api_aggregations
     interval: 30s
     rules:
-      # 计算每个端点的请求速率（5 分钟窗口）
+      # Calculate request rate per endpoint (5m window)
       - record: job:http_requests:rate5m
         expr: |
           sum by (job, endpoint, method) (
             rate(http_requests_total[5m])
           )
 
-      # 计算错误率百分比
+      # Calculate error rate percentage
       - record: job:http_errors:rate5m
         expr: |
           sum by (job) (
@@ -220,7 +220,7 @@ groups:
             rate(http_requests_total[5m])
           ) * 100
 
-      # 按端点统计 P95 延迟
+      # P95 latency by endpoint
       - record: job:http_request_duration_seconds:p95
         expr: |
           histogram_quantile(0.95,
@@ -232,21 +232,21 @@ groups:
   - name: resource_aggregations
     interval: 1m
     rules:
-      # 按实例统计 CPU 使用率
+      # CPU usage by instance
       - record: instance:cpu_usage:ratio
         expr: |
           1 - avg by (instance) (
             rate(node_cpu_seconds_total{mode="idle"}[5m])
           )
 
-      # 内存使用率百分比
+      # Memory usage percentage
       - record: instance:memory_usage:ratio
         expr: |
           1 - (
             node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes
           )
 
-      # 按挂载点统计磁盘使用率
+      # Disk usage by mount point
       - record: instance:disk_usage:ratio
         expr: |
           1 - (
@@ -356,11 +356,11 @@ scrape_configs:
     metrics_path: '/federate'
     params:
       'match[]':
-        # 仅聚合预计算的记录规则
+        # Aggregate only pre-computed recording rules
         - '{__name__=~"job:.*"}'
-        # 包含告警状态
+        # Include alert states
         - '{__name__=~"ALERTS.*"}'
-        # 包含关键基础设施指标
+        # Include critical infrastructure metrics
         - 'up{job=~".*"}'
     static_configs:
       - targets:
@@ -398,14 +398,14 @@ scrape_configs:
 使用 **Thanos** 或 **Cortex** 实现真正的高可用，或使用简单的负载均衡设置：
 
 ```yaml
-# prometheus-1.yml 和 prometheus-2.yml（配置相同）
+# prometheus-1.yml and prometheus-2.yml (identical configs)
 global:
   scrape_interval: 15s
   external_labels:
-    prometheus: 'prometheus-1'  # 每个实例不同
+    prometheus: 'prometheus-1'  # Different per instance
     replica: 'A'
 
-# 每个实例使用 --web.external-url 标志
+# Use --web.external-url flag for each instance
 # prometheus-1: --web.external-url=http://prometheus-1.example.com:9090
 # prometheus-2: --web.external-url=http://prometheus-2.example.com:9090
 ```

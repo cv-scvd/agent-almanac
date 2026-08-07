@@ -206,7 +206,7 @@ services:
 ```yaml
 services:
   app:
-    # startet immer
+    # always starts
     build: .
 
   mailhog:

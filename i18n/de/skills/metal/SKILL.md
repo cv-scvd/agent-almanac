@@ -210,39 +210,39 @@ Die agentskills.io-Standard-Ausgabedokumente produzieren.
 1. Fuer jeden extrahierten **Skill** eine Skelettdefinition schreiben:
 
 ```yaml
-# Skill: [generalisierter-name]
-name: [generalisierter-name]
-description: [einzeilig, framework-agnostisch]
-domain: [naechste Domaene aus den 52 bestehenden, oder neue vorschlagen]
+# Skill: [generalized-name]
+name: [generalized-name]
+description: [one-line, framework-agnostic]
+domain: [closest domain from the 52 existing domains, or suggest a new one]
 complexity: [basic/intermediate/advanced]
-# Prozedur auf Konzeptebene (3-5 Schritte, KEINE volle Implementierung):
-# Schritt 1: [uebergeordnete Aktion]
-# Schritt 2: [uebergeordnete Aktion]
-# Schritt 3: [uebergeordnete Aktion]
-# Abgeleitet von: [Quellkonzept im Originalprojekt]
+# Concept-level procedure (3-5 steps, NOT full implementation):
+# Step 1: [high-level action]
+# Step 2: [high-level action]
+# Step 3: [high-level action]
+# Derived from: [source concept in original project]
 ```
 
 2. Fuer jeden extrahierten **Agent** eine Skelettdefinition schreiben:
 
 ```yaml
-# Agent: [rollenname]
-name: [rollenname]
-description: [einzeiliger Zweck]
-tools: [minimaler Werkzeugsatz]
-skills: [Liste extrahierter Skills, die dieser Agent tragen wuerde]
-# Abgeleitet von: [Quellrolle/-modul im Originalprojekt]
+# Agent: [role-name]
+name: [role-name]
+description: [one-line purpose]
+tools: [minimal tool set needed]
+skills: [list of extracted skills this agent would carry]
+# Derived from: [source role/module in original project]
 ```
 
 3. Fuer jedes extrahierte **Team** eine Skelettdefinition schreiben:
 
 ```yaml
-# Team: [gruppenname]
-name: [gruppenname]
-description: [einzeiliger Zweck]
-lead: [fuehrender Agent aus extrahierten Agents]
-members: [Liste der Mitglieder-Agents]
+# Team: [group-name]
+name: [group-name]
+description: [one-line purpose]
+lead: [lead agent from extracted agents]
+members: [list of member agents]
 coordination: [hub-and-spoke/sequential/parallel/adaptive]
-# Abgeleitet von: [Quell-Workflow/-prozess im Originalprojekt]
+# Derived from: [source workflow/process in original project]
 ```
 
 4. Alle Extraktionen im **Assay-Bericht** zusammenstellen — ein einzelnes Dokument mit Abschnitten fuer Skills, Agents und Teams, plus einer Zusammenfassungstabelle

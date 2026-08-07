@@ -344,7 +344,7 @@ jobs:
                   "type": "header",
                   "text": {
                     "type": "plain_text",
-                    "text": "Deployment Status: ${{ steps.status.outputs.status }}"
+                    "text": "🚀 Deployment Status: ${{ steps.status.outputs.status }}"
                   }
                 },
                 {

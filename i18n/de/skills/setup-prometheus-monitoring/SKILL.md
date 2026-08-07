@@ -72,27 +72,27 @@ global:
     cluster: 'production'
     region: 'us-east-1'
 
-# Alertmanager-Konfiguration
+# Alertmanager configuration
 alerting:
   alertmanagers:
     - static_configs:
         - targets:
             - localhost:9093
 
-# Aufzeichnungs- und Alerting-Regeln laden
+# Load recording and alerting rules
 rule_files:
   - "rules/*.yml"
 
-# Scrape-Konfigurationen
+# Scrape configurations
 scrape_configs:
-  # Prometheus-Selbstmonitoring
+  # Prometheus self-monitoring
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
         labels:
           env: 'production'
 
-  # Node Exporter fuer Host-Metriken
+  # Node exporter for host metrics
   - job_name: 'node'
     static_configs:
       - targets:
@@ -101,7 +101,7 @@ scrape_configs:
         labels:
           env: 'production'
 
-  # Anwendungsmetriken mit dateibasierter Service Discovery
+  # Application metrics with file-based service discovery
   - job_name: 'app-services'
     file_sd_configs:
       - files:
@@ -132,20 +132,20 @@ Fuer **Kubernetes**-Umgebungen zu `scrape_configs` hinzufuegen:
     kubernetes_sd_configs:
       - role: pod
     relabel_configs:
-      # Nur Pods mit prometheus.io/scrape-Annotation scrapen
+      # Only scrape pods with prometheus.io/scrape annotation
       - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
         action: keep
         regex: true
-      # Benutzerdefinierten Port verwenden, falls angegeben
+      # Use custom port if specified
       - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
         action: replace
         target_label: __address__
         regex: ([^:]+)(?::\d+)?;(\d+)
         replacement: $1:$2
-      # Namespace als Label hinzufuegen
+      # Add namespace as label
       - source_labels: [__meta_kubernetes_namespace]
         target_label: kubernetes_namespace
-      # Pod-Name als Label hinzufuegen
+      # Add pod name as label
       - source_labels: [__meta_kubernetes_pod_name]
         target_label: kubernetes_pod_name
 ```
@@ -179,7 +179,7 @@ Fuer **Consul** Service Discovery:
   - job_name: 'consul-services'
     consul_sd_configs:
       - server: 'consul.example.com:8500'
-        services: []  # Leere Liste bedeutet alle Dienste entdecken
+        services: []  # Empty list means discover all services
     relabel_configs:
       - source_labels: [__meta_consul_service]
         target_label: job
@@ -206,14 +206,14 @@ groups:
   - name: api_aggregations
     interval: 30s
     rules:
-      # Anfragerate pro Endpunkt berechnen (5-Minuten-Fenster)
+      # Calculate request rate per endpoint (5m window)
       - record: job:http_requests:rate5m
         expr: |
           sum by (job, endpoint, method) (
             rate(http_requests_total[5m])
           )
 
-      # Fehlerrate in Prozent berechnen
+      # Calculate error rate percentage
       - record: job:http_errors:rate5m
         expr: |
           sum by (job) (
@@ -222,7 +222,7 @@ groups:
             rate(http_requests_total[5m])
           ) * 100
 
-      # P95-Latenz pro Endpunkt
+      # P95 latency by endpoint
       - record: job:http_request_duration_seconds:p95
         expr: |
           histogram_quantile(0.95,
@@ -234,21 +234,21 @@ groups:
   - name: resource_aggregations
     interval: 1m
     rules:
-      # CPU-Auslastung pro Instanz
+      # CPU usage by instance
       - record: instance:cpu_usage:ratio
         expr: |
           1 - avg by (instance) (
             rate(node_cpu_seconds_total{mode="idle"}[5m])
           )
 
-      # Speicherauslastung in Prozent
+      # Memory usage percentage
       - record: instance:memory_usage:ratio
         expr: |
           1 - (
             node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes
           )
 
-      # Festplattenauslastung pro Einhängepunkt
+      # Disk usage by mount point
       - record: instance:disk_usage:ratio
         expr: |
           1 - (
@@ -358,11 +358,11 @@ scrape_configs:
     metrics_path: '/federate'
     params:
       'match[]':
-        # Nur vorab berechnete Aufzeichnungsregeln aggregieren
+        # Aggregate only pre-computed recording rules
         - '{__name__=~"job:.*"}'
-        # Alert-Zustände einschliessen
+        # Include alert states
         - '{__name__=~"ALERTS.*"}'
-        # Kritische Infrastrukturmetriken einschliessen
+        # Include critical infrastructure metrics
         - 'up{job=~".*"}'
     static_configs:
       - targets:
@@ -400,14 +400,14 @@ Redundante Prometheus-Instanzen mit identischen Konfigurationen fuer Failover be
 **Thanos** oder **Cortex** fuer echte HA oder einfaches lastverteiltes Setup:
 
 ```yaml
-# prometheus-1.yml und prometheus-2.yml (identische Konfigurationen)
+# prometheus-1.yml and prometheus-2.yml (identical configs)
 global:
   scrape_interval: 15s
   external_labels:
-    prometheus: 'prometheus-1'  # Unterschiedlich pro Instanz
+    prometheus: 'prometheus-1'  # Different per instance
     replica: 'A'
 
-# --web.external-url-Flag fuer jede Instanz verwenden
+# Use --web.external-url flag for each instance
 # prometheus-1: --web.external-url=http://prometheus-1.example.com:9090
 # prometheus-2: --web.external-url=http://prometheus-2.example.com:9090
 ```

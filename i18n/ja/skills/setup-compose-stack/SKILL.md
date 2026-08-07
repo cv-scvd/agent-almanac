@@ -204,7 +204,7 @@ services:
 ```yaml
 services:
   app:
-    # 常に起動する
+    # always starts
     build: .
 
   mailhog:

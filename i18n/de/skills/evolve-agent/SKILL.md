@@ -273,7 +273,7 @@ Den neuen Agenten in `agents/_registry.yml` in alphabetischer Position hinzufueg
 ```yaml
   - id: <agent-name>-advanced
     path: agents/<agent-name>-advanced.md
-    description: Einzeilige Beschreibung der fortgeschrittenen Variante
+    description: One-line description of the advanced variant
     tags: [domain, specialty, advanced]
     priority: normal
     tools: [Read, Write, Edit, Bash, Grep, Glob]

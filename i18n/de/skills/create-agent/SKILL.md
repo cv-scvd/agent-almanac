@@ -136,7 +136,7 @@ Das YAML-Frontmatter ausfuellen:
 ```yaml
 ---
 name: agent-name
-description: Ein bis zwei Saetze zur primaeren Faehigkeit und Domain
+description: One to two sentences describing primary capability and domain
 tools: [Read, Write, Edit, Bash, Grep, Glob]
 model: sonnet
 version: "1.0.0"
@@ -149,9 +149,9 @@ max_context_tokens: 200000
 skills:
   - assigned-skill-one
   - assigned-skill-two
-# Hinweis: Alle Agenten erben Standard-Skills (meditate, heal) aus der Registry.
-# Diese nur hier aufführen, wenn sie Kern der Methodik dieses Agenten sind.
-# mcp_servers: []  # Bei Bedarf auskommentieren und befuellen
+# Note: All agents inherit default skills (meditate, heal) from the registry.
+# Only list them here if they are core to this agent's methodology.
+# mcp_servers: []  # Uncomment and populate if MCP servers are needed
 ---
 ```
 
@@ -248,7 +248,7 @@ Beschreibung eines anderen gaengigen Anwendungsfalls.
 ```yaml
   - id: agent-name
     path: agents/agent-name.md
-    description: Dieselbe einzeilige Beschreibung wie im Frontmatter
+    description: Same one-line description from frontmatter
     tags: [domain, specialty]
     priority: normal
     tools: [Read, Write, Edit, Bash, Grep, Glob]

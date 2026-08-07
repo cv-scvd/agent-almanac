@@ -169,11 +169,6 @@ Integrate model registration into CI/CD pipelines for automated promotion.
 ```yaml
 # .github/workflows/model_promotion.yml
 name: Model Promotion Pipeline
-locale: caveman-lite
-source_locale: en
-source_commit: 82c77053
-translator: "Julius Brussee homage — caveman"
-translation_date: "2026-04-26"
 
 on:
   workflow_dispatch:

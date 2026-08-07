@@ -76,6 +76,15 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: chaos-testing
+
+---
+# Label pods participating in chaos experiments
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    chaos-enabled: "true"
+    environment: staging  # NEVER production for first run
 ```
 
 設護：
@@ -139,7 +148,7 @@ metadata:
   namespace: chaos-testing
 spec:
   action: pod-kill
-  mode: one
+  mode: one  # Kill one pod only
   selector:
     namespaces:
       - production
@@ -147,6 +156,8 @@ spec:
       app: api-gateway
       chaos-enabled: "true"
   duration: "30s"
+  scheduler:
+    cron: "@every 5m"  # Repeat every 5 minutes (for sustained testing)
 ```
 
 施驗：
@@ -203,15 +214,24 @@ date,experiment,environment,status,error_rate_peak,recovery_time_s,outcome
 預驗常過後：
 
 ```yaml
+# Production pod-kill experiment (more conservative)
 apiVersion: chaos-mesh.org/v1alpha1
 kind: PodChaos
 metadata:
   name: api-pod-kill-prod
+  namespace: chaos-testing
 spec:
   action: pod-kill
-  duration: "10s"
+  mode: one
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: api-gateway
+      chaos-enabled: "true"
+  duration: "10s"  # Shorter than staging
   scheduler:
-    cron: "0 10 * * 2"
+    cron: "0 10 * * 2"  # Tuesdays at 10 AM only (predictable, low-risk time)
 ```
 
 產護：

@@ -176,17 +176,17 @@ Der CONFIG-Block zwischen `<!-- CONFIG:START -->` und `<!-- CONFIG:END -->` lief
       members:
         - agent: <agent-id>
           role: <role-title>
-          subagent_type: <agent-id>
-        # ... fuer jedes Mitglied wiederholen
+          subagent_type: <agent-id>  # Claude Code subagent type for spawning
+        # ... repeat for each member
       tasks:
         - name: <task-name>
           assignee: <agent-id>
-          description: <einzeilige Beschreibung>
-        # ... fuer jede Aufgabe wiederholen
-        - name: synthesize-report
+          description: <one-line description>
+        # ... repeat for each task
+        - name: synthesize-report  # final task if hub-and-spoke
           assignee: <lead-agent-id>
-          description: <Synthesebeschreibung>
-          blocked_by: [<prior-task-names>]
+          description: <synthesis description>
+          blocked_by: [<prior-task-names>]  # for dependency ordering
     ```
     <!-- CONFIG:END -->
 
@@ -206,7 +206,7 @@ Das Feld `subagent_type` ordnet Claude Code-Agententypen zu. Fuer Agenten in `.c
   lead: <lead-agent-id>
   members: [<agent-id-1>, <agent-id-2>, ...]
   coordination: <pattern>
-  description: <einzeilige Beschreibung, die dem Frontmatter entspricht>
+  description: <one-line description matching frontmatter>
 ```
 
 Den `total_teams`-Zaehler am Anfang der Registry aktualisieren.

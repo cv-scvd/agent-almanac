@@ -85,7 +85,7 @@ volumes:
 ```yaml
 services:
   r-dev:
-    # ... 上記と同様
+    # ... as above
     depends_on:
       - postgres
     environment:

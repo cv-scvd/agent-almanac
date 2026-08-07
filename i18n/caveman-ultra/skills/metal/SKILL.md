@@ -211,11 +211,6 @@ Produce agentskills.io standard outputs.
 ```yaml
 # Skill: [generalized-name]
 name: [generalized-name]
-locale: caveman-ultra
-source_locale: en
-source_commit: 82c77053
-translator: "Julius Brussee homage — caveman"
-translation_date: "2026-04-19"
 description: [one-line, framework-agnostic]
 domain: [closest domain from the 52 existing domains, or suggest a new one]
 complexity: [basic/intermediate/advanced]
@@ -231,11 +226,6 @@ complexity: [basic/intermediate/advanced]
 ```yaml
 # Agent: [role-name]
 name: [role-name]
-locale: caveman-ultra
-source_locale: en
-source_commit: 82c77053
-translator: "Julius Brussee homage — caveman"
-translation_date: "2026-04-19"
 description: [one-line purpose]
 tools: [minimal tool set needed]
 skills: [list of extracted skills this agent would carry]
@@ -247,11 +237,6 @@ skills: [list of extracted skills this agent would carry]
 ```yaml
 # Team: [group-name]
 name: [group-name]
-locale: caveman-ultra
-source_locale: en
-source_commit: 82c77053
-translator: "Julius Brussee homage — caveman"
-translation_date: "2026-04-19"
 description: [one-line purpose]
 lead: [lead agent from extracted agents]
 members: [list of member agents]

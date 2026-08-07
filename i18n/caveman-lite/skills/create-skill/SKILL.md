@@ -76,11 +76,6 @@ Naming conventions:
 ```yaml
 ---
 name: skill-name-here
-locale: caveman-lite
-source_locale: en
-source_commit: 82c77053
-translator: "Julius Brussee homage — caveman"
-translation_date: "2026-04-19"
 description: >
   One to three sentences plus key activation triggers. Must be clear
   enough for an agent to decide whether to activate this skill from

@@ -271,26 +271,25 @@ failures:
     expected: 500
     actual: 487
     severity: warning
-    note: "13 Zeilen entfernt — Filter-Logik untersuchen"
+    note: "13 rows dropped — investigate filter logic"
   - check: "score_range"
     expected: "[0, 100]"
     actual: "[-3, 100]"
     severity: error
-    note: "3 negative Werte gefunden — Dateneingabevalidierung fehlt"
+    note: "3 negative scores found — data validation missing"
   - check: "column_presence"
     expected: "grade"
     actual: null
     severity: error
-    note: "grade-Spalte fehlt in Ausgabe"
+    note: "grade column missing from output"
 passes:
   - check: "file_exists"
   - check: "checksum_stable"
   - check: "test_suite"
 recommendation: >
-  Mit aktivierter Eingabevalidierung neu ausfuehren. Die score_range- und
-  column_presence-Fehler deuten darauf hin, dass der Transformationsschritt
-  Grenzfaelle nicht behandelt. Ausgabe nicht flicken — Transformation korrigieren
-  und von Quelle neu ausfuehren.
+  Re-run with input validation enabled. The score_range and column_presence
+  failures suggest the transform step is not handling edge cases. Do not
+  patch the output — fix the transform and re-execute from source.
 ```
 
 Schluesselgrundsaetze fuer Uneinigkeitsberichte:

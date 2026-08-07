@@ -191,7 +191,7 @@ geom_puzzle_<type> <- function(mapping = NULL, data = NULL, ...) {
     default: 20
     min: 5
     max: 50
-  # タイプ固有のパラメータをここに追加
+  # Add type-specific params here
 ```
 
 **期待結果：** 設定が有効なYAMLである。デフォルト値が`generate_puzzle()`で使用されたとき動作するパズルを生成する。

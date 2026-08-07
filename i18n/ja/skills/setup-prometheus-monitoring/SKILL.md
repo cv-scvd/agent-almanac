@@ -70,27 +70,27 @@ global:
     cluster: 'production'
     region: 'us-east-1'
 
-# Alertmanagerの設定
+# Alertmanager configuration
 alerting:
   alertmanagers:
     - static_configs:
         - targets:
             - localhost:9093
 
-# 記録ルールとアラートルールの読み込み
+# Load recording and alerting rules
 rule_files:
   - "rules/*.yml"
 
-# スクレイプ設定
+# Scrape configurations
 scrape_configs:
-  # Prometheus自己モニタリング
+  # Prometheus self-monitoring
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
         labels:
           env: 'production'
 
-  # ホストメトリクス用ノードエクスポーター
+  # Node exporter for host metrics
   - job_name: 'node'
     static_configs:
       - targets:
@@ -99,7 +99,7 @@ scrape_configs:
         labels:
           env: 'production'
 
-  # ファイルベースのサービスディスカバリによるアプリメトリクス
+  # Application metrics with file-based service discovery
   - job_name: 'app-services'
     file_sd_configs:
       - files:
@@ -130,20 +130,20 @@ scrape_configs:
     kubernetes_sd_configs:
       - role: pod
     relabel_configs:
-      # prometheus.io/scrapeアノテーションがあるポッドのみスクレイプ
+      # Only scrape pods with prometheus.io/scrape annotation
       - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
         action: keep
         regex: true
-      # 指定されている場合はカスタムポートを使用
+      # Use custom port if specified
       - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
         action: replace
         target_label: __address__
         regex: ([^:]+)(?::\d+)?;(\d+)
         replacement: $1:$2
-      # ネームスペースをラベルとして追加
+      # Add namespace as label
       - source_labels: [__meta_kubernetes_namespace]
         target_label: kubernetes_namespace
-      # ポッド名をラベルとして追加
+      # Add pod name as label
       - source_labels: [__meta_kubernetes_pod_name]
         target_label: kubernetes_pod_name
 ```
@@ -177,7 +177,7 @@ scrape_configs:
   - job_name: 'consul-services'
     consul_sd_configs:
       - server: 'consul.example.com:8500'
-        services: []  # 空リストはすべてのサービスを対象にする
+        services: []  # Empty list means discover all services
     relabel_configs:
       - source_labels: [__meta_consul_service]
         target_label: job
@@ -204,14 +204,14 @@ groups:
   - name: api_aggregations
     interval: 30s
     rules:
-      # エンドポイントごとのリクエストレートを計算（5分ウィンドウ）
+      # Calculate request rate per endpoint (5m window)
       - record: job:http_requests:rate5m
         expr: |
           sum by (job, endpoint, method) (
             rate(http_requests_total[5m])
           )
 
-      # エラーレートの割合を計算
+      # Calculate error rate percentage
       - record: job:http_errors:rate5m
         expr: |
           sum by (job) (
@@ -220,7 +220,7 @@ groups:
             rate(http_requests_total[5m])
           ) * 100
 
-      # エンドポイントごとのP95レイテンシ
+      # P95 latency by endpoint
       - record: job:http_request_duration_seconds:p95
         expr: |
           histogram_quantile(0.95,
@@ -232,21 +232,21 @@ groups:
   - name: resource_aggregations
     interval: 1m
     rules:
-      # インスタンスごとのCPU使用率
+      # CPU usage by instance
       - record: instance:cpu_usage:ratio
         expr: |
           1 - avg by (instance) (
             rate(node_cpu_seconds_total{mode="idle"}[5m])
           )
 
-      # メモリ使用率
+      # Memory usage percentage
       - record: instance:memory_usage:ratio
         expr: |
           1 - (
             node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes
           )
 
-      # マウントポイントごとのディスク使用率
+      # Disk usage by mount point
       - record: instance:disk_usage:ratio
         expr: |
           1 - (
@@ -356,11 +356,11 @@ scrape_configs:
     metrics_path: '/federate'
     params:
       'match[]':
-        # 事前計算された記録ルールのみを集計
+        # Aggregate only pre-computed recording rules
         - '{__name__=~"job:.*"}'
-        # アラート状態を含める
+        # Include alert states
         - '{__name__=~"ALERTS.*"}'
-        # 重要なインフラメトリクスを含める
+        # Include critical infrastructure metrics
         - 'up{job=~".*"}'
     static_configs:
       - targets:
@@ -398,14 +398,14 @@ scrape_configs:
 **Thanos**または**Cortex**を使用した真のHA、または単純な負荷分散構成:
 
 ```yaml
-# prometheus-1.yml と prometheus-2.yml（同一設定）
+# prometheus-1.yml and prometheus-2.yml (identical configs)
 global:
   scrape_interval: 15s
   external_labels:
-    prometheus: 'prometheus-1'  # インスタンスごとに異なる
+    prometheus: 'prometheus-1'  # Different per instance
     replica: 'A'
 
-# 各インスタンスに --web.external-url フラグを使用
+# Use --web.external-url flag for each instance
 # prometheus-1: --web.external-url=http://prometheus-1.example.com:9090
 # prometheus-2: --web.external-url=http://prometheus-2.example.com:9090
 ```

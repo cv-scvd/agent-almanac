@@ -55,11 +55,6 @@ on:
     branches: [main, master]
 
 name: R-CMD-check
-locale: caveman-lite
-source_locale: en
-source_commit: 82c77053
-translator: "Julius Brussee homage — caveman"
-translation_date: "2026-04-19"
 
 permissions: read-all
 
@@ -121,11 +116,6 @@ on:
     branches: [main, master]
 
 name: test-coverage
-locale: caveman-lite
-source_locale: en
-source_commit: 82c77053
-translator: "Julius Brussee homage — caveman"
-translation_date: "2026-04-19"
 
 permissions: read-all
 
@@ -183,11 +173,6 @@ on:
   workflow_dispatch:
 
 name: pkgdown
-locale: caveman-lite
-source_locale: en
-source_commit: 82c77053
-translator: "Julius Brussee homage — caveman"
-translation_date: "2026-04-19"
 
 permissions:
   contents: write

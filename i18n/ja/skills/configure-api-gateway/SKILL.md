@@ -57,7 +57,7 @@ metadata:
 
 **KongとPostgreSQLの場合：**
 ```yaml
-# kong-deployment.yaml（抜粋 - 完全なファイルはEXAMPLES.mdを参照）
+# kong-deployment.yaml (excerpt - see EXAMPLES.md for complete file)
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -70,12 +70,12 @@ metadata:
   namespace: kong
 spec:
   replicas: 2
-  # ... (PostgreSQL、マイグレーション、サービス - EXAMPLES.mdを参照)
+  # ... (PostgreSQL, migrations, services - see EXAMPLES.md)
 ```
 
 **Traefikの場合：**
 ```yaml
-# traefik-deployment.yaml（抜粋 - 完全なファイルはEXAMPLES.mdを参照）
+# traefik-deployment.yaml (excerpt - see EXAMPLES.md for complete file)
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -88,7 +88,7 @@ metadata:
   namespace: traefik
 spec:
   replicas: 2
-  # ... (RBAC、ConfigMap、サービス - EXAMPLES.mdを参照)
+  # ... (RBAC, ConfigMap, services - see EXAMPLES.md)
 ```
 
 完全なデプロイマニフェストは[EXAMPLES.md](references/EXAMPLES.md#step-1-install-api-gateway)を参照
@@ -126,7 +126,7 @@ curl -i http://localhost:8001/routes  # ルートを確認
 
 **Traefikの場合（IngressRoute CRDを使用）：**
 ```yaml
-# traefik-routes.yaml（抜粋）
+# traefik-routes.yaml (excerpt)
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
@@ -135,7 +135,7 @@ spec:
   entryPoints: [websecure]
   routes:
   - match: Host(`api.example.com`) && PathPrefix(`/api/users`)
-    # ... (完全な設定はEXAMPLES.mdを参照)
+    # ... (see EXAMPLES.md for full configuration)
 ```
 
 ルートを適用：
@@ -160,7 +160,7 @@ APIセキュリティのための認証プラグイン/ミドルウェアを設�
 
 **Kongの場合（APIキーとJWT認証）：**
 ```yaml
-# kong-auth-config.yaml（抜粋）
+# kong-auth-config.yaml (excerpt)
 consumers:
 - username: mobile-app
   custom_id: app-001
@@ -172,7 +172,7 @@ keyauth_credentials:
 plugins:
 - name: key-auth
   service: user-api
-  # ... (完全な設定はEXAMPLES.mdを参照)
+  # ... (see EXAMPLES.md for full configuration)
 ```
 
 ```bash
@@ -182,7 +182,7 @@ curl -i -H "apikey: mobile-secret-key-123" http://GATEWAY_IP/api/users
 
 **Traefikの場合（BasicAuthとForwardAuthミドルウェア）：**
 ```yaml
-# traefik-auth-middleware.yaml（抜粋）
+# traefik-auth-middleware.yaml (excerpt)
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
@@ -191,7 +191,7 @@ spec:
   basicAuth:
     secret: basic-auth
     removeHeader: true
-# ... (OAuth2、レート制限はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for OAuth2, rate limiting)
 ```
 
 ```bash
@@ -215,7 +215,7 @@ curl -u user1:password https://GATEWAY_IP/api/protected
 
 **Kongの場合：**
 ```yaml
-# kong-transformations.yaml（抜粋）
+# kong-transformations.yaml (excerpt)
 plugins:
 - name: request-transformer
   service: user-api
@@ -225,7 +225,7 @@ plugins:
     remove:
       headers: [X-Internal-Token]
 - name: correlation-id
-  # ... (完全な設定はEXAMPLES.mdを参照)
+  # ... (see EXAMPLES.md for full configuration)
 ```
 
 ```bash
@@ -234,7 +234,7 @@ deck sync --kong-addr http://localhost:8001 -s kong-transformations.yaml
 
 **Traefikの場合：**
 ```yaml
-# traefik-transformations.yaml（抜粋）
+# traefik-transformations.yaml (excerpt)
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
@@ -243,7 +243,7 @@ spec:
   headers:
     customRequestHeaders:
       X-Gateway-Version: "1.0"
-    # ... (サーキットブレーカー、リトライ、チェーンはEXAMPLES.mdを参照)
+    # ... (see EXAMPLES.md for circuit breaker, retry, chain)
 ```
 
 ```bash
@@ -267,14 +267,14 @@ API可視性のためのメトリクス、ログ、ダッシュボードを設�
 
 **Kongのモニタリングセットアップ：**
 ```yaml
-# kong-monitoring.yaml（抜粋）
+# kong-monitoring.yaml (excerpt)
 plugins:
 - name: prometheus
   config:
     per_consumer: true
 - name: http-log
   service: user-api
-  # ... (Datadog、file-log設定はEXAMPLES.mdを参照)
+  # ... (see EXAMPLES.md for Datadog, file-log configuration)
 ```
 
 ```bash
@@ -287,7 +287,7 @@ curl http://localhost:8100/metrics
 
 **Traefikのモニタリング（組み込み）：**
 ```yaml
-# ServiceMonitor（抜粋 - GrafanaダッシュボードはEXAMPLES.mdを参照）
+# ServiceMonitor (excerpt - see EXAMPLES.md for Grafana dashboard)
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -320,7 +320,7 @@ kubectl port-forward -n traefik svc/traefik-dashboard 8080:8080
 
 **Kongのバージョニング戦略：**
 ```yaml
-# kong-versioning.yaml（抜粋）
+# kong-versioning.yaml (excerpt)
 services:
 - name: user-api-v1
   url: http://user-service-v1.default.svc.cluster.local:8080
@@ -334,12 +334,12 @@ services:
         headers:
         - X-Deprecation-Notice:"API v1 deprecated on 2024-12-31"
         - Sunset:"Wed, 31 Dec 2024 23:59:59 GMT"
-# ... (v2、デフォルトルーティング、レート制限はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for v2, default routing, rate limits)
 ```
 
 **Traefikのバージョニング：**
 ```yaml
-# traefik-versioning.yaml（抜粋）
+# traefik-versioning.yaml (excerpt)
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
@@ -348,7 +348,7 @@ spec:
   headers:
     customResponseHeaders:
       X-Deprecation-Notice: "API v1 deprecated on 2024-12-31"
-# ... (完全なIngressRoutesはEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete IngressRoutes)
 ```
 
 バージョニングをテスト：

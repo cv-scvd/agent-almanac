@@ -150,7 +150,7 @@ kind: ConstraintTemplate
 metadata:
   name: k8srequiredlabels
   annotations:
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **Kyverno ClusterPolicy：**
@@ -161,7 +161,7 @@ kind: ClusterPolicy
 metadata:
   name: require-labels
   annotations:
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 ポリシーを適用：
@@ -202,7 +202,7 @@ kind: Deployment
 metadata:
   name: test-no-labels
   namespace: production
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 ポリシーをテスト：
@@ -257,7 +257,7 @@ kind: Assign
 metadata:
   name: add-default-labels
 spec:
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **Kyvernoの変異ポリシー：**
@@ -268,7 +268,7 @@ kind: ClusterPolicy
 metadata:
   name: add-default-labels
 spec:
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 変異を適用してテスト：
@@ -325,7 +325,7 @@ kind: PrometheusRule
 metadata:
   name: policy-alerts
   namespace: monitoring
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **期待結果：** 監査がデプロイをブロックせずに既存リソースの違反を特定。合格/不合格の数でポリシーレポートが生成済み。違反がレビューのためにエクスポート可能。メトリクスがモニタリング用に公開。増加する違反でアラートが発火。
@@ -360,7 +360,7 @@ name: Policy Validation
 on:
   pull_request:
     paths:
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **プリコミットフック：**

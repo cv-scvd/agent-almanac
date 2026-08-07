@@ -196,7 +196,7 @@ slos:
     objective: 99.9
     description: |
       99.9% of requests return non-5xx status codes
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **時間ウィンドウの選択**：
@@ -274,7 +274,7 @@ labels:
   team: "platform"
   tier: "1"
 slos:
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **Prometheusルールを生成**：
@@ -296,7 +296,7 @@ groups:
     rules:
       # SLI: Ratio of good events
       - record: slo:sli_error:ratio_rate5m
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **生成されたアラート**：
@@ -308,7 +308,7 @@ groups:
       # Fast burn: 2% budget consumed in 1 hour
       - alert: UserAPIHighErrorRate
         expr: |
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **ルールをPrometheusに読み込む**：
@@ -346,7 +346,7 @@ GrafanaでSLOコンプライアンスとエラーバジェット消費を可視�
     "panels": [
       {
         "type": "stat",
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **可視化すべき主要メトリクス**：
@@ -389,7 +389,7 @@ slo:
   latency_p99: 200ms
   window: 30 days
 
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **ポリシー実施の自動化**：
