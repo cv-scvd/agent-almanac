@@ -172,19 +172,19 @@ services:
 ### Schritt 5: Bauen und Starten
 
 ```bash
-# Images bauen
+# Build images
 docker compose build
 
-# Dienste starten
+# Start services
 docker compose up -d
 
-# An R-Sitzung anhaengen
+# Attach to R session
 docker compose exec r-dev R
 
-# Logs anzeigen
+# View logs
 docker compose logs -f r-dev
 
-# Dienste stoppen
+# Stop services
 docker compose down
 ```
 

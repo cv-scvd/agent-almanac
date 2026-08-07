@@ -226,13 +226,13 @@ ggplot2::ggplot(day3_elevation, ggplot2::aes(x = dist_km, y = elev_m)) +
 Quartoドキュメントを最終出力形式にコンパイルする。
 
 ```bash
-# 自己完結型HTMLにレンダリング（オフライン使用に最適）
+# Render to self-contained HTML (best for offline use)
 quarto render tour-report.qmd --to html
 
-# PDFにレンダリング（印刷用）
+# Render to PDF (for printing)
 quarto render tour-report.qmd --to pdf
 
-# 編集中のライブリロード付きプレビュー
+# Preview with live reload during editing
 quarto preview tour-report.qmd
 ```
 

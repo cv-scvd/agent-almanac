@@ -253,16 +253,22 @@ services:
 ### 八：建行
 
 ```bash
+# Build all images
 docker compose build
 
+# Start in background
 docker compose up -d
 
+# View logs
 docker compose logs -f app
 
+# Check service status
 docker compose ps
 
+# Stop and remove
 docker compose down
 
+# Stop and remove volumes (full reset)
 docker compose down -v
 ```
 

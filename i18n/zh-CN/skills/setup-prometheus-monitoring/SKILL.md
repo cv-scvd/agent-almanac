@@ -48,11 +48,11 @@ metadata:
 使用全局设置和抓取间隔创建 Prometheus 基础配置。
 
 ```bash
-# 创建 Prometheus 目录结构
+# Create Prometheus directory structure
 mkdir -p /etc/prometheus/{rules,file_sd}
 mkdir -p /var/lib/prometheus
 
-# 下载 Prometheus（按需调整版本）
+# Download Prometheus (adjust version as needed)
 cd /tmp
 wget https://github.com/prometheus/prometheus/releases/download/v2.48.0/prometheus-2.48.0.linux-amd64.tar.gz
 tar xvf prometheus-2.48.0.linux-amd64.tar.gz
@@ -258,13 +258,13 @@ groups:
 验证并重新加载：
 
 ```bash
-# 验证规则语法
+# Validate rules syntax
 promtool check rules /etc/prometheus/rules/recording_rules.yml
 
-# 重新加载 Prometheus 配置（无需重启）
+# Reload Prometheus configuration (without restart)
 curl -X POST http://localhost:9090/-/reload
 
-# 或发送 SIGHUP 信号
+# Or send SIGHUP signal
 sudo killall -HUP prometheus
 ```
 

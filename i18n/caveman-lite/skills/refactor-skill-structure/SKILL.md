@@ -184,7 +184,7 @@ Run the `review-skill-format` checklist:
 
 ```bash
 # Quick section check
-for section in "## When to Use" "## Inputs" "## Procedure" "## Pitfalls" "## Related Skills"; do
+for section in "## When to Use" "## Inputs" "## Procedure" "## Common Pitfalls" "## Related Skills"; do
   grep -q "$section" skills/<skill-name>/SKILL.md && echo "$section: OK" || echo "$section: MISSING"
 done
 grep -qE "## Validation( Checklist)?" skills/<skill-name>/SKILL.md && echo "Validation: OK" || echo "Validation: MISSING"

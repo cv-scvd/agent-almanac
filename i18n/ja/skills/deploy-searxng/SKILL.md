@@ -205,16 +205,16 @@ pass_searxng_org = false
 ### ステップ6: デプロイと検証
 
 ```bash
-# スタックの起動
+# Start the stack
 docker compose up -d
 
-# ログの確認
+# Check logs
 docker compose logs -f searxng
 
-# 動作確認
+# Verify it's running
 curl -s http://localhost:8080 | head -5
 
-# 検索テスト
+# Test a search
 curl -s "http://localhost:8080/search?q=test&format=json" | head -20
 ```
 
@@ -253,13 +253,13 @@ volumes:
 ### ステップ8: 更新とメンテナンス
 
 ```bash
-# 最新イメージの取得
+# Pull latest image
 docker compose pull searxng
 
-# 新しいイメージで再起動
+# Restart with new image
 docker compose up -d
 
-# 設定のバックアップ
+# Backup configuration
 cp -r config/ config-backup-$(date +%Y%m%d)/
 ```
 

@@ -48,18 +48,18 @@ metadata:
 ハードコードされたシークレットを示すパターンを検索する:
 
 ```bash
-# APIキーとトークン
+# API keys and tokens
 grep -rn "sk-\|ghp_\|gho_\|github_pat_\|hf_\|AKIA" --include="*.{md,js,ts,py,R,json,yml,yaml}" .
 
-# 一般的なシークレットパターン
+# Generic secret patterns
 grep -rn "password\s*=\s*['\"]" --include="*.{js,ts,py,R,json}" .
 grep -rn "api[_-]key\s*[=:]\s*['\"]" --include="*.{js,ts,py,R,json}" .
 grep -rn "secret\s*[=:]\s*['\"]" --include="*.{js,ts,py,R,json}" .
 
-# 接続文字列
+# Connection strings
 grep -rn "postgresql://\|mysql://\|mongodb://" .
 
-# 秘密鍵
+# Private keys
 grep -rn "BEGIN.*PRIVATE KEY" .
 ```
 
@@ -72,10 +72,10 @@ grep -rn "BEGIN.*PRIVATE KEY" .
 機密ファイルが除外されていることを検証する:
 
 ```bash
-# これらがgit-ignoreされていることを確認
+# Check that these are git-ignored
 git check-ignore .env .Renviron credentials.json node_modules/
 
-# 追跡されている機密ファイルを探す
+# Look for tracked sensitive files
 git ls-files | grep -i "\.env\|\.renviron\|credentials\|secret"
 ```
 
@@ -116,7 +116,7 @@ renv::status()
 **SQLインジェクション**:
 
 ```bash
-# クエリ内の文字列連結を探す
+# Look for string concatenation in queries
 grep -rn "paste.*SELECT\|paste.*INSERT\|paste.*UPDATE\|paste.*DELETE" --include="*.R" .
 grep -rn "query.*\+.*\|query.*\$\{" --include="*.{js,ts}" .
 ```
@@ -126,14 +126,14 @@ grep -rn "query.*\+.*\|query.*\$\{" --include="*.{js,ts}" .
 **コマンドインジェクション**:
 
 ```bash
-# ユーザー入力を伴うシェル実行を探す
+# Look for shell execution with user input
 grep -rn "system\(.*paste\|exec(\|spawn(" --include="*.{R,js,ts,py}" .
 ```
 
 **XSS（クロスサイトスクリプティング）**:
 
 ```bash
-# HTML内のエスケープされていないユーザーコンテンツを探す
+# Look for unescaped user content in HTML
 grep -rn "innerHTML\|dangerouslySetInnerHTML\|v-html" --include="*.{js,ts,jsx,tsx,vue}" .
 ```
 
@@ -158,13 +158,13 @@ grep -rn "innerHTML\|dangerouslySetInnerHTML\|v-html" --include="*.{js,ts,jsx,ts
 ### ステップ6: 設定のセキュリティを確認する
 
 ```bash
-# 本番設定でのデバッグモード
+# Debug mode in production configs
 grep -rn "debug\s*[=:]\s*[Tt]rue\|DEBUG\s*=\s*1" --include="*.{json,yml,yaml,toml,cfg}" .
 
-# 許容的なCORS
+# Permissive CORS
 grep -rn "Access-Control-Allow-Origin.*\*\|cors.*origin.*\*" --include="*.{js,ts}" .
 
-# HTTPSではなくHTTP
+# HTTP instead of HTTPS
 grep -rn "http://" --include="*.{js,ts,py,R}" . | grep -v "localhost\|127.0.0.1\|http://"
 ```
 

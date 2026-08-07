@@ -70,9 +70,9 @@ ls -la <memory-dir>/
 使用 Grep 快速核查关键声明：
 
 ```bash
-# 示例：验证技能数量声明
+# Example: verify a skill count claim
 grep -c "^      - id:" skills/_registry.yml
-# 示例：验证文件是否仍然存在
+# Example: verify a file still exists
 ls path/claimed/in/memory.md
 ```
 
@@ -157,11 +157,11 @@ MEMORY.md 结构应遵循以下模式：
 
 ```bash
 wc -l <memory-dir>/MEMORY.md
-# 检查失效链接
+# Check for broken links
 for f in $(grep -oP '\[.*?\]\(\K[^)]+' <memory-dir>/MEMORY.md); do
   ls <memory-dir>/$f 2>/dev/null || echo "BROKEN: $f"
 done
-# 检查孤立文件
+# Check for orphan files
 ls <memory-dir>/*.md | grep -v MEMORY.md
 ```
 

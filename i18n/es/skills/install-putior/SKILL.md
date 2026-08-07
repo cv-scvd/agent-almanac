@@ -54,7 +54,7 @@ R.Version()$version.string
 ```
 
 ```bash
-# Desde WSL con R de Windows
+# From WSL with Windows R
 "/mnt/c/Program Files/R/R-4.5.2/bin/Rscript.exe" -e "cat(R.version.string)"
 ```
 

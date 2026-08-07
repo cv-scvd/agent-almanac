@@ -69,7 +69,7 @@ metadata:
 - 複数のレビュワーからの結果を一貫した成果物に合成できる
 
 ```bash
-# 利用可能なすべてのエージェントを一覧表示する
+# List all available agents
 grep "^  - id:" agents/_registry.yml
 ```
 
@@ -88,7 +88,7 @@ grep "^  - id:" agents/_registry.yml
 - **responsibilities**: このメンバーが他のメンバーが行わないことを説明する一文
 
 ```bash
-# 各候補エージェントが存在することを確認する
+# Verify each candidate agent exists
 grep "id: agent-name-here" agents/_registry.yml
 ```
 
@@ -210,7 +210,7 @@ cp teams/_template.md teams/<team-name>.md
 レジストリの先頭の `total_teams` カウントを更新する（現在8; 1つのチームを追加すると9になる）。
 
 ```bash
-# エントリが追加されたことを確認する
+# Verify the entry was added
 grep "id: <team-name>" teams/_registry.yml
 ```
 

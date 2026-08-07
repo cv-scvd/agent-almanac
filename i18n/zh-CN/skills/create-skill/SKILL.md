@@ -296,11 +296,11 @@ References underpinning the **skill-name** skill.
 提交前运行本地验证检查：
 
 ```bash
-# 检查行数（必须 ≤500）
+# Check line count (must be ≤500)
 lines=$(wc -l < skills/<skill-name>/SKILL.md)
 [ "$lines" -le 500 ] && echo "OK ($lines lines)" || echo "FAIL: $lines lines > 500"
 
-# 检查必需的前置元数据字段
+# Check required frontmatter fields
 head -20 skills/<skill-name>/SKILL.md | grep -q '^name:' && echo "name: OK"
 head -20 skills/<skill-name>/SKILL.md | grep -q '^description:' && echo "description: OK"
 ```
@@ -320,10 +320,10 @@ mkdir -p skills/<skill-name>/references/
 创建符号链接，使 Claude Code 将技能发现为 `/slash-command`：
 
 ```bash
-# 项目级（在此项目中可用）
+# Project-level (available in this project)
 ln -s ../../skills/<skill-name> .claude/skills/<skill-name>
 
-# 全局（在所有项目中可用）
+# Global (available in all projects)
 ln -s /mnt/d/dev/p/agent-almanac/skills/<skill-name> ~/.claude/skills/<skill-name>
 ```
 

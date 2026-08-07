@@ -74,9 +74,9 @@ Comparar las afirmaciones de la memoria frente al estado actual del proyecto. Pa
 Usar Grep para verificar afirmaciones clave:
 
 ```bash
-# Ejemplo: verificar una afirmación de recuento de habilidades
+# Example: verify a skill count claim
 grep -c "^      - id:" skills/_registry.yml
-# Ejemplo: verificar que un archivo aún existe
+# Example: verify a file still exists
 ls path/claimed/in/memory.md
 ```
 
@@ -161,11 +161,11 @@ Ejecutar una verificación final:
 
 ```bash
 wc -l <memory-dir>/MEMORY.md
-# Comprobar enlaces rotos
+# Check for broken links
 for f in $(grep -oP '\[.*?\]\(\K[^)]+' <memory-dir>/MEMORY.md); do
   ls <memory-dir>/$f 2>/dev/null || echo "BROKEN: $f"
 done
-# Comprobar archivos huérfanos
+# Check for orphan files
 ls <memory-dir>/*.md | grep -v MEMORY.md
 ```
 

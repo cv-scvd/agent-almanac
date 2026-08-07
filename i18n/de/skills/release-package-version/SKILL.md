@@ -66,14 +66,14 @@ Dies aktualisiert das `Version`-Feld in DESCRIPTION und fuegt eine Ueberschrift 
 
 **Erwartet:** DESCRIPTION-Version aktualisiert. NEWS.md hat einen neuen Abschnittstitel fuer die Veroeffentlichungsversion.
 
-**Bei Fehler:** Wenn `usethis::use_version()` nicht verfuegbar ist, manuell das `Version`-Feld in DESCRIPTION aktualisieren und eine `# paketname x.y.z`-Ueberschrift zu NEWS.md hinzufuegen.
+**Bei Fehler:** Wenn `usethis::use_version()` nicht verfuegbar ist, manuell das `Version`-Feld in DESCRIPTION aktualisieren und eine `# packagename x.y.z`-Ueberschrift zu NEWS.md hinzufuegen.
 
 ### Schritt 3: NEWS.md aktualisieren
 
 Die Veroeffentlichungsnotizen unter der neuen Versionsueuberschrift ausfuellen:
 
 ```markdown
-# paketname 0.2.0
+# packagename 0.2.0
 
 ## Neue Features
 - `neue_funktion()` zur Datenverarbeitung hinzugefuegt (#42)
@@ -110,7 +110,7 @@ urlchecker::url_check()
 
 ```bash
 git add DESCRIPTION NEWS.md
-git commit -m "Release paketname v0.2.0"
+git commit -m "Release packagename v0.2.0"
 ```
 
 **Erwartet:** Ein einzelner Commit der die Versionserhoehung in DESCRIPTION und die aktualisierte NEWS.md enthaelt.
@@ -132,7 +132,7 @@ git push origin main --tags
 
 ```bash
 gh release create v0.2.0 \
-  --title "paketname v0.2.0" \
+  --title "packagename v0.2.0" \
   --notes-file NEWS.md
 ```
 
@@ -158,13 +158,13 @@ Dies aendert die Version zu `0.2.0.9000` als Kennzeichnung fuer Entwicklung.
 
 ```bash
 git add DESCRIPTION NEWS.md
-git commit -m "Entwicklung fuer naechste Version beginnen"
+git commit -m "Begin development for next version"
 git push
 ```
 
 **Erwartet:** DESCRIPTION-Version ist jetzt `0.2.0.9000` (Entwicklungsversion). NEWS.md hat eine neue Ueberschrift fuer die Entwicklungsversion. Aenderungen sind zum Remote gepusht.
 
-**Bei Fehler:** Wenn `usethis::use_dev_version()` nicht verfuegbar ist, die Version manuell zu `x.y.z.9000` in DESCRIPTION aendern und eine `# paketname (Entwicklungsversion)`-Ueberschrift zu NEWS.md hinzufuegen.
+**Bei Fehler:** Wenn `usethis::use_dev_version()` nicht verfuegbar ist, die Version manuell zu `x.y.z.9000` in DESCRIPTION aendern und eine `# packagename (Entwicklungsversion)`-Ueberschrift zu NEWS.md hinzufuegen.
 
 ## Validierung
 

@@ -65,16 +65,16 @@ Leer el archivo de agente existente y evaluar cada sección frente a la lista de
 | See Also | Referencias cruzadas válidas a agentes, guías, equipos | Enlaces obsoletos a archivos renombrados o eliminados |
 
 ```bash
-# Leer el archivo del agente
+# Read the agent file
 cat agents/<agent-name>.md
 
-# Verificar que el frontmatter se analiza
+# Check frontmatter parses
 head -20 agents/<agent-name>.md
 
-# Verificar las habilidades en el frontmatter existen en el registro
+# Verify skills in frontmatter exist in registry
 grep "skills:" -A 20 agents/<agent-name>.md
 
-# Comprobar si algún equipo referencia este agente
+# Check if agent is referenced by any team
 grep -r "<agent-name>" teams/*.md
 ```
 
@@ -153,16 +153,16 @@ Seguir estas reglas de edición:
 #### Para Variantes
 
 ```bash
-# Copiar el original como punto de partida
+# Copy the original as a starting point
 cp agents/<agent-name>.md agents/<agent-name>-advanced.md
 
-# Editar la variante:
-# - Cambiar `name` a `<agent-name>-advanced`
-# - Actualizar `description` para reflejar el alcance avanzado
-# - Aumentar `model` si es necesario (p.ej., sonnet → opus)
-# - Restablecer `version` a "1.0.0"
-# - Expandir habilidades, capacidades y ejemplos para el caso de uso avanzado
-# - Referenciar el original en Ver También como alternativa más simple
+# Edit the variant:
+# - Change `name` to `<agent-name>-advanced`
+# - Update `description` to reflect the advanced scope
+# - Raise `model` if needed (e.g., sonnet → opus)
+# - Reset `version` to "1.0.0"
+# - Expand skills, capabilities, and examples for the advanced use case
+# - Reference the original in See Also as a simpler alternative
 ```
 
 **Esperado:** El archivo del agente (refinado o nueva variante) pasa la lista de verificación de evaluación del Paso 1.
@@ -176,7 +176,7 @@ cp agents/<agent-name>.md agents/<agent-name>-advanced.md
 Comprobar si existen traducciones para el agente evolucionado y actualizarlas para reflejar el nuevo estado de la fuente:
 
 ```bash
-# Comprobar las traducciones existentes
+# Check for existing translations
 ls i18n/*/agents/<agent-name>.md 2>/dev/null
 ```
 
@@ -250,7 +250,7 @@ También actualizar:
 Actualizar la entrada existente en `agents/_registry.yml` para que coincida con el frontmatter revisado:
 
 ```bash
-# Encontrar la entrada del registro del agente
+# Find the agent's registry entry
 grep -A 10 "id: <agent-name>" agents/_registry.yml
 ```
 
@@ -259,10 +259,10 @@ Actualizar los campos `description`, `tags`, `tools` y `skills` para que coincid
 Actualizar las referencias cruzadas en otros archivos si las capacidades o nombre del agente cambiaron:
 
 ```bash
-# Comprobar si algún equipo referencia este agente
+# Check if any team references this agent
 grep -r "<agent-name>" teams/*.md
 
-# Comprobar si alguna guía referencia este agente
+# Check if any guide references this agent
 grep -r "<agent-name>" guides/*.md
 ```
 
@@ -311,19 +311,19 @@ Ejecutar la lista de verificación de validación completa:
 - [ ] `git diff` no muestra eliminaciones accidentales del contenido original
 
 ```bash
-# Verificar frontmatter
+# Verify frontmatter
 head -20 agents/<agent-name>.md
 
-# Comprobar que las habilidades existen
+# Check skills exist
 for skill in skill-a skill-b; do
   grep "id: $skill" skills/_registry.yml
 done
 
-# Contar agentes en disco vs registro
+# Count agents on disk vs registry
 ls agents/*.md | grep -v template | wc -l
 grep total_agents agents/_registry.yml
 
-# Revisar todos los cambios
+# Review all changes
 git diff
 ```
 

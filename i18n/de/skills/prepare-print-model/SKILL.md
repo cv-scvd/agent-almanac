@@ -55,14 +55,14 @@ Das 3D-Modell in einem geeigneten Format fuer den Druck exportieren:
 
 **Fuer FDM/SLA**:
 ```bash
-# Bei Start aus CAD (Fusion 360, SolidWorks)
-# Exportieren als: STL (binaer) oder 3MF
-# Aufloesung: Hoch (Dreiecksanzahl ausreichend fuer Details)
-# Einheiten: mm (Massstab ueberpruefen)
+# If starting from CAD (Fusion 360, SolidWorks)
+# Export as: STL (binary) or 3MF
+# Resolution: High (triangle count sufficient for detail)
+# Units: mm (verify scale)
 
-# Beispiel-Exporteinstellungen:
-# STL: Binaerformat, Verfeinerung 0.1mm
-# 3MF: Farb-/Materialdaten einschliessen bei Multimaterial-Drucker
+# Example export settings:
+# STL: Binary format, refinement 0.1mm
+# 3MF: Include color/material data if using multi-material printer
 ```
 
 **Erwartet:** Modelldatei mit geeigneter Aufloesung exportiert (0.1mm Sehnentoleranz fuer mechanische Teile, 0.05mm fuer organische Formen).
@@ -74,17 +74,17 @@ Das 3D-Modell in einem geeigneten Format fuer den Druck exportieren:
 Pruefen ob das Netz mannigfaltig und druckbar ist:
 
 ```bash
-# Netzreparatur-Werkzeuge bei Bedarf installieren
+# Install mesh repair tools if needed
 # sudo apt install meshlab admesh
 
-# STL-Datei auf Fehler pruefen
+# Check STL file for errors
 admesh --check model.stl
 
-# Pruefen auf:
-# - Nicht-mannigfaltige Kanten: 0 (jede Kante verbindet genau 2 Flaechen)
-# - Loecher: 0
-# - Umgekehrte/invertierte Normalen: 0
-# - Degenerierte Facetten: 0
+# Look for:
+# - Non-manifold edges: 0 (every edge connects exactly 2 faces)
+# - Holes: 0
+# - Backwards/inverted normals: 0
+# - Degenerate facets: 0
 ```
 
 **Haeufige Probleme**:
@@ -98,7 +98,7 @@ admesh --check model.stl
 **Bei Fehler:** Netz automatisch oder manuell reparieren:
 
 ```bash
-# Automatische Reparatur mit admesh
+# Automatic repair with admesh
 admesh --write-binary-stl=model_fixed.stl \
        --exact \
        --nearby \
@@ -107,7 +107,7 @@ admesh --write-binary-stl=model_fixed.stl \
        --normal-directions \
        model.stl
 
-# Oder meshlab GUI fuer manuelle Inspektion/Reparatur
+# Or use meshlab GUI for manual inspection/repair
 meshlab model.stl
 # Filters → Cleaning and Repairing → Remove Duplicate Vertices
 # Filters → Cleaning and Repairing → Remove Duplicate Faces
@@ -131,14 +131,14 @@ Mindestwandstaerke fuer gewaehltes Verfahren verifizieren:
 | SLS (Nylon) | 0.7mm | 1.0mm | 2.0mm+ |
 
 ```bash
-# Wandstaerke visuell im Slicer pruefen:
-# - Modell importieren
-# - "Duennwaende"-Erkennung aktivieren
-# - Mit 0 Fuellung slicen um Wandstruktur zu sehen
+# Check wall thickness visually in slicer:
+# - Import model
+# - Enable "Thin walls" detection
+# - Slice with 0 infill to see wall structure
 
-# Fuer praezise Messung CAD-Software verwenden:
-# - Abstand zwischen parallelen Flaechen messen
-# - In kritischen lasttragenden Bereichen pruefen
+# For precise measurement, use CAD software:
+# - Measure distance between parallel surfaces
+# - Check in critical load-bearing areas
 ```
 
 **Erwartet:** Alle Waende erfuellen Mindeststärke fuer gewaehltes Verfahren. Duenne Waende zur Pruefung markiert.
@@ -212,7 +212,7 @@ Automatische oder manuelle Stuetzstrukturen fuer Ueberhaenge konfigurieren:
 - Etwas einfachere Entfernung
 
 ```bash
-# Im Slicer (PrusaSlicer Beispiel):
+# In slicer (PrusaSlicer example):
 # Print Settings → Support material
 # - Generate support material: Yes
 # - Overhang threshold: 45° (FDM) / 30° (SLA)
@@ -276,15 +276,15 @@ retract_speed: 150-180mm/min
 Gesliceten G-Code auf Probleme untersuchen:
 
 ```bash
-# Im Slicer:
-# - Modell slicen
-# - Schichtvorschau-Schieberegler zur Inspektion jeder Schicht verwenden
-# - Pruefen auf:
-#   * Luecken in Perimetern (zeigt duenne Waende an)
-#   * Schwebende Bereiche (fehlende Stuetzstrukturen)
-#   * Uebermassige Fadenzieh-Pfade (Fahrwege reduzieren)
-#   * Erste Schicht: korrekte Anpressung und Haftung
-#   * Obere Schichten: ausreichende Vollmaterial-Fuellung
+# In slicer:
+# - Slice model
+# - Use layer preview slider to inspect each layer
+# - Check for:
+#   * Gaps in perimeters (indicates thin walls)
+#   * Floating regions (missing supports)
+#   * Excessive stringing paths (reduce travel)
+#   * First layer: proper squish and adhesion
+#   * Top layers: sufficient solid infill
 ```
 
 **Warnsignale in der Vorschau**:
@@ -305,18 +305,18 @@ Gesliceten G-Code auf Probleme untersuchen:
 Gesliceten G-Code mit beschreibendem Namen speichern:
 
 ```bash
-# Namenskonvention:
-# <teilname>_<material>_<schichthoehe>_<profil>.gcode
-# Beispiel: halterung_petg_0.2mm_standard.gcode
+# Naming convention:
+# <part_name>_<material>_<layer_height>_<profile>.gcode
+# Example: bracket_petg_0.2mm_standard.gcode
 
-# G-Code verifizieren:
-grep "^;PRINT_TIME:" model.gcode  # Geschaetzte Zeit pruefen
-grep "^;Filament used:" model.gcode  # Materialverbrauch pruefen
-head -n 50 model.gcode | grep "^M104\|^M140"  # Temperaturen verifizieren
+# Verify G-code:
+grep "^;PRINT_TIME:" model.gcode  # Check estimated time
+grep "^;Filament used:" model.gcode  # Check material usage
+head -n 50 model.gcode | grep "^M104\|^M140"  # Verify temperatures
 
-# Erwartete Erstschicht-Temperaturen:
-# M140 S85  (Betttemperatur fuer PETG)
-# M104 S245 (Hotend-Temperatur fuer PETG)
+# Expected first layer temp:
+# M140 S85  (bed temp for PETG)
+# M104 S245 (hotend temp for PETG)
 ```
 
 **Vor-Druck-Checkliste**:

@@ -54,25 +54,25 @@ Diesen Skill verwenden wenn Projektreferenzen veraltet sind:
 Alle Markdown-Links finden die auf nicht existierende Dateien zeigen.
 
 ```bash
-# Alle Markdown-Dateien finden
+# Find all markdown files
 find . -name "*.md" -type f > markdown_files.txt
 
-# Alle Markdown-Links extrahieren: [Text](Pfad)
+# Extract all markdown links: [text](path)
 grep -oP '\[.*?\]\(\K[^)]+' *.md | sort | uniq > all_links.txt
 
-# Fuer jeden Link:
+# For each link:
 while read link; do
-  # Externe URLs ueberspringen (http/https)
+  # Skip external URLs (http/https)
   if [[ "$link" =~ ^https?:// ]]; then
     continue
   fi
 
-  # Relativen Pfad aufloesen
+  # Resolve relative path
   target=$(realpath -m "$link")
 
-  # Pruefen ob Ziel existiert
+  # Check if target exists
   if [ ! -e "$target" ]; then
-    echo "DEFEKT: $link (referenziert in $file)" >> broken_internal.txt
+    echo "BROKEN: $link (referenced in $file)" >> broken_internal.txt
   fi
 done < all_links.txt
 ```
@@ -86,18 +86,18 @@ done < all_links.txt
 Verifizieren dass externe Links noch erreichbar sind (HTTP 200 Antwort).
 
 ```bash
-# Externe URLs extrahieren
+# Extract external URLs
 grep -ohP 'https?://[^\s\)]+' *.md | sort | uniq > external_urls.txt
 
-# Jede URL pruefen (Ratelimit um Sperren zu vermeiden)
+# Check each URL (rate-limit to avoid bans)
 while read url; do
   status=$(curl -o /dev/null -s -w "%{http_code}" "$url")
 
   if [ "$status" -ge 400 ]; then
-    echo "TOT ($status): $url" >> dead_urls.txt
+    echo "DEAD ($status): $url" >> dead_urls.txt
   fi
 
-  sleep 0.5  # Ratelimit
+  sleep 0.5  # Rate limit
 done < external_urls.txt
 ```
 
@@ -113,18 +113,18 @@ Pruefen dass alle Import-/Require-Anweisungen auf existierende Module verweisen.
 
 **JavaScript/TypeScript**:
 ```bash
-# Alle Import-Anweisungen finden
+# Find all import statements
 grep -rh "^import.*from ['\"]" . | sed -E "s/.*from ['\"]([^'\"]+)['\"].*/\1/" > imports.txt
 
-# Fuer jeden Import:
+# For each import:
 while read import; do
-  # node_modules und externe Pakete ueberspringen
+  # Skip node_modules and external packages
   if [[ "$import" =~ ^[./] ]]; then
-    # Zu Dateipfad aufloesen
-    target="${import}.js"  # .js, .ts, .jsx, .tsx versuchen
+    # Resolve to file path
+    target="${import}.js"  # Try .js, .ts, .jsx, .tsx
 
     if [ ! -e "$target" ]; then
-      echo "DEFEKTER IMPORT: $import" >> broken_imports.txt
+      echo "BROKEN IMPORT: $import" >> broken_imports.txt
     fi
   fi
 done < imports.txt
@@ -132,23 +132,23 @@ done < imports.txt
 
 **Python**:
 ```bash
-# Alle Import-Anweisungen finden
+# Find all import statements
 grep -rh "^from .* import\|^import " . --include="*.py" | \
   sed -E "s/from ([^ ]+) import.*/\1/" | \
   sed -E "s/import ([^ ]+)/\1/" > imports.txt
 
-# Fuer jeden lokalen Import (beginnt mit .)
-# Pruefen ob Moduldatei existiert
+# For each local import (starts with .)
+# Check if module file exists
 ```
 
 **R**:
 ```bash
-# library()- und source()-Aufrufe finden
+# Find library() and source() calls
 grep -rh "library(\\|source(" . --include="*.R" | \
   sed -E 's/.*library\("([^"]+)"\).*/\1/' > packages.txt
 
-# Fuer source()-Aufrufe pruefen ob Datei existiert
-# Fuer library()-Aufrufe pruefen ob Paket installiert
+# For source() calls, check if file exists
+# For library() calls, check if package installed
 Rscript -e "installed.packages()[,'Package']" > installed_packages.txt
 ```
 
@@ -161,24 +161,24 @@ Rscript -e "installed.packages()[,'Package']" > installed_packages.txt
 Dateien identifizieren die existieren aber nirgends referenziert werden.
 
 ```bash
-# Alle Codedateien finden
+# Find all code files
 find . -type f \( -name "*.js" -o -name "*.py" -o -name "*.R" \) > all_files.txt
 
-# Fuer jede Datei:
+# For each file:
 while read file; do
   basename=$(basename "$file")
 
-  # Nach Referenzen suchen (Import, Require, Source, href, Link)
+  # Search for references (import, require, source, href, link)
   refs=$(grep -r "$basename" . --exclude-dir=node_modules --exclude-dir=.git | wc -l)
 
-  # Wenn nur 1 Referenz (sich selbst):
+  # If only 1 reference (itself):
   if [ "$refs" -le 1 ]; then
-    # Letztes Aenderungsdatum pruefen
+    # Check last modified date
     last_mod=$(git log -1 --format="%ci" "$file")
 
-    # Wenn laenger als orphan_threshold Tage nicht geaendert
-    # Als potenziell verwaist markieren
-    echo "VERWAIST: $file (letzte Aenderung: $last_mod)" >> orphans.txt
+    # If modified more than orphan_threshold days ago
+    # Flag as potential orphan
+    echo "ORPHAN: $file (last modified: $last_mod)" >> orphans.txt
   fi
 done < all_files.txt
 ```
@@ -195,35 +195,35 @@ Defekte interne Referenzen mit einer von drei Strategien reparieren:
 
 **Strategie 1: Verschobene Dateien finden**
 ```bash
-# Fuer jeden defekten Link nach Datei nach Name suchen
+# For each broken link, search for file by name
 while read broken_link; do
   filename=$(basename "$broken_link")
 
-  # Im Projekt nach Datei suchen
+  # Search for file in project
   found=$(find . -name "$filename" | head -1)
 
   if [ -n "$found" ]; then
-    # Link auf neuen Pfad aktualisieren
+    # Update link to new path
     old_path="$broken_link"
     new_path="$found"
 
-    # Edit-Tool zum Ersetzen in allen Markdown-Dateien verwenden
-    echo "KORREKTUR: $old_path -> $new_path"
+    # Use Edit tool to replace in all markdown files
+    echo "FIX: $old_path -> $new_path"
   fi
 done < broken_internal.txt
 ```
 
 **Strategie 2: Weiterleitungs-Stub erstellen**
 ```bash
-# Wenn Datei absichtlich geloescht wurde, Weiterleitungs-Stub erstellen
-echo "# Verschoben" > "$broken_link"
-echo "Dieser Inhalt wurde nach [neuer Ort](new_path.md) verschoben" >> "$broken_link"
+# If file was deleted intentionally, create redirect stub
+echo "# Moved" > "$broken_link"
+echo "This content moved to [new location](new_path.md)" >> "$broken_link"
 ```
 
 **Strategie 3: Toten Link entfernen**
 ```bash
-# Wenn Inhalt nicht mehr existiert, Link entfernen (Text beibehalten)
-# [Text](defekter_link) durch Text (Klartext) ersetzen
+# If content no longer exists, remove link (keep text)
+# Replace [text](broken_link) with text (plain)
 ```
 
 **Erwartet:** Alle defekten internen Links entweder repariert, weitergeleitet oder entfernt

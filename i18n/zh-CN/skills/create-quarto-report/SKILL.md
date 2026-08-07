@@ -170,11 +170,11 @@ Combined figure caption
 ```bash
 quarto render report.qmd
 
-# 指定格式
+# Specific format
 quarto render report.qmd --to pdf
 quarto render report.qmd --to docx
 
-# 带实时重载的预览
+# Preview with live reload
 quarto preview report.qmd
 ```
 

@@ -208,16 +208,16 @@ pass_searxng_org = false
 ### Schritt 6: Deployen und Ueberpruefen
 
 ```bash
-# Stack starten
+# Start the stack
 docker compose up -d
 
-# Logs pruefen
+# Check logs
 docker compose logs -f searxng
 
-# Pruefen, ob es laeuft
+# Verify it's running
 curl -s http://localhost:8080 | head -5
 
-# Suche testen
+# Test a search
 curl -s "http://localhost:8080/search?q=test&format=json" | head -20
 ```
 
@@ -256,13 +256,13 @@ Siehe den `configure-nginx`-Skill fuer die vollstaendige SSL-Nginx-Konfiguration
 ### Schritt 8: Updates und Wartung
 
 ```bash
-# Neuestes Image herunterladen
+# Pull latest image
 docker compose pull searxng
 
-# Mit neuem Image neu starten
+# Restart with new image
 docker compose up -d
 
-# Konfiguration sichern
+# Backup configuration
 cp -r config/ config-backup-$(date +%Y%m%d)/
 ```
 

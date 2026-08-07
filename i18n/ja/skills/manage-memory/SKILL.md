@@ -72,9 +72,9 @@ ls -la <memory-dir>/
 Grepを使って主要な主張を確認する:
 
 ```bash
-# 例: スキル数の主張を確認する
+# Example: verify a skill count claim
 grep -c "^      - id:" skills/_registry.yml
-# 例: ファイルがまだ存在するか確認する
+# Example: verify a file still exists
 ls path/claimed/in/memory.md
 ```
 
@@ -159,11 +159,11 @@ MEMORY.mdの構造はこのパターンに従う必要がある:
 
 ```bash
 wc -l <memory-dir>/MEMORY.md
-# 壊れたリンクを確認する
+# Check for broken links
 for f in $(grep -oP '\[.*?\]\(\K[^)]+' <memory-dir>/MEMORY.md); do
   ls <memory-dir>/$f 2>/dev/null || echo "BROKEN: $f"
 done
-# 孤立したファイルを確認する
+# Check for orphan files
 ls <memory-dir>/*.md | grep -v MEMORY.md
 ```
 

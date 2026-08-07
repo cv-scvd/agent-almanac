@@ -133,10 +133,10 @@ pkgdownワークフローについては`setup-github-actions-ci`スキルを参
 **方法B: 手動ブランチデプロイ**
 
 ```bash
-# サイトをビルド
+# Build site
 Rscript -e "pkgdown::build_site()"
 
-# gh-pagesブランチが存在しない場合は作成
+# Create gh-pages branch if it doesn't exist
 git checkout --orphan gh-pages
 git rm -rf .
 cp -r docs/* .
@@ -144,7 +144,7 @@ git add .
 git commit -m "Deploy pkgdown site"
 git push origin gh-pages
 
-# mainに戻る
+# Switch back to main
 git checkout main
 ```
 

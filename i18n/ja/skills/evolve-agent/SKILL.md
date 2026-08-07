@@ -64,16 +64,16 @@ metadata:
 | 参照 | エージェント、ガイド、チームへの有効なクロスリファレンス | 名前変更または削除されたファイルへの古いリンク |
 
 ```bash
-# エージェントファイルを読む
+# Read the agent file
 cat agents/<agent-name>.md
 
-# フロントマターの解析を確認する
+# Check frontmatter parses
 head -20 agents/<agent-name>.md
 
-# フロントマターのスキルがレジストリに存在するか確認する
+# Verify skills in frontmatter exist in registry
 grep "skills:" -A 20 agents/<agent-name>.md
 
-# エージェントがいずれかのチームによって参照されているか確認する
+# Check if agent is referenced by any team
 grep -r "<agent-name>" teams/*.md
 ```
 
@@ -152,16 +152,16 @@ grep -r "<agent-name>" teams/*.md
 #### バリアントの場合
 
 ```bash
-# 元のものを出発点としてコピーする
+# Copy the original as a starting point
 cp agents/<agent-name>.md agents/<agent-name>-advanced.md
 
-# バリアントを編集する:
-# - `name` を `<agent-name>-advanced` に変更
-# - `description` を上級スコープを反映するように更新
-# - 必要に応じて `model` を上げる（例: sonnet → opus）
-# - `version` を "1.0.0" にリセット
-# - 上級ユースケースのためにスキル、機能、例を拡張
-# - 元のエージェントを「参照」でよりシンプルな代替として参照
+# Edit the variant:
+# - Change `name` to `<agent-name>-advanced`
+# - Update `description` to reflect the advanced scope
+# - Raise `model` if needed (e.g., sonnet → opus)
+# - Reset `version` to "1.0.0"
+# - Expand skills, capabilities, and examples for the advanced use case
+# - Reference the original in See Also as a simpler alternative
 ```
 
 **期待結果：** エージェントファイル（改良または新しいバリアント）がステップ1の評価チェックリストをパスする。
@@ -175,7 +175,7 @@ cp agents/<agent-name>.md agents/<agent-name>-advanced.md
 進化したエージェントの翻訳が存在するかどうかを確認し、新しいソース状態を反映するように更新する:
 
 ```bash
-# 既存の翻訳を確認する
+# Check for existing translations
 ls i18n/*/agents/<agent-name>.md 2>/dev/null
 ```
 
@@ -249,7 +249,7 @@ npm run translation:status
 `agents/_registry.yml` の既存のエントリを改訂されたフロントマターに一致するように更新する:
 
 ```bash
-# エージェントのレジストリエントリを見つける
+# Find the agent's registry entry
 grep -A 10 "id: <agent-name>" agents/_registry.yml
 ```
 
@@ -258,10 +258,10 @@ grep -A 10 "id: <agent-name>" agents/_registry.yml
 エージェントの機能または名前が変わった場合、他のファイルのクロスリファレンスを更新する:
 
 ```bash
-# いずれかのチームがこのエージェントを参照しているか確認する
+# Check if any team references this agent
 grep -r "<agent-name>" teams/*.md
 
-# いずれかのガイドがこのエージェントを参照しているか確認する
+# Check if any guide references this agent
 grep -r "<agent-name>" guides/*.md
 ```
 
@@ -310,19 +310,19 @@ grep -r "<agent-name>" guides/*.md
 - [ ] `git diff` で元のコンテンツの偶発的な削除がないことを確認
 
 ```bash
-# フロントマターを確認する
+# Verify frontmatter
 head -20 agents/<agent-name>.md
 
-# スキルが存在するか確認する
+# Check skills exist
 for skill in skill-a skill-b; do
   grep "id: $skill" skills/_registry.yml
 done
 
-# ディスク上のエージェント数 vs レジストリ
+# Count agents on disk vs registry
 ls agents/*.md | grep -v template | wc -l
 grep total_agents agents/_registry.yml
 
-# すべての変更を確認する
+# Review all changes
 git diff
 ```
 

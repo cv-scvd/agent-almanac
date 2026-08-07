@@ -135,10 +135,10 @@ Ver la habilidad `setup-github-actions-ci` para el flujo de trabajo pkgdown.
 **Método B: Despliegue Manual por Rama**
 
 ```bash
-# Compilar el sitio
+# Build site
 Rscript -e "pkgdown::build_site()"
 
-# Crear la rama gh-pages si no existe
+# Create gh-pages branch if it doesn't exist
 git checkout --orphan gh-pages
 git rm -rf .
 cp -r docs/* .
@@ -146,7 +146,7 @@ git add .
 git commit -m "Deploy pkgdown site"
 git push origin gh-pages
 
-# Volver a main
+# Switch back to main
 git checkout main
 ```
 

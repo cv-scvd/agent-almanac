@@ -166,13 +166,13 @@ Fuer HTTP-Transport (wenn der MCP-Server dies unterstuetzt):
 ### Schritt 5: Verbindung ueberpruefen
 
 ```bash
-# Pruefen, ob Container laeuft
+# Check container is running
 docker ps | grep mcp-server
 
-# R-Sitzung im Container testen
+# Test R session inside container
 docker exec -it r-mcp-server R -e "sessionInfo()"
 
-# Pruefen, ob mcptools verfuegbar ist
+# Verify mcptools is available
 docker exec -it r-mcp-server R -e "library(mcptools)"
 ```
 

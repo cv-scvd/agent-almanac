@@ -192,11 +192,11 @@ Build mit: `docker build --build-arg APP_VERSION=1.2.3 .`
 ### Schritt 6: Image-Groessen vergleichen
 
 ```bash
-# Beide Varianten bauen
+# Build both variants
 docker build -t myapp:fat --target builder .
 docker build -t myapp:slim .
 
-# Groessen vergleichen
+# Compare sizes
 docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}" | grep myapp
 ```
 

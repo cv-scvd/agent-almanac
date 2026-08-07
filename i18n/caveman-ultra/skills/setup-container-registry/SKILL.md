@@ -76,11 +76,6 @@ docker push ghcr.io/USERNAME/myapp:v1.0.0
 # Configure in GitHub Actions
 cat > .github/workflows/docker-build.yml <<'EOF'
 name: Build and Push Docker Image
-locale: caveman-ultra
-source_locale: en
-source_commit: 82c77053
-translator: "Julius Brussee homage — caveman"
-translation_date: "2026-04-19"
 
 on:
   push:
@@ -175,11 +170,6 @@ docker push USERNAME/myapp:v1.0.0
 
 cat > .github/workflows/dockerhub.yml <<'EOF'
 name: Docker Hub Push
-locale: caveman-ultra
-source_locale: en
-source_commit: 82c77053
-translator: "Julius Brussee homage — caveman"
-translation_date: "2026-04-19"
 
 on:
   push:

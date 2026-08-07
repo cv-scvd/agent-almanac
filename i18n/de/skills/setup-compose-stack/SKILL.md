@@ -225,10 +225,10 @@ services:
 ```
 
 ```bash
-# Nur Kerndienste starten
+# Start core services only
 docker compose up
 
-# Mit Entwicklungstools starten
+# Start with dev tools
 docker compose --profile dev up
 ```
 
@@ -253,22 +253,22 @@ services:
 ### Schritt 8: Bauen und Starten
 
 ```bash
-# Alle Images bauen
+# Build all images
 docker compose build
 
-# Im Hintergrund starten
+# Start in background
 docker compose up -d
 
-# Logs anzeigen
+# View logs
 docker compose logs -f app
 
-# Dienststatus pruefen
+# Check service status
 docker compose ps
 
-# Stoppen und entfernen
+# Stop and remove
 docker compose down
 
-# Stoppen und Volumes entfernen (vollstaendiger Reset)
+# Stop and remove volumes (full reset)
 docker compose down -v
 ```
 

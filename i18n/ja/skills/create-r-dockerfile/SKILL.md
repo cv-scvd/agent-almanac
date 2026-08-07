@@ -184,13 +184,13 @@ CMD ["Rscript", "main.R"]
 ## 例
 
 ```bash
-# ソースをマウントした開発コンテナ
+# Development container with mounted source
 docker run --rm -it -v $(pwd):/workspace r-project:latest R
 
-# Plumber APIサービス
+# Plumber API service
 docker run -d -p 8000:8000 r-api:latest
 
-# Shinyアプリ
+# Shiny app
 docker run -d -p 3838:3838 r-shiny:latest
 ```
 

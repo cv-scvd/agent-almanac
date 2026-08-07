@@ -122,22 +122,22 @@ evidence:
 生成证据的实用命令：
 
 ```bash
-# 校验和
+# Checksums
 sha256sum output/data.csv output/report.html > evidence/checksums.txt
 
-# 行数统计
+# Row counts
 wc -l < input/raw.csv > evidence/input_rows.txt
 wc -l < output/data.csv > evidence/output_rows.txt
 
-# 测试结果（R）
+# Test results (R)
 Rscript -e "results <- testthat::test_dir('tests'); cat(format(results))" > evidence/test_results.txt
 
-# Git diff 摘要
+# Git diff summary
 git diff --stat HEAD~1 > evidence/diff_summary.txt
 
-# 计时（包裹实际命令）
+# Timing (wrap the actual command)
 start_time=$(date +%s)
-# ... 做工作 ...
+# ... do the work ...
 end_time=$(date +%s)
 echo "duration_seconds: $((end_time - start_time))" > evidence/timing.txt
 ```
@@ -153,31 +153,31 @@ echo "duration_seconds: $((end_time - start_time))" > evidence/timing.txt
 按类别的验证检查：
 
 ```bash
-# 存在性
+# Existence
 for file in output/report.html output/data.csv; do
   test -f "$file" && echo "PASS: $file exists" || echo "FAIL: $file missing"
 done
 
-# 形状（CSV 列检查）
+# Shape (CSV column check)
 head -1 output/data.csv | tr ',' '\n' | sort > /tmp/actual_cols.txt
 echo -e "grade\nid\nname\nscore" > /tmp/expected_cols.txt
 diff /tmp/expected_cols.txt /tmp/actual_cols.txt && echo "PASS: columns match" || echo "FAIL: column mismatch"
 
-# 行数
+# Row count
 actual_rows=$(wc -l < output/data.csv)
 [ "$actual_rows" -ge 101 ] && echo "PASS: $actual_rows rows (>= 100 + header)" || echo "FAIL: only $actual_rows rows"
 
-# 内容范围检查（R）
+# Content range check (R)
 Rscript -e '
   d <- read.csv("output/data.csv")
   stopifnot(all(d$score >= 0 & d$score <= 100))
   cat("PASS: all scores in [0, 100]\n")
 '
 
-# 行为
+# Behavior
 Rscript -e "testthat::test_dir('tests')" && echo "PASS: tests pass" || echo "FAIL: tests fail"
 
-# 一致性（行数保留）
+# Consistency (row count preserved)
 input_rows=$(wc -l < input/raw.csv)
 output_rows=$(wc -l < output/data.csv)
 [ "$input_rows" -eq "$output_rows" ] && echo "PASS: row count preserved" || echo "FAIL: $input_rows -> $output_rows"
@@ -198,18 +198,18 @@ output_rows=$(wc -l < output/data.csv)
 3. 检查捏造内容——输出中没有来源的项目
 
 ```bash
-# 示例：针对源数据验证摘要报告
+# Example: verify a summary report against source data
 
-# 1. 从源中选取随机行
+# 1. Select random rows from source
 shuf -n 5 input/raw.csv > /tmp/sample.csv
 
-# 2. 对每个抽样行，验证它是否在输出中正确显示
+# 2. For each sampled row, verify it appears correctly in the output
 while IFS=, read -r id name score grade; do
   grep -q "$id" output/report.html && echo "PASS: $id found in report" || echo "FAIL: $id missing from report"
 done < /tmp/sample.csv
 
-# 3. 检查输出中是否有捏造的 ID
-# 从输出中提取 ID，验证每个 ID 是否存在于源中
+# 3. Check for fabricated IDs in the output
+# Extract IDs from output, verify each exists in source
 grep -oP 'id="[^"]*"' output/report.html | while read -r output_id; do
   grep -q "$output_id" input/raw.csv && echo "PASS: $output_id has source" || echo "FAIL: $output_id fabricated"
 done

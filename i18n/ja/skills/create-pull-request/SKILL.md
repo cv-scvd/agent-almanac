@@ -49,13 +49,13 @@ metadata:
 ブランチがベースブランチと同期しており、すべての変更がコミットされていることを確認する:
 
 ```bash
-# コミットされていない変更を確認
+# Check for uncommitted changes
 git status
 
-# リモートから最新を取得
+# Fetch latest from remote
 git fetch origin
 
-# 最新のmainにリベース（またはマージ）
+# Rebase on latest main (or merge)
 git rebase origin/main
 ```
 
@@ -68,13 +68,13 @@ git rebase origin/main
 PRに含まれる差分全体とコミット履歴を確認する:
 
 ```bash
-# このブランチのコミット（mainにないもの）を表示
+# See all commits on this branch (not on main)
 git log origin/main..HEAD --oneline
 
-# mainとの差分全体を表示
+# See the full diff against main
 git diff origin/main...HEAD
 
-# ブランチがリモートを追跡しプッシュ済みか確認
+# Check if branch tracks remote and is pushed
 git status -sb
 ```
 
@@ -85,7 +85,7 @@ git status -sb
 ### ステップ3: ブランチをプッシュする
 
 ```bash
-# ブランチをリモートにプッシュ（上流トラッキングを設定）
+# Push branch to remote (set upstream tracking)
 git push -u origin HEAD
 ```
 
@@ -129,13 +129,13 @@ gh pr create --title "WIP: Add authentication" --body "..." --draft
 レビューコメントに回答し、更新をプッシュする:
 
 ```bash
-# PRコメントを表示
+# View PR comments
 gh api repos/{owner}/{repo}/pulls/{number}/comments
 
-# PRのレビュー状態を確認
+# View PR review status
 gh pr checks
 
-# 変更を加えた後、コミットしてプッシュ
+# After making changes, commit and push
 git add <files>
 git commit -m "$(cat <<'EOF'
 fix: address review feedback on input validation
@@ -154,13 +154,13 @@ git push
 承認後:
 
 ```bash
-# PRをマージ（スカッシュマージで履歴をクリーンに保つ）
+# Merge the PR (squash merge keeps history clean)
 gh pr merge --squash --delete-branch
 
-# または全コミットを保持してマージ
+# Or merge with all commits preserved
 gh pr merge --merge --delete-branch
 
-# またはリベースマージ（リニア履歴）
+# Or rebase merge (linear history)
 gh pr merge --rebase --delete-branch
 ```
 

@@ -298,11 +298,11 @@ References underpinning the **skill-name** skill.
 コミット前にローカル検証チェックを実行する:
 
 ```bash
-# 行数を確認する（≤500でなければならない）
+# Check line count (must be ≤500)
 lines=$(wc -l < skills/<skill-name>/SKILL.md)
 [ "$lines" -le 500 ] && echo "OK ($lines lines)" || echo "FAIL: $lines lines > 500"
 
-# 必須フロントマターフィールドを確認する
+# Check required frontmatter fields
 head -20 skills/<skill-name>/SKILL.md | grep -q '^name:' && echo "name: OK"
 head -20 skills/<skill-name>/SKILL.md | grep -q '^description:' && echo "description: OK"
 ```
@@ -322,10 +322,10 @@ mkdir -p skills/<skill-name>/references/
 Claude Codeがスキルを `/slash-command` として発見できるようにシンリンクを作成する:
 
 ```bash
-# プロジェクトレベル（このプロジェクトで利用可能）
+# Project-level (available in this project)
 ln -s ../../skills/<skill-name> .claude/skills/<skill-name>
 
-# グローバル（すべてのプロジェクトで利用可能）
+# Global (available in all projects)
 ln -s /mnt/d/dev/p/agent-almanac/skills/<skill-name> ~/.claude/skills/<skill-name>
 ```
 

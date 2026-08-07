@@ -50,18 +50,18 @@ Realizar una revisión de seguridad sistemática del código para identificar vu
 Buscar patrones que indiquen secretos codificados directamente:
 
 ```bash
-# Claves de API y tokens
+# API keys and tokens
 grep -rn "sk-\|ghp_\|gho_\|github_pat_\|hf_\|AKIA" --include="*.{md,js,ts,py,R,json,yml,yaml}" .
 
-# Patrones genéricos de secretos
+# Generic secret patterns
 grep -rn "password\s*=\s*['\"]" --include="*.{js,ts,py,R,json}" .
 grep -rn "api[_-]key\s*[=:]\s*['\"]" --include="*.{js,ts,py,R,json}" .
 grep -rn "secret\s*[=:]\s*['\"]" --include="*.{js,ts,py,R,json}" .
 
-# Cadenas de conexión
+# Connection strings
 grep -rn "postgresql://\|mysql://\|mongodb://" .
 
-# Claves privadas
+# Private keys
 grep -rn "BEGIN.*PRIVATE KEY" .
 ```
 
@@ -74,10 +74,10 @@ grep -rn "BEGIN.*PRIVATE KEY" .
 Verificar que los archivos sensibles estén excluidos:
 
 ```bash
-# Verificar que estos están ignorados por git
+# Check that these are git-ignored
 git check-ignore .env .Renviron credentials.json node_modules/
 
-# Buscar archivos sensibles rastreados
+# Look for tracked sensitive files
 git ls-files | grep -i "\.env\|\.renviron\|credentials\|secret"
 ```
 
@@ -118,7 +118,7 @@ renv::status()
 **Inyección SQL**:
 
 ```bash
-# Buscar concatenación de cadenas en consultas
+# Look for string concatenation in queries
 grep -rn "paste.*SELECT\|paste.*INSERT\|paste.*UPDATE\|paste.*DELETE" --include="*.R" .
 grep -rn "query.*\+.*\|query.*\$\{" --include="*.{js,ts}" .
 ```
@@ -128,14 +128,14 @@ Todas las consultas a bases de datos deben usar consultas parametrizadas, no con
 **Inyección de Comandos**:
 
 ```bash
-# Buscar ejecución de shell con entrada de usuario
+# Look for shell execution with user input
 grep -rn "system\(.*paste\|exec(\|spawn(" --include="*.{R,js,ts,py}" .
 ```
 
 **XSS (Cross-Site Scripting)**:
 
 ```bash
-# Buscar contenido de usuario sin escapar en HTML
+# Look for unescaped user content in HTML
 grep -rn "innerHTML\|dangerouslySetInnerHTML\|v-html" --include="*.{js,ts,jsx,tsx,vue}" .
 ```
 
@@ -160,13 +160,13 @@ Lista de verificación:
 ### Paso 6: Verificar Seguridad de la Configuración
 
 ```bash
-# Modo debug en configuraciones de producción
+# Debug mode in production configs
 grep -rn "debug\s*[=:]\s*[Tt]rue\|DEBUG\s*=\s*1" --include="*.{json,yml,yaml,toml,cfg}" .
 
-# CORS permisivo
+# Permissive CORS
 grep -rn "Access-Control-Allow-Origin.*\*\|cors.*origin.*\*" --include="*.{js,ts}" .
 
-# HTTP en lugar de HTTPS
+# HTTP instead of HTTPS
 grep -rn "http://" --include="*.{js,ts,py,R}" . | grep -v "localhost\|127.0.0.1\|http://"
 ```
 

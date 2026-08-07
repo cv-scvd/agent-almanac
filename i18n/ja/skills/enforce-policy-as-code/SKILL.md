@@ -57,11 +57,11 @@ OPA GatekeeperまたはKyvernoを使用した宣言的ポリシー強制でKuber
 
 **OPA Gatekeeperの場合：**
 ```bash
-# HelmでGatekeeperをインストール
+# Install Gatekeeper using Helm
 helm repo add gatekeeper https://open-policy-agent.github.io/gatekeeper/charts
 helm repo update
 
-# 監査を有効にしてインストール
+# Install with audit enabled
 helm install gatekeeper gatekeeper/gatekeeper \
   --namespace gatekeeper-system \
   --create-namespace \
@@ -70,21 +70,21 @@ helm install gatekeeper gatekeeper/gatekeeper \
   --set validatingWebhookFailurePolicy=Fail \
   --set auditInterval=60
 
-# インストールの確認
+# Verify installation
 kubectl get pods -n gatekeeper-system
 kubectl get crd | grep gatekeeper
 
-# Webhook設定を確認
+# Check webhook configuration
 kubectl get validatingwebhookconfigurations gatekeeper-validating-webhook-configuration -o yaml
 ```
 
 **Kyvernoの場合：**
 ```bash
-# HelmでKyvernoをインストール
+# Install Kyverno using Helm
 helm repo add kyverno https://kyverno.github.io/kyverno/
 helm repo update
 
-# HA構成でインストール
+# Install with HA setup
 helm install kyverno kyverno/kyverno \
   --namespace kyverno \
   --create-namespace \
@@ -93,11 +93,11 @@ helm install kyverno kyverno/kyverno \
   --set backgroundController.replicas=2 \
   --set cleanupController.replicas=2
 
-# インストールの確認
+# Verify installation
 kubectl get pods -n kyverno
 kubectl get crd | grep kyverno
 
-# Webhook設定を確認
+# Check webhook configurations
 kubectl get validatingwebhookconfigurations kyverno-resource-validating-webhook-cfg
 kubectl get mutatingwebhookconfigurations kyverno-resource-mutating-webhook-cfg
 ```
@@ -166,17 +166,17 @@ metadata:
 
 ポリシーを適用：
 ```bash
-# Gatekeeperのテンプレートと制約を適用
+# Apply Gatekeeper templates and constraints
 kubectl apply -f required-labels-template.yaml
 
-# Kyvernoのポリシーを適用
+# Apply Kyverno policies
 kubectl apply -f kyverno-policies.yaml
 
-# 制約/ポリシーのステータスを確認
+# Verify constraint/policy status
 kubectl get constraints
 kubectl get clusterpolicies
 
-# ポリシーのエラーを確認
+# Check for any policy errors
 kubectl describe k8srequiredlabels require-app-labels
 kubectl describe clusterpolicy require-labels
 ```
@@ -207,32 +207,32 @@ metadata:
 
 ポリシーをテスト：
 ```bash
-# 非準拠リソースの作成を試みる（失敗するはず）
+# Attempt to create non-compliant resource (should fail)
 kubectl apply -f test-non-compliant.yaml
-# 期待される：ポリシー違反メッセージ付きのエラー
+# Expected: Error with policy violation message
 
-# 準拠リソースを作成（成功するはず）
+# Create compliant resource (should succeed)
 kubectl apply -f test-compliant.yaml
-# 期待される：deployment.apps/test-compliant created
+# Expected: deployment.apps/test-compliant created
 
-# ドライランで検証
+# Test with dry-run for validation
 kubectl apply -f test-non-compliant.yaml --dry-run=server
-# リソースを実際に作成せずにポリシー違反を表示
+# Shows policy violations without actually creating resource
 
-# クリーンアップ
+# Clean up
 kubectl delete -f test-compliant.yaml
 ```
 
 ポリシーレポートでテスト（Kyverno）：
 ```bash
-# ポリシーレポートを確認
+# Check policy reports
 kubectl get policyreports -A
 kubectl get clusterpolicyreports
 
-# 詳細レポートを表示
+# View detailed report
 kubectl get policyreport -n production -o yaml
 
-# ポリシールールの結果を確認
+# Check policy rule results
 kubectl get policyreport -n production -o jsonpath='{.items[0].results}' | jq .
 ```
 
@@ -273,13 +273,13 @@ spec:
 
 変異を適用してテスト：
 ```bash
-# 変異ポリシーを適用
+# Apply mutation policies
 kubectl apply -f gatekeeper-mutations.yaml
-# または
+# OR
 kubectl apply -f kyverno-mutations.yaml
 
-# デプロイで変異をテスト
-# ... (完全な設定はEXAMPLES.mdを参照)
+# Test mutation with a deployment
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **期待結果：** 変異がラベル、リソース、またはイメージを自動的に追加/変更。デプロイされたリソースが変異された値を表示。変異がポリシーエンジンのログに記録。変異適用中にエラーなし。
@@ -297,24 +297,24 @@ kubectl apply -f kyverno-mutations.yaml
 
 **Gatekeeperの監査：**
 ```bash
-# 監査はauditInterval設定に基づいて自動実行される
-# 監査結果を確認
+# Audit runs automatically based on auditInterval setting
+# Check audit results
 kubectl get constraints -o json | \
   jq '.items[] | {name: .metadata.name, violations: .status.totalViolations}'
 
-# 詳細な違反情報を取得
-# ... (完全な設定はEXAMPLES.mdを参照)
+# Get detailed violation information
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **Kyvernoの監査とレポート：**
 ```bash
-# 既存リソースのポリシーレポートを生成
+# Generate policy reports for existing resources
 kubectl create job --from=cronjob/kyverno-cleanup-controller -n kyverno manual-report-gen
 
-# ポリシーレポートを表示
+# View policy reports
 kubectl get policyreport -A
 kubectl get clusterpolicyreport
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 ポリシーコンプライアンスのダッシュボードを作成：
@@ -349,7 +349,7 @@ metadata:
 set -e
 
 echo "=== Policy Validation for CI/CD ==="
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **GitHub Actionsワークフロー：**
@@ -368,10 +368,10 @@ on:
 #!/bin/bash
 # .git/hooks/pre-commit
 
-# Kubernetesマニフェストをポリシーに対して検証
+# Validate Kubernetes manifests against policies
 if git diff --cached --name-only | grep -E 'manifests/.*\.yaml$'; then
   echo "Validating Kubernetes manifests against policies..."
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **期待結果：** CI/CDパイプラインがデプロイ前にマニフェストを検証。ポリシー違反がパイプラインを明確なメッセージで失敗。ポリシーレポートがPRに添付。プリコミットフックが早期に違反を検出。開発者がクラスターに達する前にポリシーの問題を通知。

@@ -185,11 +185,11 @@ def apply_srgb_profile(image_path, output_path):
 ```
 
 ```bash
-# ImageMagick fuer Farbraum-Konvertierung
+# ImageMagick for color space conversion
 convert input.png -colorspace sRGB output_srgb.png
 convert input.png -colorspace CMYK output_cmyk.tiff
 
-# Farbprofil pruefen
+# Check color profile
 identify -verbose image.png | grep -i colorspace
 ```
 

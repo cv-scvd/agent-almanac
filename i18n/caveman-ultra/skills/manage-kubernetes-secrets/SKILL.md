@@ -338,7 +338,7 @@ kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/
 # Verify installation
 kubectl get pods -n cert-manager
 
-# ... (see EXAMPLES.md)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 Ingress annotation-based cert issuance:
@@ -368,7 +368,7 @@ kubectl apply -f https://raw.githubusercontent.com/stakater/Reloader/master/depl
 # Annotate Deployment to watch Secrets
 cat <<EOF | kubectl apply -f -
 apiVersion: apps/v1
-# ... (see EXAMPLES.md)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 Verify rotation workflow:
@@ -415,7 +415,7 @@ kubectl apply -f rbac.yaml
 # Test as application service account
 kubectl auth can-i get secret myapp-db-secret --as=system:serviceaccount:production:myapp -n production
 # Should return "yes"
-# ... (see EXAMPLES.md)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 → SAs have read-only access to specific secrets via resourceNames. Devs can't view secrets in prod namespace. Only secret-admins can create/update/delete. RBAC denials logged in audit.

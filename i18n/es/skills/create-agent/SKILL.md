@@ -101,10 +101,10 @@ Seleccionar el modelo según la complejidad de la tarea:
 Explorar el registro de habilidades y seleccionar las habilidades relevantes para el dominio del agente:
 
 ```bash
-# Listar todas las habilidades en un dominio
+# List all skills in a domain
 grep -A3 "domain-name:" skills/_registry.yml
 
-# Buscar habilidades por palabra clave
+# Search for skills by keyword
 grep -i "keyword" skills/_registry.yml
 ```
 
@@ -268,7 +268,7 @@ Incrementar el recuento `total_agents` al inicio del archivo.
 Claude Code descubre los agentes desde el directorio `.claude/agents/`. En este repositorio, ese directorio es un symlink a `agents/`:
 
 ```bash
-# Verificar que el symlink existe y se resuelve
+# Verify the symlink exists and resolves
 ls -la .claude/agents/
 readlink -f .claude/agents/<agent-name>.md
 ```

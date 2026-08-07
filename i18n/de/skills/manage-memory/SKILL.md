@@ -73,9 +73,9 @@ Speicherbehauptungen mit dem aktuellen Projektstatus vergleichen. Haeufige Veral
 Grep verwenden, um Schluesselbehautungen stichprobenartig zu pruefen:
 
 ```bash
-# Beispiel: einen Skill-Zaehler-Anspruch verifizieren
+# Example: verify a skill count claim
 grep -c "^      - id:" skills/_registry.yml
-# Beispiel: pruefen ob eine Datei noch existiert
+# Example: verify a file still exists
 ls path/claimed/in/memory.md
 ```
 
@@ -160,11 +160,11 @@ Eine abschliessende Pruefung durchfuehren:
 
 ```bash
 wc -l <memory-dir>/MEMORY.md
-# Auf fehlerhafte Links pruefen
+# Check for broken links
 for f in $(grep -oP '\[.*?\]\(\K[^)]+' <memory-dir>/MEMORY.md); do
   ls <memory-dir>/$f 2>/dev/null || echo "BROKEN: $f"
 done
-# Auf verwaiste Dateien pruefen
+# Check for orphan files
 ls <memory-dir>/*.md | grep -v MEMORY.md
 ```
 

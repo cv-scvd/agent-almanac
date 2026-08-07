@@ -166,6 +166,9 @@ docker tag myapp:latest USERNAME/myapp:v1.0.0
 docker push USERNAME/myapp:latest
 docker push USERNAME/myapp:v1.0.0
 
+# Configure automated builds (legacy feature, deprecated)
+# Modern approach: Use GitHub Actions with Docker Hub
+
 cat > .github/workflows/dockerhub.yml <<'EOF'
 name: Docker Hub Push
 
@@ -213,6 +216,17 @@ jobs:
           repository: ${{ secrets.DOCKERHUB_USERNAME }}/myapp
           readme-filepath: ./README.md
 EOF
+
+# View vulnerability scan results
+# Go to: hub.docker.com → Repository → Tags → View scan results
+
+# Configure webhook for automated triggers
+# Go to: Repository → Webhooks → Add webhook
+WEBHOOK_URL="https://example.com/webhook"
+curl -X POST https://hub.docker.com/api/content/v1/repositories/USERNAME/myapp/webhooks \
+  -H "Authorization: Bearer $DOCKERHUB_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"CI Trigger\",\"webhook_url\":\"$WEBHOOK_URL\"}"
 ```
 
 **Erwartet:** Docker-Hub-Zugriffstoken mit Lese/Schreib-Berechtigungen erstellt. Images werden erfolgreich mit Multi-Architektur-Unterstuetzung gepusht. README synchronisiert aus GitHub.
@@ -287,8 +301,17 @@ helm install harbor harbor/harbor \
 # Wait for pods to be ready
 kubectl get pods -n harbor -w
 
+# Get admin password
+kubectl get secret -n harbor harbor-core -o jsonpath='{.data.HARBOR_ADMIN_PASSWORD}' | base64 -d
+
+# Access Harbor UI
+echo "Harbor UI: https://harbor.example.com"
+echo "Username: admin"
+
 # Login via Docker CLI
 docker login harbor.example.com
+# Username: admin
+# Password: (from above)
 
 # Create project via API
 curl -u "admin:$HARBOR_PASSWORD" -X POST \
@@ -307,6 +330,10 @@ curl -u "admin:$HARBOR_PASSWORD" -X POST \
 # Tag and push to Harbor
 docker tag myapp:latest harbor.example.com/myapp/app:latest
 docker push harbor.example.com/myapp/app:latest
+
+# Configure robot account for CI/CD
+# UI: Administration → Robot Accounts → New Robot Account
+# Permissions: Pull, Push to specific projects
 
 # Use robot account in CI/CD
 docker login harbor.example.com -u 'robot$myapp-ci' -p "$ROBOT_TOKEN"

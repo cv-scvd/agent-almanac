@@ -113,7 +113,7 @@ cd /mnt/d/dev/p/jigsawR && "$R_EXE" -e "devtools::test()"
 4. 对于错误失败，检查函数签名是否变更
 
 ```bash
-# 使用详细输出运行失败的测试
+# Run just the failing test with verbose output
 "$R_EXE" -e "testthat::test_file('tests/testthat/test-failing.R', reporter = 'summary')"
 ```
 

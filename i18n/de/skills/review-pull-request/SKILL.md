@@ -102,7 +102,7 @@ Die tatsaechlichen Codeaenderungen systematisch lesen.
 2. Bei **kleinen/mittleren PRs** den gesamten Diff sequenziell lesen
 3. Bei **grossen PRs** per Commit reviewen:
    ```bash
-   gh pr diff <number> --patch  # vollstaendiges Patch-Format
+   gh pr diff <number> --patch  # full patch format
    ```
 4. Fuer jede geaenderte Datei bewerten:
    - **Korrektheit**: Tut der Code, was der PR vorgibt?
@@ -164,9 +164,9 @@ Das Review mit strukturiertem, umsetzbarem Feedback zusammenstellen.
    - Lob: gute Arbeit hervorheben
 2. **Inline-Kommentare** fuer spezifische Codestellen verfassen:
    ```bash
-   # Inline-Kommentare per gh API einreichen
+   # Post inline comments via gh API
    gh api repos/{owner}/{repo}/pulls/{number}/comments \
-     -f body="[B] Diese SQL-Abfrage ist anfaellig fuer Injection. Stattdessen parametrisierte Abfragen verwenden.\n\n\`\`\`suggestion\ndb.query('SELECT * FROM users WHERE id = $1', [userId])\n\`\`\`" \
+     -f body="[B] This SQL query is vulnerable to injection. Use parameterized queries instead.\n\n\`\`\`suggestion\ndb.query('SELECT * FROM users WHERE id = $1', [userId])\n\`\`\`" \
      -f commit_id="<sha>" \
      -f path="src/users.js" \
      -F line=42 \
@@ -178,14 +178,14 @@ Das Review mit strukturiertem, umsetzbarem Feedback zusammenstellen.
    - Fuer Stil-/Muster-Vorschlaege zur Dokumentation verlinken
 4. Das Review einreichen:
    ```bash
-   # Genehmigen
-   gh pr review <number> --approve --body "Review-Zusammenfassung hier"
+   # Approve
+   gh pr review <number> --approve --body "Review summary here"
 
-   # Aenderungen anfordern (wenn Blocking-Probleme vorhanden)
-   gh pr review <number> --request-changes --body "Review-Zusammenfassung hier"
+   # Request changes (when blocking issues exist)
+   gh pr review <number> --request-changes --body "Review summary here"
 
-   # Nur kommentieren (wenn unsicher oder FYI-Feedback)
-   gh pr review <number> --comment --body "Review-Zusammenfassung hier"
+   # Comment only (when unsure or providing FYI feedback)
+   gh pr review <number> --comment --body "Review summary here"
    ```
 
 **Erwartet:** Ein eingereichten Review mit klarem, umsetzbarem Feedback. Der Autor weiss genau, was zu beheben ist (Blocking), was zu beruecksichtigen ist (Suggest) und was gut war (Praise).
@@ -202,13 +202,13 @@ Die Review-Auflosung verfolgen.
    ```
 2. Nur die Aenderungen neu reviewen, die Ihr Feedback adressieren:
    ```bash
-   gh pr diff <number>  # neue Commits pruefen
+   gh pr diff <number>  # check new commits
    ```
 3. Blocking-Punkte vor der Genehmigung als geloest verifizieren
 4. Kommentar-Threads aufloesen, wenn Probleme behoben wurden
 5. Genehmigen, wenn alle Blocking-Punkte geloest sind:
    ```bash
-   gh pr review <number> --approve --body "Alle Blocking-Probleme geloest. LGTM."
+   gh pr review <number> --approve --body "All blocking issues resolved. LGTM."
    ```
 
 **Erwartet:** Blocking-Probleme als geloest verifiziert. Review-Konversation aufgeloest. PR genehmigt oder weitere Aenderungen mit spezifisch verbleibenden Punkten angefordert.

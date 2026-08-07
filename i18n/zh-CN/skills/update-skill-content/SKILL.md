@@ -71,10 +71,10 @@ metadata:
 - 已演变的配置文件格式
 
 ```bash
-# 检查特定版本引用
+# Check for version-specific references
 grep -nE '[vV][0-9]+\.[0-9]+' skills/<skill-name>/SKILL.md
 
-# 检查 URL
+# Check for URLs
 grep -nE 'https?://' skills/<skill-name>/SKILL.md
 ```
 
@@ -126,12 +126,12 @@ grep -nE 'https?://' skills/<skill-name>/SKILL.md
 
 1. 对每个被引用的技能，验证其是否存在：
    ```bash
-   # 检查引用的技能是否存在
+   # Check if referenced skill exists
    test -d skills/referenced-skill-name && echo "EXISTS" || echo "NOT FOUND"
    ```
 2. 搜索引用此技能的技能（它们应该被交叉链接）：
    ```bash
-   # 查找引用此技能的技能
+   # Find skills that reference this skill
    grep -rl "skill-name" skills/*/SKILL.md
    ```
 3. 检查基于领域和标签的明显相关技能

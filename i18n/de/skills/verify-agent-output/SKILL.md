@@ -127,22 +127,22 @@ evidence:
 Praktische Befehle zur Belege-Generierung:
 
 ```bash
-# Pruefsummen
+# Checksums
 sha256sum output/data.csv output/report.html > evidence/checksums.txt
 
-# Zeilenanzahlen
+# Row counts
 wc -l < input/raw.csv > evidence/input_rows.txt
 wc -l < output/data.csv > evidence/output_rows.txt
 
-# Testergebnisse (R)
+# Test results (R)
 Rscript -e "results <- testthat::test_dir('tests'); cat(format(results))" > evidence/test_results.txt
 
-# Git-Diff-Zusammenfassung
+# Git diff summary
 git diff --stat HEAD~1 > evidence/diff_summary.txt
 
-# Zeitmessung (eigentlichen Befehl einwickeln)
+# Timing (wrap the actual command)
 start_time=$(date +%s)
-# ... Arbeit erledigen ...
+# ... do the work ...
 end_time=$(date +%s)
 echo "duration_seconds: $((end_time - start_time))" > evidence/timing.txt
 ```
@@ -158,34 +158,34 @@ Nach der Ausfuehrung das Lieferergebnis gegen die Spezifikation aus Schritt 1 pr
 Validierungspruefungen nach Kategorie:
 
 ```bash
-# Existenz
+# Existence
 for file in output/report.html output/data.csv; do
-  test -f "$file" && echo "BESTANDEN: $file existiert" || echo "FEHLER: $file fehlt"
+  test -f "$file" && echo "PASS: $file exists" || echo "FAIL: $file missing"
 done
 
-# Form (CSV-Spalten-Pruefung)
+# Shape (CSV column check)
 head -1 output/data.csv | tr ',' '\n' | sort > /tmp/actual_cols.txt
 echo -e "grade\nid\nname\nscore" > /tmp/expected_cols.txt
-diff /tmp/expected_cols.txt /tmp/actual_cols.txt && echo "BESTANDEN: Spalten stimmen ueberein" || echo "FEHLER: Spaltenabweichung"
+diff /tmp/expected_cols.txt /tmp/actual_cols.txt && echo "PASS: columns match" || echo "FAIL: column mismatch"
 
-# Zeilenanzahl
+# Row count
 actual_rows=$(wc -l < output/data.csv)
-[ "$actual_rows" -ge 101 ] && echo "BESTANDEN: $actual_rows Zeilen (>= 100 + Kopfzeile)" || echo "FEHLER: nur $actual_rows Zeilen"
+[ "$actual_rows" -ge 101 ] && echo "PASS: $actual_rows rows (>= 100 + header)" || echo "FAIL: only $actual_rows rows"
 
-# Inhaltsbereichspruefung (R)
+# Content range check (R)
 Rscript -e '
   d <- read.csv("output/data.csv")
   stopifnot(all(d$score >= 0 & d$score <= 100))
-  cat("BESTANDEN: alle Werte in [0, 100]\n")
+  cat("PASS: all scores in [0, 100]\n")
 '
 
-# Verhalten
-Rscript -e "testthat::test_dir('tests')" && echo "BESTANDEN: Tests bestehen" || echo "FEHLER: Tests scheitern"
+# Behavior
+Rscript -e "testthat::test_dir('tests')" && echo "PASS: tests pass" || echo "FAIL: tests fail"
 
-# Konsistenz (Zeilenanzahl erhalten)
+# Consistency (row count preserved)
 input_rows=$(wc -l < input/raw.csv)
 output_rows=$(wc -l < output/data.csv)
-[ "$input_rows" -eq "$output_rows" ] && echo "BESTANDEN: Zeilenanzahl erhalten" || echo "FEHLER: $input_rows -> $output_rows"
+[ "$input_rows" -eq "$output_rows" ] && echo "PASS: row count preserved" || echo "FAIL: $input_rows -> $output_rows"
 ```
 
 **Erwartet:** Alle Pruefungen bestehen. Ergebnisse werden als strukturierte Ausgabe (BESTANDEN/FEHLER pro Bedingung) zusammen mit dem Belegnachweis aus Schritt 2 aufgezeichnet.
@@ -203,20 +203,20 @@ Verfahren:
 3. Auf fabrizierte Inhalte pruefen — Elemente in der Ausgabe, die keine Quelle haben
 
 ```bash
-# Beispiel: Zusammenfassungsbericht gegen Quelldaten pruefen
+# Example: verify a summary report against source data
 
-# 1. Zufaellige Zeilen aus Quelle waehlen
+# 1. Select random rows from source
 shuf -n 5 input/raw.csv > /tmp/sample.csv
 
-# 2. Fuer jede entnommene Zeile pruefen, ob sie korrekt in der Ausgabe erscheint
+# 2. For each sampled row, verify it appears correctly in the output
 while IFS=, read -r id name score grade; do
-  grep -q "$id" output/report.html && echo "BESTANDEN: $id im Bericht gefunden" || echo "FEHLER: $id fehlt im Bericht"
+  grep -q "$id" output/report.html && echo "PASS: $id found in report" || echo "FAIL: $id missing from report"
 done < /tmp/sample.csv
 
-# 3. Auf fabrizierte IDs in der Ausgabe pruefen
-# IDs aus Ausgabe extrahieren, jede auf Existenz in Quelle pruefen
+# 3. Check for fabricated IDs in the output
+# Extract IDs from output, verify each exists in source
 grep -oP 'id="[^"]*"' output/report.html | while read -r output_id; do
-  grep -q "$output_id" input/raw.csv && echo "BESTANDEN: $output_id hat Quelle" || echo "FEHLER: $output_id fabriziert"
+  grep -q "$output_id" input/raw.csv && echo "PASS: $output_id has source" || echo "FAIL: $output_id fabricated"
 done
 ```
 

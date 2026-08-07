@@ -68,16 +68,16 @@ Die bestehende Teamdatei lesen und jeden Abschnitt gegen die Teamvorlage (`teams
 | Siehe auch | Gueltige Links zu Mitglieder-Agenten, verwandten Teams, Leitfaeden | Veraltete Links |
 
 ```bash
-# Teamdatei lesen
+# Read the team file
 cat teams/<team-name>.md
 
-# Pruefen ob alle Mitglieder-Agenten noch existieren
+# Verify all member agents still exist
 grep "id:" teams/<team-name>.md | while read line; do
   agent=$(echo "$line" | grep -oP '(?<=id: )[\w-]+')
   grep "id: $agent" agents/_registry.yml || echo "MISSING: $agent"
 done
 
-# Pruefen ob das Team von einem Leitfaden referenziert wird
+# Check if the team is referenced by any guide
 grep -r "<team-name>" guides/*.md
 ```
 
@@ -169,16 +169,16 @@ Diese Bearbeitungsregeln befolgen:
 #### Fuer Varianten
 
 ```bash
-# Original als Ausgangspunkt kopieren
+# Copy the original as a starting point
 cp teams/<team-name>.md teams/<team-name>-<specialty>.md
 
-# Variante bearbeiten:
-# - `name` in `<team-name>-<specialty>` aendern
-# - `description` aktualisieren um spezialisierten Umfang widerzuspiegeln
-# - `coordination`-Muster bei Bedarf anpassen
-# - `version` auf "1.0.0" zuruecksetzen
-# - Mitglieder, Aufgaben und CONFIG-Block fuer spezialisierten Anwendungsfall anpassen
-# - Original in Siehe-auch als Allzweck-Alternative referenzieren
+# Edit the variant:
+# - Change `name` to `<team-name>-<specialty>`
+# - Update `description` to reflect the specialized scope
+# - Adjust `coordination` pattern if needed
+# - Reset `version` to "1.0.0"
+# - Modify members, tasks, and CONFIG block for the specialized use case
+# - Reference the original in See Also as a general-purpose alternative
 ```
 
 **Erwartet:** Die Teamdatei (verfeinert oder neue Variante) besteht die Bewertungscheckliste aus Schritt 1, mit intern konsistenten Abschnitten.
@@ -192,7 +192,7 @@ cp teams/<team-name>.md teams/<team-name>-<specialty>.md
 Pruefen, ob Uebersetzungen fuer das weiterentwickelte Team existieren, und sie auf den neuen Stand der Quelle aktualisieren:
 
 ```bash
-# Auf vorhandene Uebersetzungen pruefen
+# Check for existing translations
 ls i18n/*/teams/<team-name>.md 2>/dev/null
 ```
 
@@ -298,7 +298,7 @@ Auch aktualisieren:
 Den bestehenden Eintrag in `teams/_registry.yml` aktualisieren, um das ueberarbeitete Frontmatter widerzuspiegeln:
 
 ```bash
-# Registry-Eintrag des Teams finden
+# Find the team's registry entry
 grep -A 10 "id: <team-name>" teams/_registry.yml
 ```
 
@@ -353,19 +353,19 @@ Die vollstaendige Validierungscheckliste durchfuehren:
 - [ ] `git diff` zeigt keine versehentlichen Loeschungen aus dem urspruenglichen Inhalt
 
 ```bash
-# Frontmatter pruefen
+# Verify frontmatter
 head -25 teams/<team-name>.md
 
-# Alle Mitglieder-Agenten pruefen
+# Verify all member agents exist
 for agent in agent-a agent-b agent-c; do
   grep "id: $agent" agents/_registry.yml
 done
 
-# Teams auf Festplatte vs. Registry zaehlen
+# Count teams on disk vs registry
 ls teams/*.md | grep -v template | wc -l
 grep total_teams teams/_registry.yml
 
-# Alle Aenderungen ueberpruefen
+# Review all changes
 git diff
 ```
 

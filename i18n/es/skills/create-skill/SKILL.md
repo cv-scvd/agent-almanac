@@ -299,11 +299,11 @@ Las citas son opcionales — añadirlas cuando el seguimiento de la procedencia 
 Ejecutar verificaciones de validación local antes de confirmar:
 
 ```bash
-# Verificar el recuento de líneas (debe ser ≤500)
+# Check line count (must be ≤500)
 lines=$(wc -l < skills/<skill-name>/SKILL.md)
 [ "$lines" -le 500 ] && echo "OK ($lines lines)" || echo "FAIL: $lines lines > 500"
 
-# Verificar los campos de frontmatter requeridos
+# Check required frontmatter fields
 head -20 skills/<skill-name>/SKILL.md | grep -q '^name:' && echo "name: OK"
 head -20 skills/<skill-name>/SKILL.md | grep -q '^description:' && echo "description: OK"
 ```
@@ -323,10 +323,10 @@ Mover ejemplos de código extendidos, archivos de configuración completos y eje
 Crear symlinks para que Claude Code descubra la habilidad como un `/slash-command`:
 
 ```bash
-# A nivel de proyecto (disponible en este proyecto)
+# Project-level (available in this project)
 ln -s ../../skills/<skill-name> .claude/skills/<skill-name>
 
-# Global (disponible en todos los proyectos)
+# Global (available in all projects)
 ln -s /mnt/d/dev/p/agent-almanac/skills/<skill-name> ~/.claude/skills/<skill-name>
 ```
 

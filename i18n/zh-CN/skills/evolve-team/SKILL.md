@@ -63,16 +63,16 @@ metadata:
 | See Also | 指向成员智能体、相关团队、指南的有效链接 | 过期链接 |
 
 ```bash
-# 读取团队文件
+# Read the team file
 cat teams/<team-name>.md
 
-# 验证所有成员智能体仍然存在
+# Verify all member agents still exist
 grep "id:" teams/<team-name>.md | while read line; do
   agent=$(echo "$line" | grep -oP '(?<=id: )[\w-]+')
   grep "id: $agent" agents/_registry.yml || echo "MISSING: $agent"
 done
 
-# 检查团队是否被任何指南引用
+# Check if the team is referenced by any guide
 grep -r "<team-name>" guides/*.md
 ```
 
@@ -164,16 +164,16 @@ grep -r "<team-name>" guides/*.md
 #### 对于变体
 
 ```bash
-# 以原版为基础复制
+# Copy the original as a starting point
 cp teams/<team-name>.md teams/<team-name>-<specialty>.md
 
-# 编辑变体：
-# - 将 `name` 改为 `<team-name>-<specialty>`
-# - 更新 `description` 反映专业化范围
-# - 若需要调整 `coordination` 模式
-# - 将 `version` 重置为 "1.0.0"
-# - 为专业化用例修改成员、任务和 CONFIG 块
-# - 在 See Also 中引用原版作为通用替代
+# Edit the variant:
+# - Change `name` to `<team-name>-<specialty>`
+# - Update `description` to reflect the specialized scope
+# - Adjust `coordination` pattern if needed
+# - Reset `version` to "1.0.0"
+# - Modify members, tasks, and CONFIG block for the specialized use case
+# - Reference the original in See Also as a general-purpose alternative
 ```
 
 **预期结果：** 团队文件（完善版或新变体）通过第 1 步的评估检查清单，所有章节内部一致。
@@ -187,7 +187,7 @@ cp teams/<team-name>.md teams/<team-name>-<specialty>.md
 检查此已演进团队是否存在翻译，并将其更新以反映新的源状态：
 
 ```bash
-# 检查是否存在翻译
+# Check for existing translations
 ls i18n/*/teams/<team-name>.md 2>/dev/null
 ```
 
@@ -293,7 +293,7 @@ team:
 更新 `teams/_registry.yml` 中的现有条目以匹配修订的前置元数据：
 
 ```bash
-# 找到团队的注册表条目
+# Find the team's registry entry
 grep -A 10 "id: <team-name>" teams/_registry.yml
 ```
 
@@ -348,19 +348,19 @@ npm run update-readmes
 - [ ] `git diff` 显示无意外的原始内容删除
 
 ```bash
-# 验证前置元数据
+# Verify frontmatter
 head -25 teams/<team-name>.md
 
-# 验证所有成员智能体存在
+# Verify all member agents exist
 for agent in agent-a agent-b agent-c; do
   grep "id: $agent" agents/_registry.yml
 done
 
-# 统计磁盘上的团队数与注册表的对比
+# Count teams on disk vs registry
 ls teams/*.md | grep -v template | wc -l
 grep total_teams teams/_registry.yml
 
-# 审查所有更改
+# Review all changes
 git diff
 ```
 

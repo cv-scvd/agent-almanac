@@ -159,7 +159,7 @@ Claude Codeを起動してMCPツールを使用する — ツールリストに�
 Claude CodeとClaude Desktopは複数のMCPサーバーを同時にサポートする:
 
 ```bash
-# Claude Code: 複数のサーバーを追加
+# Claude Code: add multiple servers
 claude mcp add r-mcptools stdio "/path/to/Rscript.exe" -- -e "mcptools::mcp_server()"
 claude mcp add hf-mcp-server -e HF_TOKEN=token -- mcp-remote https://huggingface.co/mcp
 claude mcp add custom-server stdio "/path/to/server" -- --port 3001

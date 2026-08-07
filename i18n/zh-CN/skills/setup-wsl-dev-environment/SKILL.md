@@ -123,7 +123,7 @@ ssh-keygen -t ed25519 -C "your.email@example.com"
 eval "$(ssh-agent -s)"
 ssh-add ~/.ssh/id_ed25519
 cat ~/.ssh/id_ed25519.pub
-# 添加到 GitHub：Settings > SSH and GPG keys
+# Add to GitHub: Settings > SSH and GPG keys
 ```
 
 测试：`ssh -T git@github.com`
@@ -148,14 +148,14 @@ nvm use --lts
 ### 第 7 步：安装 Python（通过 pyenv）
 
 ```bash
-# 安装构建依赖
+# Install build dependencies
 sudo apt install -y make libssl-dev zlib1g-dev libbz2-dev \
   libreadline-dev libsqlite3-dev libncursesw5-dev xz-utils \
   tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
 
 curl https://pyenv.run | bash
 
-# 添加到 ~/.bashrc
+# Add to ~/.bashrc
 echo 'export PATH="$HOME/.pyenv/bin:$PATH"' >> ~/.bashrc
 echo 'eval "$(pyenv init -)"' >> ~/.bashrc
 source ~/.bashrc
@@ -173,26 +173,26 @@ pyenv global 3.12
 在 `~/.bashrc` 中添加：
 
 ```bash
-# 历史记录
+# History
 export HISTSIZE=10000
 export HISTFILESIZE=20000
 export HISTCONTROL=ignoredups:erasedups
 shopt -s histappend
 
-# 导航别名
+# Navigation aliases
 alias ll='ls -alF'
 alias la='ls -A'
 alias ..='cd ..'
 alias ...='cd ../..'
 
-# 开发路径
+# Development paths
 export DEV_HOME="/mnt/d/dev/p"
 alias dev='cd $DEV_HOME'
 
-# 函数
+# Functions
 mkcd() { mkdir -p "$1" && cd "$1"; }
 
-# PATH 追加
+# PATH additions
 export PATH="$HOME/bin:$HOME/.local/bin:$PATH"
 ```
 
@@ -203,11 +203,11 @@ export PATH="$HOME/bin:$HOME/.local/bin:$PATH"
 ### 第 9 步：配置 Claude Code CLI
 
 ```bash
-# 安装后将 Claude CLI 添加到 PATH
+# Add Claude CLI to PATH (after installation)
 echo 'export PATH="$HOME/.claude/local/node_modules/.bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
 
-# 验证
+# Verify
 which claude
 ```
 

@@ -73,8 +73,10 @@ grep -rn "BEGIN.*PRIVATE KEY" .
 驗敏檔排：
 
 ```bash
+# Check that these are git-ignored
 git check-ignore .env .Renviron credentials.json node_modules/
 
+# Look for tracked sensitive files
 git ls-files | grep -i "\.env\|\.renviron\|credentials\|secret"
 ```
 
@@ -113,6 +115,7 @@ renv::status()
 **SQL 注**：
 
 ```bash
+# Look for string concatenation in queries
 grep -rn "paste.*SELECT\|paste.*INSERT\|paste.*UPDATE\|paste.*DELETE" --include="*.R" .
 grep -rn "query.*\+.*\|query.*\$\{" --include="*.{js,ts}" .
 ```
@@ -122,12 +125,14 @@ grep -rn "query.*\+.*\|query.*\$\{" --include="*.{js,ts}" .
 **命注**：
 
 ```bash
+# Look for shell execution with user input
 grep -rn "system\(.*paste\|exec(\|spawn(" --include="*.{R,js,ts,py}" .
 ```
 
 **XSS**：
 
 ```bash
+# Look for unescaped user content in HTML
 grep -rn "innerHTML\|dangerouslySetInnerHTML\|v-html" --include="*.{js,ts,jsx,tsx,vue}" .
 ```
 

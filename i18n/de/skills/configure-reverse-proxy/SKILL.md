@@ -225,16 +225,16 @@ labels:
 ### Schritt 8: Proxy-Konfiguration ueberpruefen
 
 ```bash
-# Nginx: Konfiguration testen
+# Nginx: test config
 docker compose exec nginx nginx -t
 
-# Routing pruefen
+# Check routing
 curl -H "Host: api.example.com" http://localhost/health
 
-# WebSocket pruefen (benoetigt wscat: npm install -g wscat)
+# Check WebSocket (needs wscat: npm install -g wscat)
 wscat -c ws://localhost/ws/
 
-# Traefik-Dashboard (falls aktiviert)
+# Traefik dashboard (if enabled)
 # http://localhost:8080/dashboard/
 ```
 

@@ -112,8 +112,8 @@ Die Issues mit dem `gh`-CLI erstellen und Ergebnisse berichten.
 1. Wenn `dry_run` wahr ist, jeden Issue-Titel und Inhalt ausgeben ohne zu erstellen, dann stoppen
 2. Fuer jedes formulierte Issue erstellen:
    ```bash
-   gh issue create --title "titel" --body "$(cat <<'EOF'
-   inhalt
+   gh issue create --title "title" --body "$(cat <<'EOF'
+   body content
    EOF
    )" --label "label1,label2"
    ```

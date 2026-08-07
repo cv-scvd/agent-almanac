@@ -136,10 +136,10 @@ Siehe Skill `setup-github-actions-ci` fuer den pkgdown-Workflow.
 **Methode B: Manuelle Branch-Bereitstellung**
 
 ```bash
-# Website bauen
+# Build site
 Rscript -e "pkgdown::build_site()"
 
-# gh-pages-Branch erstellen, falls er nicht existiert
+# Create gh-pages branch if it doesn't exist
 git checkout --orphan gh-pages
 git rm -rf .
 cp -r docs/* .
@@ -147,7 +147,7 @@ git add .
 git commit -m "Deploy pkgdown site"
 git push origin gh-pages
 
-# Zurueck zu main wechseln
+# Switch back to main
 git checkout main
 ```
 

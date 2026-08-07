@@ -223,10 +223,10 @@ services:
 ```
 
 ```bash
-# コアサービスのみ起動
+# Start core services only
 docker compose up
 
-# 開発ツール付きで起動
+# Start with dev tools
 docker compose --profile dev up
 ```
 
@@ -251,22 +251,22 @@ services:
 ### ステップ8: ビルドと実行
 
 ```bash
-# すべてのイメージをビルド
+# Build all images
 docker compose build
 
-# バックグラウンドで起動
+# Start in background
 docker compose up -d
 
-# ログの表示
+# View logs
 docker compose logs -f app
 
-# サービスステータスの確認
+# Check service status
 docker compose ps
 
-# 停止と削除
+# Stop and remove
 docker compose down
 
-# 停止とボリューム削除（完全リセット）
+# Stop and remove volumes (full reset)
 docker compose down -v
 ```
 

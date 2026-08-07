@@ -64,7 +64,7 @@ exts <- get_supported_extensions()
 Usa el listado de archivos para entender la composición del repositorio:
 
 ```bash
-# Contar archivos por extensión en el directorio objetivo
+# Count files by extension in the target directory
 find /path/to/repo -type f | sed 's/.*\.//' | sort | uniq -c | sort -rn | head -20
 ```
 

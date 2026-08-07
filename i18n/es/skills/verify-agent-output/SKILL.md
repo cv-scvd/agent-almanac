@@ -127,22 +127,22 @@ evidence:
 Comandos prácticos para generar evidencia:
 
 ```bash
-# Sumas de verificación
+# Checksums
 sha256sum output/data.csv output/report.html > evidence/checksums.txt
 
-# Recuentos de filas
+# Row counts
 wc -l < input/raw.csv > evidence/input_rows.txt
 wc -l < output/data.csv > evidence/output_rows.txt
 
-# Resultados de pruebas (R)
+# Test results (R)
 Rscript -e "results <- testthat::test_dir('tests'); cat(format(results))" > evidence/test_results.txt
 
-# Resumen de git diff
+# Git diff summary
 git diff --stat HEAD~1 > evidence/diff_summary.txt
 
-# Temporización (envolver el comando real)
+# Timing (wrap the actual command)
 start_time=$(date +%s)
-# ... hacer el trabajo ...
+# ... do the work ...
 end_time=$(date +%s)
 echo "duration_seconds: $((end_time - start_time))" > evidence/timing.txt
 ```
@@ -158,31 +158,31 @@ Después de la ejecución, verificar el entregable contra la especificación del
 Verificaciones de validación por categoría:
 
 ```bash
-# Existencia
+# Existence
 for file in output/report.html output/data.csv; do
   test -f "$file" && echo "PASS: $file exists" || echo "FAIL: $file missing"
 done
 
-# Forma (verificación de columnas CSV)
+# Shape (CSV column check)
 head -1 output/data.csv | tr ',' '\n' | sort > /tmp/actual_cols.txt
 echo -e "grade\nid\nname\nscore" > /tmp/expected_cols.txt
 diff /tmp/expected_cols.txt /tmp/actual_cols.txt && echo "PASS: columns match" || echo "FAIL: column mismatch"
 
-# Recuento de filas
+# Row count
 actual_rows=$(wc -l < output/data.csv)
 [ "$actual_rows" -ge 101 ] && echo "PASS: $actual_rows rows (>= 100 + header)" || echo "FAIL: only $actual_rows rows"
 
-# Verificación de rango de contenido (R)
+# Content range check (R)
 Rscript -e '
   d <- read.csv("output/data.csv")
   stopifnot(all(d$score >= 0 & d$score <= 100))
   cat("PASS: all scores in [0, 100]\n")
 '
 
-# Comportamiento
+# Behavior
 Rscript -e "testthat::test_dir('tests')" && echo "PASS: tests pass" || echo "FAIL: tests fail"
 
-# Consistencia (recuento de filas preservado)
+# Consistency (row count preserved)
 input_rows=$(wc -l < input/raw.csv)
 output_rows=$(wc -l < output/data.csv)
 [ "$input_rows" -eq "$output_rows" ] && echo "PASS: row count preserved" || echo "FAIL: $input_rows -> $output_rows"
@@ -203,18 +203,18 @@ Procedimiento:
 3. Verificar contenido fabricado — elementos en la salida que no tienen fuente
 
 ```bash
-# Ejemplo: verificar un informe de resumen contra datos fuente
+# Example: verify a summary report against source data
 
-# 1. Seleccionar filas aleatorias de la fuente
+# 1. Select random rows from source
 shuf -n 5 input/raw.csv > /tmp/sample.csv
 
-# 2. Para cada fila muestreada, verificar que aparece correctamente en la salida
+# 2. For each sampled row, verify it appears correctly in the output
 while IFS=, read -r id name score grade; do
   grep -q "$id" output/report.html && echo "PASS: $id found in report" || echo "FAIL: $id missing from report"
 done < /tmp/sample.csv
 
-# 3. Verificar IDs fabricados en la salida
-# Extraer IDs de la salida, verificar que cada uno existe en la fuente
+# 3. Check for fabricated IDs in the output
+# Extract IDs from output, verify each exists in source
 grep -oP 'id="[^"]*"' output/report.html | while read -r output_id; do
   grep -q "$output_id" input/raw.csv && echo "PASS: $output_id has source" || echo "FAIL: $output_id fabricated"
 done

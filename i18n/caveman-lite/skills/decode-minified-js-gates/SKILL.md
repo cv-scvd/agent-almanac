@@ -121,7 +121,7 @@ grep -oE '\b(gate|ttlReader)\("acme_widget_v3",\s*(true|false)' /tmp/decode-wind
 
 # Config-object default — match the opening brace and capture until the
 # matching brace at the same nesting depth. For minified bundles this is
-# safe with a non-greedy match because objects rarely span lines.
+# usually safe with a non-greedy match because objects rarely span lines.
 grep -oE 'fvReader\("acme_widget_v3",\s*\{[^}]*\}' /tmp/decode-windows.txt
 
 # Numeric default (rare but real for TTL or threshold gates)

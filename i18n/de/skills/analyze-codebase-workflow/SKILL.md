@@ -62,7 +62,7 @@ exts <- get_supported_extensions()
 Dateiauflistung zum Verstehen der Repo-Zusammensetzung verwenden:
 
 ```bash
-# Dateien nach Erweiterung im Zielverzeichnis zählen
+# Count files by extension in the target directory
 find /path/to/repo -type f | sed 's/.*\.//' | sort | uniq -c | sort -rn | head -20
 ```
 

@@ -51,15 +51,15 @@ Determinar los tipos, campos, consultas y mutaciones disponibles.
 **Para GitHub:**
 
 ```bash
-# Listar campos de consulta disponibles
+# List available query fields
 gh api graphql -f query='{ __schema { queryType { fields { name description } } } }' \
   | jq '.data.__schema.queryType.fields[] | {name, description}'
 
-# Listar campos de mutación disponibles
+# List available mutation fields
 gh api graphql -f query='{ __schema { mutationType { fields { name description } } } }' \
   | jq '.data.__schema.mutationType.fields[] | {name, description}'
 
-# Inspeccionar un tipo específico
+# Inspect a specific type
 gh api graphql -f query='{
   __type(name: "Repository") {
     fields { name type { name kind ofType { name } } }
@@ -70,7 +70,7 @@ gh api graphql -f query='{
 **Para endpoints genéricos:**
 
 ```bash
-# Consulta de introspección completa via curl
+# Full introspection query via curl
 curl -s -X POST https://api.example.com/graphql \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
@@ -98,7 +98,7 @@ Determinar si tu tarea requiere una consulta (lectura), mutación (escritura) o 
 Para operaciones específicas de GitHub, consulta la [documentación de la API GraphQL de GitHub](https://docs.github.com/en/graphql).
 
 ```bash
-# Verificación rápida: ¿existe la mutación?
+# Quick check: does the mutation exist?
 gh api graphql -f query='{ __schema { mutationType { fields { name } } } }' \
   | jq '.data.__schema.mutationType.fields[].name' | grep -i "discussion"
 ```
@@ -166,17 +166,17 @@ Ejecutar la operación y capturar la respuesta.
 **GitHub — usando `gh api graphql`:**
 
 ```bash
-# Consulta simple
+# Simple query
 gh api graphql -f query='{ viewer { login } }'
 
-# Con variables
+# With variables
 gh api graphql \
   -f query='query($owner: String!, $repo: String!) {
     repository(owner: $owner, name: $repo) { id name }
   }' \
   -f owner="octocat" -f repo="Hello-World"
 
-# Con post-procesamiento con jq
+# With jq post-processing
 REPO_ID=$(gh api graphql \
   -f query='query($owner: String!, $repo: String!) {
     repository(owner: $owner, name: $repo) { id }
@@ -209,10 +209,10 @@ curl -s -X POST "$GRAPHQL_ENDPOINT" \
 Extraer los datos que necesitas de la respuesta JSON.
 
 ```bash
-# Extraer un solo valor
+# Extract a single value
 gh api graphql -f query='{ viewer { login } }' --jq '.data.viewer.login'
 
-# Extraer de una lista
+# Extract from a list
 gh api graphql -f query='
   query($owner: String!, $repo: String!) {
     repository(owner: $owner, name: $repo) {
@@ -224,7 +224,7 @@ gh api graphql -f query='
 ' -f owner="OWNER" -f repo="REPO" \
   --jq '.data.repository.issues.nodes[] | "\(.number): \(.title)"'
 
-# Asignar a una variable para uso posterior
+# Assign to a variable for later use
 CATEGORY_ID=$(gh api graphql -f query='
   query($owner: String!, $repo: String!) {
     repository(owner: $owner, name: $repo) {
@@ -249,7 +249,7 @@ CATEGORY_ID=$(gh api graphql -f query='
 Usar la salida de una operación como entrada de la siguiente.
 
 ```bash
-# Paso A: Obtener el ID del repositorio
+# Step A: Get the repository ID
 REPO_ID=$(gh api graphql \
   -f query='query($owner: String!, $repo: String!) {
     repository(owner: $owner, name: $repo) { id }
@@ -257,7 +257,7 @@ REPO_ID=$(gh api graphql \
   -f owner="$OWNER" -f repo="$REPO" \
   --jq '.data.repository.id')
 
-# Paso B: Obtener el ID de la categoría de discussion
+# Step B: Get the discussion category ID
 CAT_ID=$(gh api graphql \
   -f query='query($owner: String!, $repo: String!) {
     repository(owner: $owner, name: $repo) {
@@ -270,7 +270,7 @@ CAT_ID=$(gh api graphql \
   --jq '.data.repository.discussionCategories.nodes[]
     | select(.name == "Show and Tell") | .id')
 
-# Paso C: Crear la discussion usando ambos IDs
+# Step C: Create the discussion using both IDs
 RESULT=$(gh api graphql \
   -f query='mutation($repoId: ID!, $catId: ID!, $title: String!, $body: String!) {
     createDiscussion(input: {

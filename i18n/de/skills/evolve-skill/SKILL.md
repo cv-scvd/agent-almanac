@@ -62,13 +62,13 @@ Die bestehende SKILL.md lesen und jeden Abschnitt gegen die Qualitaetscheckliste
 | Related Skills | 2-5 gueltige Skill-Referenzen | Veraltete Verweise auf umbenannte/entfernte Skills |
 
 ```bash
-# Skill lesen
+# Read the skill
 cat skills/<skill-name>/SKILL.md
 
-# Frontmatter-Parsing pruefen
+# Check frontmatter parses
 head -20 skills/<skill-name>/SKILL.md
 
-# Verwandte Skills auf Existenz pruefen
+# Verify related skills still exist
 grep -oP '`[\w-]+`' skills/<skill-name>/SKILL.md | sort -u
 ```
 
@@ -124,12 +124,12 @@ Diese Entscheidungsmatrix verwenden, um zu bestimmen, ob direkt verfeinert oder 
 Die bestehende SKILL.md direkt bearbeiten:
 
 ```bash
-# Zur Bearbeitung oeffnen
-# Verfahrensschritte hinzufuegen/ueberarbeiten
-# Expected/On-failure-Paare staerken
-# Tabellen oder Beispiele hinzufuegen
-# Ausloser fuer "When to Use" aktualisieren
-# Inputs ueberarbeiten, falls sich Umfang geaendert hat
+# Open for editing
+# Add/revise procedure steps
+# Strengthen Expected/On failure pairs
+# Add tables or examples
+# Update When to Use triggers
+# Revise Inputs if scope changed
 ```
 
 Diese Bearbeitungsregeln befolgen:
@@ -142,19 +142,19 @@ Diese Bearbeitungsregeln befolgen:
 #### Fuer Varianten
 
 ```bash
-# Varianten-Verzeichnis erstellen
+# Create the variant directory
 mkdir -p skills/<skill-name>-advanced/
 
-# Original als Ausgangspunkt kopieren
+# Copy the original as a starting point
 cp skills/<skill-name>/SKILL.md skills/<skill-name>-advanced/SKILL.md
 
-# Variante bearbeiten:
-# - `name` in `<skill-name>-advanced` aendern
-# - `description` aktualisieren um fortgeschrittenen Umfang widerzuspiegeln
-# - `complexity` erhoehen (z.B. intermediate -> advanced)
-# - `version` auf "1.0" zuruecksetzen
-# - Verfahrensschritte fuer fortgeschrittenen Anwendungsfall hinzufuegen/erweitern
-# - Original in Related Skills als Voraussetzung referenzieren
+# Edit the variant:
+# - Change `name` to `<skill-name>-advanced`
+# - Update `description` to reflect the advanced scope
+# - Raise `complexity` (e.g., intermediate → advanced)
+# - Reset `version` to "1.0"
+# - Add/expand procedure steps for the advanced use case
+# - Reference the original in Related Skills as a prerequisite
 ```
 
 **Erwartet:** Die SKILL.md (verfeinert oder neue Variante) besteht die Bewertungscheckliste aus Schritt 1.
@@ -168,7 +168,7 @@ cp skills/<skill-name>/SKILL.md skills/<skill-name>-advanced/SKILL.md
 Pruefen, ob Uebersetzungen fuer den weiterentwickelten Skill existieren, und sie auf den neuen Stand der Quelle aktualisieren:
 
 ```bash
-# Auf vorhandene Uebersetzungen pruefen
+# Check for existing translations
 ls i18n/*/skills/<skill-name>/SKILL.md 2>/dev/null
 ```
 
@@ -241,7 +241,7 @@ Auch aktualisieren:
 Keine Registry-Aenderungen erforderlich (Pfad unveraendert). Querverweise nur aktualisieren, wenn sich Related Skills in anderen Skills geaendert haben:
 
 ```bash
-# Pruefen ob ein Skill den weiterentwickelten Skill referenziert
+# Check if any skill references the evolved skill
 grep -r "<skill-name>" skills/*/SKILL.md
 ```
 
@@ -264,7 +264,7 @@ Dann:
 4. Symlinks fuer Slash-Command-Entdeckung erstellen:
 
 ```bash
-# Projektebene
+# Project-level
 ln -s ../../skills/<skill-name>-advanced .claude/skills/<skill-name>-advanced
 
 # Global
@@ -291,14 +291,18 @@ Die vollstaendige Validierungscheckliste durchfuehren:
 - [ ] `git diff` zeigt keine versehentlichen Loeschungen aus dem urspruenglichen Inhalt
 
 ```bash
-# Frontmatter pruefen
+# Verify frontmatter
 head -20 skills/<skill-name>/SKILL.md
 
-# Skills auf Festplatte vs. Registry zaehlen
+# Count skills on disk vs registry
 find skills -name SKILL.md | wc -l
 grep total_skills skills/_registry.yml
 
-# Alle Aenderungen ueberpruefen
+# Check symlinks (for variants)
+ls -la .claude/skills/<skill-name>-advanced
+readlink -f .claude/skills/<skill-name>-advanced/SKILL.md
+
+# Review all changes
 git diff
 ```
 

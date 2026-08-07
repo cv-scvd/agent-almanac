@@ -115,7 +115,7 @@ cd /mnt/d/dev/p/jigsawR && "$R_EXE" -e "devtools::test()"
 4. エラー失敗の場合、関数シグネチャが変更されたか確認する
 
 ```bash
-# 詳細出力で失敗テストのみを実行
+# Run just the failing test with verbose output
 "$R_EXE" -e "testthat::test_file('tests/testthat/test-failing.R', reporter = 'summary')"
 ```
 

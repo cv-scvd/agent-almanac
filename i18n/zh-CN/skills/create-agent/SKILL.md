@@ -97,10 +97,10 @@ grep -i "description:" agents/_registry.yml | grep -i "<your-domain-keywords>"
 浏览技能注册表，选择与智能体领域相关的技能：
 
 ```bash
-# 列出某领域的所有技能
+# List all skills in a domain
 grep -A3 "domain-name:" skills/_registry.yml
 
-# 按关键词搜索技能
+# Search for skills by keyword
 grep -i "keyword" skills/_registry.yml
 ```
 
@@ -264,7 +264,7 @@ Description of another common use case.
 Claude Code 从 `.claude/agents/` 目录发现智能体。在此存储库中，该目录是指向 `agents/` 的符号链接：
 
 ```bash
-# 验证符号链接存在且可解析
+# Verify the symlink exists and resolves
 ls -la .claude/agents/
 readlink -f .claude/agents/<agent-name>.md
 ```

@@ -60,7 +60,7 @@ Eine klare, fokussierte Identitaet fuer den Agenten waehlen:
 Vor dem Fortfahren auf Ueberschneidungen mit den bestehenden 53 Agenten pruefen:
 
 ```bash
-grep -i "description:" agents/_registry.yml | grep -i "<eigene-domain-schluesselwoerter>"
+grep -i "description:" agents/_registry.yml | grep -i "<your-domain-keywords>"
 ```
 
 **Erwartet:** Kein bestehender Agent deckt dieselbe Nische ab. Falls ein bestehender Agent teilweise ueberlappt, erwaegen diesen zu erweitern anstatt einen neuen zu erstellen.
@@ -101,10 +101,10 @@ Das Modell basierend auf der Aufgabenkomplexitaet auswaehlen:
 Die Skills-Registry durchsuchen und fuer die Domain des Agenten relevante Skills auswaehlen:
 
 ```bash
-# Alle Skills in einer Domain auflisten
+# List all skills in a domain
 grep -A3 "domain-name:" skills/_registry.yml
 
-# Nach Skills mit Schluesselbegriffen suchen
+# Search for skills by keyword
 grep -i "keyword" skills/_registry.yml
 ```
 
@@ -268,7 +268,7 @@ Den `total_agents`-Zaehler am Anfang der Datei hochzaehlen.
 Claude Code entdeckt Agenten aus dem Verzeichnis `.claude/agents/`. In diesem Repository ist dieses Verzeichnis ein Symlink zu `agents/`:
 
 ```bash
-# Pruefen ob der Symlink existiert und aufloest
+# Verify the symlink exists and resolves
 ls -la .claude/agents/
 readlink -f .claude/agents/<agent-name>.md
 ```

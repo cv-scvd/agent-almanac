@@ -83,11 +83,11 @@ metadata:
 - [ ] **时序耦合**：操作是否必须按特定顺序发生，却没有显式的编排？
 
 ```bash
-# 检测循环依赖（JavaScript/TypeScript）
+# Detect circular dependencies (JavaScript/TypeScript)
 npx madge --circular src/
 
-# 检测导入模式（Python）
-# 查找深层跨包导入
+# Detect import patterns (Python)
+# Look for deep cross-package imports
 grep -r "from app\." --include="*.py" | sort | uniq -c | sort -rn | head -20
 ```
 
