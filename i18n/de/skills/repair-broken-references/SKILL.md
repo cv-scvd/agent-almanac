@@ -236,10 +236,10 @@ Import-Anweisungen aktualisieren um nach Verschiebungen auf korrekte Pfade zu ve
 
 **JavaScript-Beispiel**:
 ```javascript
-// Vorher (defekt)
+// Before (broken)
 import { helper } from './utils/helper';
 
-// Nachher (repariert — Datei nach lib/ verschoben)
+// After (fixed — file moved to lib/)
 import { helper } from './lib/helper';
 ```
 

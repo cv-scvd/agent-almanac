@@ -174,7 +174,7 @@ import (
     "context"
     "github.com/gin-gonic/gin"
     "go.opentelemetry.io/otel"
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **Node.jsとExpress**：
@@ -193,7 +193,7 @@ const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc')
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { Resource } = require('@opentelemetry/resources');
 const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **期待結果：** インストルメントされたサービスからのトレースがJaegerのUIまたはGrafanaに表示され、HTTPリクエストが自動的にスパンを作成する。
@@ -230,7 +230,7 @@ import (
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/codes"
     "go.opentelemetry.io/otel/trace"
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **スパン属性のベストプラクティス**：
@@ -272,7 +272,7 @@ import (
     "go.opentelemetry.io/otel/propagation"
 )
 
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **メッセージキューの伝播**（Kafka）：

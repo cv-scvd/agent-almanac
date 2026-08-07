@@ -398,6 +398,7 @@ services:
 選丙：自態頁自 Prometheus 指：
 
 ```html
+<!-- Simple status page (served via Nginx or GitHub Pages) -->
 <!DOCTYPE html>
 <html>
 <head>
