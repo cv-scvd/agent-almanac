@@ -94,7 +94,7 @@ Is it purely cosmetic? → LOW
 専門家がレビューするためのすべての関連コンテキストを記録する。
 
 **課題レポートテンプレート**：
-```markdown
+````markdown
 # Issue: [Brief Title]
 
 **Severity**: CRITICAL | HIGH | MEDIUM | LOW
@@ -138,7 +138,7 @@ Clear description of the problem in 2-3 sentences.
 
 - [Link to related documentation]
 - [Link to similar past issues]
-```text
+````
 
 **期待結果:** 完全なコンテキスト付きで`ESCALATION_REPORTS/issue_YYYYMMDD_HHMM.md`に文書化された課題
 

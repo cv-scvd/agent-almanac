@@ -130,7 +130,7 @@ If err: P0 at risk of missing freeze → escalate immediately. Options: extend d
 
 How RCs are produced + tested:
 
-```markdown
+````markdown
 ### Release Candidate Process
 
 1. **RC1 Tag**: Tag from the stabilization branch after all P0 features merged and CI green
@@ -158,7 +158,7 @@ How RCs are produced + tested:
    ```bash
    git tag -a v2.0.0-rc.2 -m "Release candidate 2 for v2.0.0"
    ```
-```text
+````
 
 → RC process doc'd: tagging convention, distribution, testing checklist, escalation.
 

@@ -49,7 +49,7 @@ AIアシスタントに効果的なプロジェクト固有のコンテキスト
 
 プロジェクトルートに `CLAUDE.md` を配置する:
 
-```markdown
+````markdown
 # Project Name
 
 Brief description of what this project is and its purpose.
@@ -78,7 +78,7 @@ Key architectural decisions and patterns used in this project.
 - Always use descriptive variable names
 - Follow [language-specific style guide]
 - Write tests for all new functionality
-```text
+````
 
 **期待結果：** プロジェクトルートに `CLAUDE.md` ファイルが存在し、最低限プロジェクトの説明、クイックスタートコマンド、アーキテクチャの概要、規約セクションが含まれている。
 
@@ -88,7 +88,7 @@ Key architectural decisions and patterns used in this project.
 
 **Rパッケージの場合**:
 
-```markdown
+````markdown
 ## Development Workflow
 
 ```r
@@ -110,7 +110,7 @@ devtools::check()       # Full package check
 - `.Rprofile` - Session configuration
 - `.Renviron` - Environment variables (git-ignored)
 - `renv.lock` - Locked dependencies
-```text
+````
 
 **Node.js/TypeScriptの場合**:
 

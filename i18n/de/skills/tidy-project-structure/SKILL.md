@@ -162,7 +162,7 @@ Defekte Links reparieren, Beispiele aktualisieren, fehlende Abschnitte ergaenzen
 5. Copyright-Jahr aktualisieren
 
 **README-Vorlagenstruktur**:
-```markdown
+````markdown
 # Projektname
 
 Kurzbeschreibung (1-2 Saetze).
@@ -190,7 +190,7 @@ Link zu CONTRIBUTING.md oder eingebettete Richtlinien.
 ## Lizenz
 
 LIZENZ-Badge und Link.
-```text
+````
 
 **Erwartet:** Alle READMEs aktualisiert; Beispiele auf Funktionsfaehigkeit verifiziert
 

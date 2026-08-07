@@ -57,7 +57,7 @@ usethis::use_vignette("getting-started", title = "Getting Started with packagena
 
 ### Schritt 2: Vignetten-Inhalt schreiben
 
-```markdown
+````markdown
 ---
 title: "Getting Started with packagename"
 output: rmarkdown::html_vignette
@@ -100,7 +100,7 @@ Cover optional or advanced functionality.
 ## Conclusion
 
 Summarize and point to other vignettes or resources.
-```text
+````
 
 **Erwartet:** Die Vignetten-Rmd-Datei enthaelt die Abschnitte Introduction, Installation, Basic Usage, Advanced Features und Conclusion. Code-Beispiele verwenden die exportierten Funktionen des Pakets und liefern sichtbare Ausgaben.
 

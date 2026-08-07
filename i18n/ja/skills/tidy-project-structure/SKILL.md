@@ -161,7 +161,7 @@ Fix broken links, update examples, add missing sections.
 5. Update copyright year
 
 **README template structure**:
-```markdown
+````markdown
 # Project Name
 
 Brief description (1-2 sentences).
@@ -189,7 +189,7 @@ Link to CONTRIBUTING.md or inline guidelines.
 ## License
 
 LICENSE badge and link.
-```text
+````
 
 **期待結果:** All READMEs updated; examples verified to run
 

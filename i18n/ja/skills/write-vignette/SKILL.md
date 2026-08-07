@@ -54,7 +54,7 @@ usethis::use_vignette("getting-started", title = "Getting Started with packagena
 
 ### ステップ2: ビネットコンテンツの記述
 
-```markdown
+````markdown
 ---
 title: "Getting Started with packagename"
 output: rmarkdown::html_vignette
@@ -97,7 +97,7 @@ Cover optional or advanced functionality.
 ## Conclusion
 
 Summarize and point to other vignettes or resources.
-```text
+````
 
 **期待結果：** ビネットのRmdファイルに「はじめに」、インストール、基本的な使い方、高度な機能、まとめのセクションが含まれる。コード例がパッケージのエクスポートされた関数を使用して表示可能な出力を生成する。
 

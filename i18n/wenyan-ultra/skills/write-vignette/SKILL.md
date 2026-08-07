@@ -55,7 +55,7 @@ usethis::use_vignette("getting-started", title = "Getting Started with packagena
 
 ### 二：書示例容
 
-```markdown
+````markdown
 ---
 title: "Getting Started with packagename"
 output: rmarkdown::html_vignette
@@ -98,7 +98,7 @@ Cover optional or advanced functionality.
 ## Conclusion
 
 Summarize and point to other vignettes or resources.
-```text
+````
 
 得：示例 Rmd 含 Introduction、Installation、Basic Usage、Advanced Features、Conclusion 節。碼例用包出函生可見出。
 

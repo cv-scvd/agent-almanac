@@ -174,7 +174,7 @@ Key configuration points:
 
 Insert sentinel markers in the target file where the diagram should appear.
 
-```markdown
+````markdown
 ## Workflow
 
 <!-- PUTIOR-WORKFLOW-START -->
@@ -186,7 +186,7 @@ flowchart TD
 ```
 
 <!-- PUTIOR-WORKFLOW-END -->
-```text
+````
 
 **期待結果:** Sentinel markers in README.md (or other target file). The content between them will be replaced on each CI run.
 

@@ -55,7 +55,7 @@ usethis::use_vignette("getting-started", title = "Getting Started with packagena
 
 ### Step 2: Content
 
-```markdown
+````markdown
 ---
 title: "Getting Started with packagename"
 output: rmarkdown::html_vignette
@@ -98,7 +98,7 @@ Cover optional or advanced functionality.
 ## Conclusion
 
 Summarize and point to other vignettes or resources.
-```text
+````
 
 **Got:** Vignette Rmd has Intro, Install, Basic Usage, Advanced, Conclusion. Code uses pkg's exported fns + produces visible out.
 

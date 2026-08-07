@@ -96,7 +96,7 @@ Ist es rein kosmetisch? -> NIEDRIG
 Allen relevanten Kontext fuer den Spezialisten zur Pruefung erfassen.
 
 **Fehlerbericht-Vorlage**:
-```markdown
+````markdown
 # Problem: [Kurzer Titel]
 
 **Schweregrad**: KRITISCH | HOCH | MITTEL | NIEDRIG
@@ -140,7 +140,7 @@ Klare Beschreibung des Problems in 2-3 Saetzen.
 
 - [Link zu verwandter Dokumentation]
 - [Link zu aehnlichen frueheren Problemen]
-```text
+````
 
 **Erwartet:** Problem mit vollstaendigem Kontext in `ESCALATION_REPORTS/issue_JJJJMMTT_HHMM.md` dokumentiert
 

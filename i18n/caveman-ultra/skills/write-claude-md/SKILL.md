@@ -49,7 +49,7 @@ CLAUDE.md → AI assistants effective project-specific ctx.
 
 Place `CLAUDE.md` in project root:
 
-```markdown
+````markdown
 # Project Name
 
 Brief description of what this project is and its purpose.
@@ -78,7 +78,7 @@ Key architectural decisions and patterns used in this project.
 - Always use descriptive variable names
 - Follow [language-specific style guide]
 - Write tests for all new functionality
-```text
+````
 
 **Got:** `CLAUDE.md` in project root w/ min: project desc, quick start cmds, architecture, conventions.
 
@@ -88,7 +88,7 @@ Key architectural decisions and patterns used in this project.
 
 **R packages**:
 
-```markdown
+````markdown
 ## Development Workflow
 
 ```r
@@ -110,7 +110,7 @@ devtools::check()       # Full package check
 - `.Rprofile` - Session configuration
 - `.Renviron` - Environment variables (git-ignored)
 - `renv.lock` - Locked dependencies
-```text
+````
 
 **Node.js/TS**:
 

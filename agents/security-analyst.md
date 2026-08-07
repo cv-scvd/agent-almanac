@@ -240,7 +240,6 @@ Header always set X-Content-Type-Options nosniff
 Header always set X-Frame-Options DENY
 SSLProtocol all -SSLv3 -TLSv1 -TLSv1.1
 ```
-```text
 
 ## Security Incident Response
 

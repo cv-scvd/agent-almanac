@@ -94,7 +94,7 @@ Is it purely cosmetic? → LOW
 Grab all context for specialist review.
 
 **Issue Report Template**:
-```markdown
+````markdown
 # Issue: [Brief Title]
 
 **Severity**: CRITICAL | HIGH | MEDIUM | LOW
@@ -138,7 +138,7 @@ Clear description of the problem in 2-3 sentences.
 
 - [Link to related documentation]
 - [Link to similar past issues]
-```text
+````
 
 **Got:** Issue logged with full context in `ESCALATION_REPORTS/issue_YYYYMMDD_HHMM.md`
 
