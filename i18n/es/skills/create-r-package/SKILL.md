@@ -186,10 +186,10 @@ Crear `CLAUDE.md` en la raíz del proyecto con instrucciones específicas del pr
 ## Ejemplos
 
 ```r
-# Creación mínima
+# Minimal creation
 usethis::create_package("myanalysis")
 
-# Configuración completa en una sesión
+# Full setup in one session
 usethis::create_package("myanalysis")
 usethis::use_mit_license()
 usethis::use_testthat(edition = 3)

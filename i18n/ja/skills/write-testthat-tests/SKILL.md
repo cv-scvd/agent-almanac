@@ -95,19 +95,19 @@ test_that("weighted_mean validates input", {
 
 ```r
 test_that("weighted_mean handles edge cases", {
-  # 空の入力
+  # Empty input
   expect_error(weighted_mean(numeric(0), numeric(0)))
 
-  # 単一の値
+  # Single value
   expect_equal(weighted_mean(5, 1), 5)
 
-  # ゼロの重み
+  # Zero weights
   expect_true(is.nan(weighted_mean(1:3, c(0, 0, 0))))
 
-  # 非常に大きな値
+  # Very large values
   expect_equal(weighted_mean(c(1e15, 1e15), c(1, 1)), 1e15)
 
-  # 負の重み
+  # Negative weights
   expect_error(weighted_mean(1:3, c(-1, 1, 1)))
 })
 ```
@@ -121,7 +121,7 @@ test_that("weighted_mean handles edge cases", {
 テストデータ用に`tests/testthat/fixtures/`を作成する：
 
 ```r
-# tests/testthat/helper.R（自動的に読み込まれる）
+# tests/testthat/helper.R (loaded automatically)
 create_test_data <- function() {
   data.frame(
     x = c(1, 2, 3, NA, 5),
@@ -131,7 +131,7 @@ create_test_data <- function() {
 ```
 
 ```r
-# テストファイル内
+# In test file
 test_that("process_data works with grouped data", {
   test_data <- create_test_data()
   result <- process_data(test_data)
@@ -213,14 +213,14 @@ test_that("parallel computation works", {
 ### ステップ9: テストの実行とカバレッジの確認
 
 ```r
-# すべてのテストを実行
+# Run all tests
 devtools::test()
 
-# 特定のテストファイルを実行
-devtools::test_active_file()  # RStudioで
+# Run specific test file
+devtools::test_active_file()  # in RStudio
 testthat::test_file("tests/testthat/test-function_name.R")
 
-# カバレッジを確認
+# Check coverage
 covr::package_coverage()
 covr::report()
 ```
@@ -250,16 +250,16 @@ covr::report()
 ## 例
 
 ```r
-# パターン：テストファイルはR/ファイルを反映する
+# Pattern: test file mirrors R/ file
 # R/weighted_mean.R -> tests/testthat/test-weighted_mean.R
 
-# パターン：説明的なテスト名
+# Pattern: descriptive test names
 test_that("weighted_mean returns NA when na.rm = FALSE and input contains NA", {
   result <- weighted_mean(c(1, NA), c(1, 1), na.rm = FALSE)
   expect_true(is.na(result))
 })
 
-# パターン：警告のテスト
+# Pattern: testing warnings
 test_that("deprecated_function emits deprecation warning", {
   expect_warning(deprecated_function(), "deprecated")
 })

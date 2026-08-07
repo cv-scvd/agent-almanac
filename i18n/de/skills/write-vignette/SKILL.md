@@ -153,10 +153,10 @@ optionalpkg::special_function()
 Fuer zeitaufwendige Berechnungen Ergebnisse vorausberechnen und speichern:
 
 ```r
-# Vorberechnete Ergebnisse in vignettes/ speichern
+# Save pre-computed results to vignettes/
 saveRDS(expensive_result, "vignettes/precomputed.rds")
 
-# In der Vignette laden
+# Load in vignette
 {r load-precomputed}
 result <- readRDS("precomputed.rds")
 ```
@@ -168,10 +168,10 @@ result <- readRDS("precomputed.rds")
 ### Schritt 5: Vignette bauen und testen
 
 ```r
-# Einzelne Vignette bauen
+# Build single vignette
 devtools::build_vignettes()
 
-# Bauen und pruefen (erkennt Vignetten-Probleme)
+# Build and check (catches vignette issues)
 devtools::check()
 ```
 

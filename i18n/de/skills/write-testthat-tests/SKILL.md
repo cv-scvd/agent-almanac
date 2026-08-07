@@ -123,7 +123,7 @@ test_that("weighted_mean handles edge cases", {
 `tests/testthat/fixtures/` fuer Testdaten erstellen:
 
 ```r
-# tests/testthat/helper.R (wird automatisch geladen)
+# tests/testthat/helper.R (loaded automatically)
 create_test_data <- function() {
   data.frame(
     x = c(1, 2, 3, NA, 5),
@@ -133,7 +133,7 @@ create_test_data <- function() {
 ```
 
 ```r
-# In der Testdatei
+# In test file
 test_that("process_data works with grouped data", {
   test_data <- create_test_data()
   result <- process_data(test_data)
@@ -215,14 +215,14 @@ test_that("parallel computation works", {
 ### Schritt 9: Tests ausfuehren und Abdeckung pruefen
 
 ```r
-# Alle Tests ausfuehren
+# Run all tests
 devtools::test()
 
-# Bestimmte Testdatei ausfuehren
+# Run specific test file
 devtools::test_active_file()  # in RStudio
 testthat::test_file("tests/testthat/test-function_name.R")
 
-# Abdeckung pruefen
+# Check coverage
 covr::package_coverage()
 covr::report()
 ```
@@ -252,16 +252,16 @@ covr::report()
 ## Beispiele
 
 ```r
-# Muster: Testdatei spiegelt R/-Datei
+# Pattern: test file mirrors R/ file
 # R/weighted_mean.R -> tests/testthat/test-weighted_mean.R
 
-# Muster: Beschreibende Testnamen
+# Pattern: descriptive test names
 test_that("weighted_mean returns NA when na.rm = FALSE and input contains NA", {
   result <- weighted_mean(c(1, NA), c(1, 1), na.rm = FALSE)
   expect_true(is.na(result))
 })
 
-# Muster: Warnungen testen
+# Pattern: testing warnings
 test_that("deprecated_function emits deprecation warning", {
   expect_warning(deprecated_function(), "deprecated")
 })

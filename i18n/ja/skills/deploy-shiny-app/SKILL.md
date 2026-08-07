@@ -49,13 +49,13 @@ ShinyアプリケーションをShinyapps.io、Posit Connect、またはDocker�
 アプリが自己完結型でデプロイ可能であることを確認します：
 
 ```r
-# 欠けている依存関係を確認
+# Check for missing dependencies
 rsconnect::appDependencies("path/to/app")
 
-# golemアプリの場合、DESCRIPTIONにすべてのImportsがリストされているか確認
+# For golem apps, ensure DESCRIPTION lists all Imports
 devtools::check()
 
-# アプリがクリーンに実行されることを確認
+# Verify the app runs cleanly
 shiny::runApp("path/to/app")
 ```
 
@@ -71,14 +71,14 @@ shiny::runApp("path/to/app")
 ### ステップ2a: shinyapps.ioへのデプロイ
 
 ```r
-# 一回限りのアカウントセットアップ
+# One-time account setup
 rsconnect::setAccountInfo(
   name = "your-account",
   token = Sys.getenv("SHINYAPPS_TOKEN"),
   secret = Sys.getenv("SHINYAPPS_SECRET")
 )
 
-# デプロイ
+# Deploy
 rsconnect::deployApp(
   appDir = "path/to/app",
   appName = "my-app",
@@ -103,20 +103,20 @@ SHINYAPPS_SECRET=your_secret_here
 ### ステップ2b: Posit Connectへのデプロイ
 
 ```r
-# サーバーの登録（一回限り）
+# Register server (one-time)
 rsconnect::addServer(
   url = "https://connect.example.com",
   name = "production"
 )
 
-# 認証（一回限り）
+# Authenticate (one-time)
 rsconnect::connectApiUser(
   account = "your-username",
   server = "production",
   apiKey = Sys.getenv("CONNECT_API_KEY")
 )
 
-# デプロイ
+# Deploy
 rsconnect::deployApp(
   appDir = "path/to/app",
   appName = "my-app",
@@ -189,11 +189,11 @@ docker run -p 3838:3838 myapp:latest
 ### ステップ3: デプロイメントの確認
 
 ```r
-# デプロイされたURLが応答するか確認
+# Check the deployed URL responds
 response <- httr::GET("https://your-app-url/")
-httr::status_code(response)  # 200であるべき
+httr::status_code(response)  # Should be 200
 
-# Dockerの場合
+# For Docker
 response <- httr::GET("http://localhost:3838/")
 httr::status_code(response)
 ```
@@ -217,7 +217,7 @@ httr::status_code(response)
 #### Posit Connect
 
 ```r
-# API経由でデプロイメントの状態を確認
+# Check deployment status via API
 connectapi::connect(
   server = "https://connect.example.com",
   api_key = Sys.getenv("CONNECT_API_KEY")

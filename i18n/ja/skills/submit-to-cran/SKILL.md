@@ -143,10 +143,10 @@ There are currently no downstream dependencies for this package.
 ### ステップ8: 最終事前チェック
 
 ```r
-# 最後のチェック
+# One last check
 devtools::check()
 
-# ビルドされたtarballを確認
+# Verify the built tarball
 devtools::build()
 ```
 
@@ -173,10 +173,10 @@ devtools::release()
 承認後：
 
 ```r
-# リリースをタグ付け
+# Tag the release
 usethis::use_github_release()
 
-# 開発バージョンにバンプ
+# Bump to development version
 usethis::use_dev_version()
 ```
 
@@ -208,13 +208,13 @@ usethis::use_dev_version()
 ## 例
 
 ```r
-# 投稿前の完全なワークフロー
+# Full pre-submission workflow
 devtools::spell_check()
 urlchecker::url_check()
 devtools::check()
 devtools::check_win_devel()
 rhub::rhub_check()
-# 結果を待つ...
+# Wait for results...
 devtools::release()
 ```
 

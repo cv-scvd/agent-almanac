@@ -71,21 +71,21 @@ Eingaben am Anfang jeder oeffentlichen Funktion validieren, bevor irgendeine Arb
 
 ```r
 calculate_summary <- function(data, method = c("mean", "median", "trim"), trim_pct = 0.1) {
-  # Guard: Typenpruefung
+  # Guard: type check
   if (!is.data.frame(data)) {
     stop("'data' must be a data frame, not ", class(data)[[1]], call. = FALSE)
   }
-  # Guard: Nicht leer
+  # Guard: non-empty
   if (nrow(data) == 0L) {
     stop("'data' must have at least one row", call. = FALSE)
   }
-  # Guard: Argument-Abgleich
+  # Guard: argument matching
   method <- match.arg(method)
-  # Guard: Bereichspruefung
+  # Guard: range check
   if (!is.numeric(trim_pct) || trim_pct < 0 || trim_pct > 0.5) {
     stop("'trim_pct' must be a number between 0 and 0.5, got: ", trim_pct, call. = FALSE)
   }
-  # --- Alle Guards bestanden, echte Arbeit beginnen ---
+  # --- All guards passed, begin real work ---
   # ...
 }
 ```
@@ -139,16 +139,16 @@ Jede Fehlermeldung sollte vier Fragen beantworten:
 **Gute Meldungen:**
 
 ```r
-# Was + Warum (erwartet vs. tatsaechlich)
+# What + Why (expected vs. actual)
 stop("'n' must be a positive integer, got: ", n, call. = FALSE)
 
-# Was + Warum + Wie zu beheben
+# What + Why + How to fix
 cli::cli_abort(c(
   "{.arg config_path} does not exist: {.file {config_path}}",
   "i" = "Create it with {.run create_config({.file {config_path}})}."
 ))
 
-# Was + Kontext
+# What + context
 cli::cli_abort(c(
   "Column {.val {col_name}} not found in {.arg data}.",
   "i" = "Available columns: {.val {names(data)}}"
@@ -158,9 +158,9 @@ cli::cli_abort(c(
 **Schlechte Meldungen:**
 
 ```r
-stop("Error")                    # Was ist gescheitert? Keine Ahnung
-stop("Invalid input")           # Welche Eingabe? Was ist damit falsch?
-stop(paste("Error in step", i)) # Keine handlungsrelevante Information
+stop("Error")                    # What failed? No idea
+stop("Invalid input")           # Which input? What's wrong with it?
+stop(paste("Error in step", i)) # No actionable information
 ```
 
 **Erwartet:** Fehlermeldungen sind selbstdokumentierend — ein Entwickler, der den Fehler zum ersten Mal sieht, kann ihn ohne Lesen des Quellcodes diagnostizieren und beheben.
@@ -174,7 +174,7 @@ stop(paste("Error in step", i)) # Keine handlungsrelevante Information
 **Faustregel:** Falls ein Benutzer still eine falsche Antwort erhalten koennte, ist das ein `stop()`, kein `warning()`.
 
 ```r
-# RICHTIG: stop wenn Ergebnis falsch waere
+# CORRECT: stop when result would be wrong
 read_config <- function(path) {
   if (!file.exists(path)) {
     stop("Config file not found: ", path, call. = FALSE)
@@ -182,13 +182,13 @@ read_config <- function(path) {
   yaml::read_yaml(path)
 }
 
-# RICHTIG: warnen wenn Ergebnis noch verwendbar ist
+# CORRECT: warn when result is still usable
 summarize_data <- function(data) {
   if (any(is.na(data$value))) {
     warning(sum(is.na(data$value)), " NA values dropped from 'value' column", call. = FALSE)
     data <- data[!is.na(data$value), ]
   }
-  # Mit gueltigen Daten fortfahren
+  # proceed with valid data
 }
 ```
 
@@ -201,7 +201,7 @@ summarize_data <- function(data) {
 Fuer Bedingungen, die "niemals passieren sollten" in korrektem Code, Assertions verwenden. Diese fangen Programmiererfehler waehrend der Entwicklung auf:
 
 ```r
-# R: stopifnot fuer interne Invarianten
+# R: stopifnot for internal invariants
 process_chunk <- function(chunk, total_size) {
   stopifnot(
     is.list(chunk),
@@ -211,11 +211,11 @@ process_chunk <- function(chunk, total_size) {
   # ...
 }
 
-# R: explizite Assertion mit Kontext
+# R: explicit assertion with context
 merge_results <- function(left, right) {
   if (ncol(left) != ncol(right)) {
     stop("Internal error: column count mismatch (", ncol(left), " vs ", ncol(right),
-         "). This is a bug -- please report it.", call. = FALSE)
+         "). This is a bug — please report it.", call. = FALSE)
   }
   # ...
 }
@@ -232,13 +232,13 @@ Diese gaengigen Anti-Muster identifizieren und beheben:
 **Anti-Muster 1: Leeres tryCatch (Fehler verschlucken)**
 
 ```r
-# VORHER: Fehler verschwindet still
+# BEFORE: Error silently disappears
 result <- tryCatch(
   parse_data(input),
   error = function(e) NULL
 )
 
-# NACHHER: Protokollieren, neu werfen oder typisierter Fehler
+# AFTER: Log, re-throw, or return a typed error
 result <- tryCatch(
   parse_data(input),
   error = function(e) {
@@ -250,13 +250,13 @@ result <- tryCatch(
 **Anti-Muster 2: Standardwerte, die schlechte Eingaben verdecken**
 
 ```r
-# VORHER: Aufrufer weiss nie, dass seine Eingabe ignoriert wurde
+# BEFORE: Caller never knows their input was ignored
 process <- function(x = 10) {
-  if (!is.numeric(x)) x <- 10  # ersetzt schlechte Eingabe still
+  if (!is.numeric(x)) x <- 10  # silently replaces bad input
   x * 2
 }
 
-# NACHHER: Aufrufer ueber das Problem informieren
+# AFTER: Tell the caller about the problem
 process <- function(x = 10) {
   if (!is.numeric(x)) {
     stop("'x' must be numeric, got ", class(x)[[1]], call. = FALSE)
@@ -268,10 +268,10 @@ process <- function(x = 10) {
 **Anti-Muster 3: suppressWarnings als Loesung**
 
 ```r
-# VORHER: Symptom verstecken statt Ursache beheben
+# BEFORE: Hiding the symptom instead of fixing the cause
 result <- suppressWarnings(as.numeric(user_input))
 
-# NACHHER: Explizit validieren, erwarteten Fall behandeln
+# AFTER: Validate explicitly, handle the expected case
 if (!grepl("^-?\\d+\\.?\\d*$", user_input)) {
   stop("Expected a number, got: '", user_input, "'", call. = FALSE)
 }
@@ -281,20 +281,20 @@ result <- as.numeric(user_input)
 **Anti-Muster 4: Catch-All-Ausnahmebehandler**
 
 ```r
-# VORHER: Jeder Fehler wird gleich behandelt
+# BEFORE: Every error treated the same
 tryCatch(
   complex_operation(),
   error = function(e) message("Something went wrong")
 )
 
-# NACHHER: Spezifische Bedingungen behandeln, unerwartete propagieren lassen
+# AFTER: Handle specific conditions, let unexpected ones propagate
 tryCatch(
   complex_operation(),
   custom_validation_error = function(e) {
     cli::cli_warn("Validation issue: {e$message}")
     fallback_value
   }
-  # Unerwartete Fehler propagieren natuerlich
+  # Unexpected errors propagate naturally
 )
 ```
 
@@ -307,12 +307,12 @@ tryCatch(
 Die Testsuite ausfuehren, um zu bestaetigen, dass Fehlerpfade korrekt funktionieren:
 
 ```r
-# Fehlermeldungen pruefen ob sie ausgeloest werden
+# Verify error messages are triggered
 testthat::expect_error(calculate_summary("not_a_df"), "must be a data frame")
 testthat::expect_error(calculate_summary(data.frame()), "at least one row")
 testthat::expect_error(calculate_summary(mtcars, trim_pct = 2), "between 0 and 0.5")
 
-# Pruefen ob gueltige Eingaben noch funktionieren
+# Verify valid inputs still work
 testthat::expect_no_error(calculate_summary(mtcars, method = "mean"))
 ```
 

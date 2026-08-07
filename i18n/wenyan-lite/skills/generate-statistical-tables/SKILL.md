@@ -120,7 +120,7 @@ library(gt)
 cor_matrix <- cor(data[, c("var1", "var2", "var3", "var4")],
                   use = "pairwise.complete.obs")
 
-# 格式化下三角
+# Format lower triangle
 cor_matrix[upper.tri(cor_matrix)] <- NA
 
 as.data.frame(cor_matrix) |>
@@ -164,16 +164,16 @@ tbl_anova <- broom::tidy(aov_result) |>
 ### 步驟六：存表
 
 ```r
-# 存為 HTML
+# Save as HTML
 gtsave(my_table, "table1.html")
 
-# 存為 Word
+# Save as Word
 gtsave(my_table, "table1.docx")
 
-# 存為 PNG 圖
+# Save as PNG image
 gtsave(my_table, "table1.png")
 
-# 為 LaTeX/PDF（kableExtra）
+# For LaTeX/PDF (kableExtra)
 kableExtra::save_kable(kable_table, "table1.pdf")
 ```
 

@@ -49,13 +49,13 @@ Desplegar una aplicación Shiny en shinyapps.io, Posit Connect o un contenedor D
 Asegúrate de que la app sea autocontenida y desplegable:
 
 ```r
-# Verificar dependencias faltantes
+# Check for missing dependencies
 rsconnect::appDependencies("path/to/app")
 
-# Para apps golem, asegúrate de que DESCRIPTION liste todos los Imports
+# For golem apps, ensure DESCRIPTION lists all Imports
 devtools::check()
 
-# Verificar que la app se ejecuta limpiamente
+# Verify the app runs cleanly
 shiny::runApp("path/to/app")
 ```
 
@@ -71,14 +71,14 @@ Verifica que estos archivos existen:
 ### Paso 2a: Desplegar en shinyapps.io
 
 ```r
-# Configuración de cuenta (una vez)
+# One-time account setup
 rsconnect::setAccountInfo(
   name = "your-account",
   token = Sys.getenv("SHINYAPPS_TOKEN"),
   secret = Sys.getenv("SHINYAPPS_SECRET")
 )
 
-# Desplegar
+# Deploy
 rsconnect::deployApp(
   appDir = "path/to/app",
   appName = "my-app",
@@ -103,20 +103,20 @@ SHINYAPPS_SECRET=your_secret_here
 ### Paso 2b: Desplegar en Posit Connect
 
 ```r
-# Registrar servidor (una vez)
+# Register server (one-time)
 rsconnect::addServer(
   url = "https://connect.example.com",
   name = "production"
 )
 
-# Autenticar (una vez)
+# Authenticate (one-time)
 rsconnect::connectApiUser(
   account = "your-username",
   server = "production",
   apiKey = Sys.getenv("CONNECT_API_KEY")
 )
 
-# Desplegar
+# Deploy
 rsconnect::deployApp(
   appDir = "path/to/app",
   appName = "my-app",
@@ -189,11 +189,11 @@ docker run -p 3838:3838 myapp:latest
 ### Paso 3: Verificar el Despliegue
 
 ```r
-# Verificar que la URL desplegada responde
+# Check the deployed URL responds
 response <- httr::GET("https://your-app-url/")
-httr::status_code(response)  # Debe ser 200
+httr::status_code(response)  # Should be 200
 
-# Para Docker
+# For Docker
 response <- httr::GET("http://localhost:3838/")
 httr::status_code(response)
 ```
@@ -217,7 +217,7 @@ Monitoriza a través del panel en `https://www.shinyapps.io/admin/#/applications
 #### Posit Connect
 
 ```r
-# Verificar el estado del despliegue via API
+# Check deployment status via API
 connectapi::connect(
   server = "https://connect.example.com",
   api_key = Sys.getenv("CONNECT_API_KEY")

@@ -90,13 +90,13 @@ renv::restore()
 ### Paso 4: Actualizar Dependencias
 
 ```r
-# Actualizar un paquete específico
+# Update a specific package
 renv::update("dplyr")
 
-# Actualizar todos los paquetes
+# Update all packages
 renv::update()
 
-# Crear snapshot tras las actualizaciones
+# Snapshot after updates
 renv::snapshot()
 ```
 

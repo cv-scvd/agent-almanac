@@ -57,7 +57,7 @@ Rパッケージの完全なバージョンリリースサイクルを実行す�
 ### ステップ2: バージョンの更新
 
 ```r
-usethis::use_version("minor")  # または"patch"または"major"
+usethis::use_version("minor")  # or "patch" or "major"
 ```
 
 これによりDESCRIPTIONの`Version`フィールドが更新され、NEWS.mdに見出しが追加される。

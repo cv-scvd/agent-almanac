@@ -50,10 +50,10 @@ shinytest2（エンドツーエンド）とtestServer()（ユニットテスト�
 ```r
 install.packages("shinytest2")
 
-# golemアプリの場合、Suggests依存関係として追加
+# For golem apps, add as a Suggests dependency
 usethis::use_package("shinytest2", type = "Suggests")
 
-# testthatインフラがない場合はセットアップ
+# Set up testthat infrastructure if not present
 usethis::use_testthat(edition = 3)
 ```
 
@@ -71,12 +71,12 @@ test_that("dashboard module filters data correctly", {
     data = reactive(iris),
     columns = c("Species", "Sepal.Length")
   ), {
-    # 入力を設定
+    # Set inputs
     session$setInputs(column = "Species")
     session$setInputs(value_select = "setosa")
     session$setInputs(apply = 1)
 
-    # 出力を確認
+    # Check output
     result <- filtered()
     expect_equal(nrow(result), 50)
     expect_true(all(result$Species == "setosa"))
@@ -88,7 +88,7 @@ test_that("dashboard module handles empty data", {
     data = reactive(iris[0, ]),
     columns = c("Species")
   ), {
-    # モジュールは空のデータでエラーを出してはいけない
+    # Module should not error on empty data
     expect_no_error(session$setInputs(column = "Species"))
   })
 })
@@ -111,7 +111,7 @@ test_that("dashboard module handles empty data", {
 
 ```r
 test_that("app loads and displays initial state", {
-  # golemアプリの場合
+  # For golem apps
   app <- AppDriver$new(
     app_dir = system.file(package = "myapp"),
     name = "initial-load",
@@ -120,10 +120,10 @@ test_that("app loads and displays initial state", {
   )
   on.exit(app$stop(), add = TRUE)
 
-  # アプリが読み込まれるのを待つ
+  # Wait for app to load
   app$wait_for_idle(timeout = 10000)
 
-  # 主要な要素が存在するか確認
+  # Check that key elements exist
   app$expect_values()
 })
 
@@ -134,14 +134,14 @@ test_that("filter interaction updates the table", {
   )
   on.exit(app$stop(), add = TRUE)
 
-  # アプリと対話する
+  # Interact with the app
   app$set_inputs(`filter1-column` = "cyl")
   app$wait_for_idle()
 
   app$set_inputs(`filter1-apply` = "click")
   app$wait_for_idle()
 
-  # 出力値のスナップショット
+  # Snapshot the output values
   app$expect_values(output = "table")
 })
 ```
@@ -174,10 +174,10 @@ shinytest2::record_test("path/to/app")
 スナップショットベースのテストの場合、期待値を管理します：
 
 ```r
-# レビュー後に新しい/変更されたスナップショットを受け入れる
+# Accept new/changed snapshots after review
 testthat::snapshot_accept("test-app-e2e")
 
-# スナップショットの差異をレビュー
+# Review snapshot differences
 testthat::snapshot_review("test-app-e2e")
 ```
 

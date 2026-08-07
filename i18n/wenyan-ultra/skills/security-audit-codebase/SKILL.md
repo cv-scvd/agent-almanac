@@ -103,6 +103,8 @@ safety check
 **R**：
 
 ```r
+# Check for known vulnerabilities in packages
+# No built-in tool, but verify package sources
 renv::status()
 ```
 

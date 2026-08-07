@@ -65,8 +65,8 @@ UI: controles de filtro (selectInput, sliderInput, dateRangeInput)
 ```r
 #' Data Filter Module UI
 #'
-#' @param id ID del espacio de nombres del módulo
-#' @return Un tagList de controles de filtro
+#' @param id Module namespace ID
+#' @return A tagList of filter controls
 #' @export
 dataFilterUI <- function(id) {
   ns <- NS(id)
@@ -98,22 +98,22 @@ Reglas clave:
 ```r
 #' Data Filter Module Server
 #'
-#' @param id ID del espacio de nombres del módulo
-#' @param data Expresión reactiva que devuelve un data frame
-#' @param columns Vector de caracteres de nombres de columnas filtrables
-#' @return Expresión reactiva que devuelve el data frame filtrado
+#' @param id Module namespace ID
+#' @param data Reactive expression returning a data frame
+#' @param columns Character vector of filterable column names
+#' @return Reactive expression returning the filtered data frame
 #' @export
 dataFilterServer <- function(id, data, columns) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    # Actualizar opciones de columna cuando cambian los datos
+    # Update column choices when data changes
     observeEvent(data(), {
       available <- intersect(columns, names(data()))
       updateSelectInput(session, "column", choices = available)
     })
 
-    # Control de filtro dinámico basado en la columna seleccionada
+    # Dynamic filter control based on selected column
     output$filter_control <- renderUI({
       req(input$column)
       col_data <- data()[[input$column]]
@@ -137,7 +137,7 @@ dataFilterServer <- function(id, data, columns) {
       }
     })
 
-    # Devolver datos filtrados como reactivo
+    # Return filtered data as a reactive
     filtered <- eventReactive(input$apply, {
       req(input$column)
       col <- input$column
@@ -173,7 +173,7 @@ Reglas clave:
 ### Paso 4: Conectar el Módulo a la App Principal
 
 ```r
-# En app_ui.R o ui
+# In app_ui.R or ui
 ui <- page_sidebar(
   title = "Analysis App",
   sidebar = sidebar(
@@ -184,19 +184,19 @@ ui <- page_sidebar(
   )
 )
 
-# En app_server.R o server
+# In app_server.R or server
 server <- function(input, output, session) {
-  # Fuente de datos en bruto
+  # Raw data source
   raw_data <- reactive({ mtcars })
 
-  # Llamar al módulo — capturar su valor de retorno
+  # Call module — capture its return value
   filtered_data <- dataFilterServer(
     "filter1",
     data = raw_data,
     columns = c("cyl", "mpg", "hp", "wt")
   )
 
-  # Usar el reactivo devuelto por el módulo
+  # Use the module's returned reactive
   output$table <- DT::renderDataTable({
     filtered_data()
   })
@@ -222,7 +222,7 @@ analysisUI <- function(id) {
 
 analysisServer <- function(id, data) {
   moduleServer(id, function(input, output, session) {
-    # Llamar al módulo interno con ID con espacio de nombres
+    # Call inner module with namespaced ID
     filtered <- dataFilterServer("filter", data = data, columns = names(data()))
 
     output$plot <- renderPlot({
@@ -244,7 +244,7 @@ Regla clave: En la UI, anida con `ns("inner_id")`. En el server, llama con solo 
 ### Paso 6: Probar el Módulo en Aislamiento
 
 ```r
-# App de prueba rápida para el módulo
+# Quick test app for the module
 if (interactive()) {
   shiny::shinyApp(
     ui = fluidPage(

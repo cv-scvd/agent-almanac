@@ -184,10 +184,10 @@ NULL
 ## 示例
 
 ```r
-# 最简创建
+# Minimal creation
 usethis::create_package("myanalysis")
 
-# 在一个会话中完成全部设置
+# Full setup in one session
 usethis::create_package("myanalysis")
 usethis::use_mit_license()
 usethis::use_testthat(edition = 3)

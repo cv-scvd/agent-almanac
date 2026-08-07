@@ -105,13 +105,13 @@ dataFilterServer <- function(id, data, columns) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
 
-    # データが変わったときに列の選択肢を更新
+    # Update column choices when data changes
     observeEvent(data(), {
       available <- intersect(columns, names(data()))
       updateSelectInput(session, "column", choices = available)
     })
 
-    # 選択した列に基づくダイナミックフィルターコントロール
+    # Dynamic filter control based on selected column
     output$filter_control <- renderUI({
       req(input$column)
       col_data <- data()[[input$column]]
@@ -135,7 +135,7 @@ dataFilterServer <- function(id, data, columns) {
       }
     })
 
-    # フィルタリングされたデータをリアクティブとして返す
+    # Return filtered data as a reactive
     filtered <- eventReactive(input$apply, {
       req(input$column)
       col <- input$column
@@ -171,7 +171,7 @@ dataFilterServer <- function(id, data, columns) {
 ### ステップ4: 親アプリへのモジュールの接続
 
 ```r
-# app_ui.RまたはuiにてM
+# In app_ui.R or ui
 ui <- page_sidebar(
   title = "Analysis App",
   sidebar = sidebar(
@@ -182,19 +182,19 @@ ui <- page_sidebar(
   )
 )
 
-# app_server.RまたはserverにてMJ
+# In app_server.R or server
 server <- function(input, output, session) {
-  # 生データソース
+  # Raw data source
   raw_data <- reactive({ mtcars })
 
-  # モジュールを呼び出す — 戻り値をキャプチャ
+  # Call module — capture its return value
   filtered_data <- dataFilterServer(
     "filter1",
     data = raw_data,
     columns = c("cyl", "mpg", "hp", "wt")
   )
 
-  # モジュールが返したリアクティブを使用
+  # Use the module's returned reactive
   output$table <- DT::renderDataTable({
     filtered_data()
   })
@@ -220,7 +220,7 @@ analysisUI <- function(id) {
 
 analysisServer <- function(id, data) {
   moduleServer(id, function(input, output, session) {
-    # 名前空間化されたIDで内部モジュールを呼び出す
+    # Call inner module with namespaced ID
     filtered <- dataFilterServer("filter", data = data, columns = names(data()))
 
     output$plot <- renderPlot({
@@ -242,7 +242,7 @@ analysisServer <- function(id, data) {
 ### ステップ6: モジュールを分離してテスト
 
 ```r
-# モジュールのクイックテストアプリ
+# Quick test app for the module
 if (interactive()) {
   shiny::shinyApp(
     ui = fluidPage(

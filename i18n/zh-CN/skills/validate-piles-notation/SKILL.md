@@ -45,7 +45,7 @@ metadata:
 ```r
 library(jigsawR)
 result <- validate_piles_syntax("1-2-3,4-5")
-# 有效返回 TRUE，无效返回错误消息
+# Returns TRUE if valid, error message if invalid
 ```
 
 检查常见语法错误：
@@ -61,13 +61,13 @@ result <- validate_piles_syntax("1-2-3,4-5")
 
 ```r
 groups <- parse_piles("1-2-3,4-5")
-# 返回：list(c(1, 2, 3), c(4, 5))
+# Returns: list(c(1, 2, 3), c(4, 5))
 ```
 
 对于包含范围的字符串：
 ```r
 groups <- parse_piles("1:6,7-8")
-# 返回：list(c(1, 2, 3, 4, 5, 6), c(7, 8))
+# Returns: list(c(1, 2, 3, 4, 5, 6), c(7, 8))
 ```
 
 **预期结果：** 整数向量列表，每个融合组一个，碎片 ID 和组边界正确。
@@ -91,10 +91,10 @@ groups <- parse_piles("1:6,7-8")
 如果有拼图结果对象可用，验证：
 
 ```r
-# 首先生成拼图
+# Generate the puzzle first
 puzzle <- generate_puzzle(type = "hexagonal", grid = c(3), size = c(200))
 
-# 使用拼图上下文解析（解析关键字）
+# Parse with puzzle context (resolves keywords)
 groups <- parse_fusion("center,ring1", puzzle)
 ```
 
@@ -115,10 +115,10 @@ groups <- parse_fusion("center,ring1", puzzle)
 original <- "1-2-3,4-5"
 groups <- parse_piles(original)
 roundtrip <- to_piles(groups)
-# roundtrip 应等于 original（或规范等价形式）
+# roundtrip should equal original (or canonical equivalent)
 
 groups2 <- parse_piles(roundtrip)
-identical(groups, groups2)  # 必须为 TRUE
+identical(groups, groups2)  # Must be TRUE
 ```
 
 **预期结果：** 往返产生相同的组列表，确认 `parse_piles()` 和 `to_piles()` 互为逆操作。

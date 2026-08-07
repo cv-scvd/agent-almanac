@@ -50,11 +50,11 @@ Einen neuen Puzzletyp ueber alle Pipeline-Integrationspunkte in jigsawR aufsetze
 #' Generate <type> puzzle pieces (internal)
 #' @noRd
 generate_<type>_pieces_internal <- function(params, seed) {
-  # 1. RNG-Zustand initialisieren
-  # 2. Teilegeometrien generieren
-  # 3. Kantenpfade erstellen (SVG-Pfaddaten)
-  # 4. Adjazenz berechnen
-  # 5. Liste zurueckgeben: pieces, edges, adjacency, metadata
+  # 1. Initialize RNG state
+  # 2. Generate piece geometries
+  # 3. Build edge paths (SVG path data)
+  # 4. Compute adjacency
+  # 5. Return list: pieces, edges, adjacency, metadata
 }
 ```
 
@@ -90,7 +90,7 @@ valid_types <- c("rectangular", "hexagonal", "concentric", "voronoi", "snic", "<
 2. Fusionsbehandlung hinzufuegen, falls der Typ PILES-Notation unterstuetzt
 
 ```r
-# Im switch/dispatch
+# In the switch/dispatch
 "<type>" = generate_<type>_pieces_internal(params, seed)
 ```
 

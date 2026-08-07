@@ -91,13 +91,13 @@ renv::restore()
 ### Schritt 4: Abhaengigkeiten aktualisieren
 
 ```r
-# Ein bestimmtes Paket aktualisieren
+# Update a specific package
 renv::update("dplyr")
 
-# Alle Pakete aktualisieren
+# Update all packages
 renv::update()
 
-# Snapshot nach Aktualisierungen
+# Snapshot after updates
 renv::snapshot()
 ```
 

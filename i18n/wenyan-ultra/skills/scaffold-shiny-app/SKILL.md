@@ -144,13 +144,16 @@ shinyApp(ui, server)
 #### Golem/素
 
 ```r
+# Initialize renv
 renv::init()
 
+# Add core dependencies
 usethis::use_package("shiny")
 usethis::use_package("bslib")
-usethis::use_package("DT")
-usethis::use_package("plotly")
+usethis::use_package("DT")         # if using data tables
+usethis::use_package("plotly")     # if using interactive plots
 
+# Snapshot
 renv::snapshot()
 ```
 
@@ -159,6 +162,7 @@ renv::snapshot()
 依管於 `dependencies.R`：
 
 ```r
+# dependencies.R
 library(shiny)
 library(bslib)
 library(DT)
@@ -235,8 +239,13 @@ dashboardServer <- function(id) {
 ### 五：行應
 
 ```r
+# Golem
 golem::run_dev()
+
+# Rhino
 shiny::runApp()
+
+# Vanilla
 shiny::runApp("app.R")
 ```
 

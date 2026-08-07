@@ -51,14 +51,14 @@ Diseñar interfaces de aplicaciones Shiny responsivas y accesibles usando temas 
 bslib proporciona varios constructores de página:
 
 ```r
-# Layout sidebar — el más común para apps de datos
+# Sidebar layout — most common for data apps
 ui <- page_sidebar(
   title = "My App",
   sidebar = sidebar("Controls here"),
   "Main content here"
 )
 
-# Layout navbar — para apps de múltiples páginas
+# Navbar layout — for multi-page apps
 ui <- page_navbar(
   title = "My App",
   nav_panel("Tab 1", "Content 1"),
@@ -67,7 +67,7 @@ ui <- page_navbar(
   nav_item(actionButton("help", "Help"))
 )
 
-# Layout fillable — el contenido llena el espacio disponible
+# Fillable layout — content fills available space
 ui <- page_fillable(
   card(
     full_screen = TRUE,
@@ -75,7 +75,7 @@ ui <- page_fillable(
   )
 )
 
-# Layout dashboard — cuadrícula de cajas de valor y tarjetas
+# Dashboard layout — grid of value boxes and cards
 ui <- page_sidebar(
   title = "Dashboard",
   sidebar = sidebar(open = "closed", "Filters"),
@@ -101,11 +101,11 @@ ui <- page_sidebar(
 ```r
 my_theme <- bslib::bs_theme(
   version = 5,                      # Bootstrap 5
-  bootswatch = "flatly",            # Tema preestablecido opcional
-  bg = "#ffffff",                   # Color de fondo
-  fg = "#2c3e50",                   # Color de primer plano (texto)
-  primary = "#2c3e50",              # Color primario de marca
-  secondary = "#95a5a6",            # Color secundario
+  bootswatch = "flatly",            # Optional preset theme
+  bg = "#ffffff",                   # Background color
+  fg = "#2c3e50",                   # Foreground (text) color
+  primary = "#2c3e50",              # Primary brand color
+  secondary = "#95a5a6",            # Secondary color
   success = "#18bc9c",
   info = "#3498db",
   warning = "#f39c12",
@@ -148,7 +148,7 @@ ui <- page_sidebar(
     actionButton("refresh", "Refresh", class = "btn-primary w-100")
   ),
 
-  # Fila KPI — sin relleno
+  # KPI row — non-filling
   layout_columns(
     fill = FALSE,
     col_widths = c(4, 4, 4),
@@ -172,7 +172,7 @@ ui <- page_sidebar(
     )
   ),
 
-  # Fila de contenido principal
+  # Main content row
   layout_columns(
     col_widths = c(8, 4),
     card(
@@ -222,8 +222,8 @@ server <- function(input, output, session) {
     )
   })
 
-  # Paneles condicionales (sin viaje de ida y vuelta al servidor)
-  # En UI:
+  # Conditional panels (no server round-trip)
+  # In UI:
   # conditionalPanel(
   #   condition = "input.show_advanced == true",
   #   numericInput("alpha", "Alpha", 0.05)
@@ -240,7 +240,7 @@ server <- function(input, output, session) {
 Para estilos más allá de las variables del tema bslib:
 
 ```r
-# CSS en línea
+# Inline CSS
 ui <- page_sidebar(
   theme = my_theme,
   tags$head(tags$style(HTML("
@@ -251,7 +251,7 @@ ui <- page_sidebar(
   # ...
 )
 
-# Archivo CSS externo (coloca en directorio www/)
+# External CSS file (place in www/ directory)
 ui <- page_sidebar(
   theme = my_theme,
   tags$head(tags$link(rel = "stylesheet", href = "custom.css")),
@@ -273,31 +273,31 @@ my_theme <- bslib::bs_theme(version = 5) |>
 ### Paso 6: Garantizar la Accesibilidad
 
 ```r
-# Añadir etiquetas ARIA a las entradas
+# Add ARIA labels to inputs
 selectInput("category", "Category",
   choices = c("A", "B", "C")
 ) |> tagAppendAttributes(`aria-describedby` = "category-help")
 
-# Añadir texto alternativo a los gráficos
+# Add alt text to plots
 output$plot <- renderPlot({
   plot(data(), main = "Distribution of Values")
 }, alt = "Histogram showing the distribution of selected values")
 
-# Asegurar suficiente contraste de color en el tema
+# Ensure sufficient color contrast in theme
 my_theme <- bslib::bs_theme(
   version = 5,
-  bg = "#ffffff",      # Fondo blanco
-  fg = "#212529"       # Texto oscuro — ratio de contraste 15.4:1
+  bg = "#ffffff",      # White background
+  fg = "#212529"       # Dark text — 15.4:1 contrast ratio
 )
 
-# Usar HTML semántico
+# Use semantic HTML
 tags$main(
   role = "main",
   tags$h1("Dashboard"),
   tags$section(
     `aria-label` = "Key Performance Indicators",
     layout_columns(
-      # cajas de valor...
+      # value boxes...
     )
   )
 )

@@ -230,7 +230,7 @@ library(arrow)
 df <- data.frame(sensor_id = rep("s-01", 1000), value = rnorm(1000))
 arrow::write_parquet(df, "measurements.parquet")
 
-# Read (with column selection -- only reads selected columns from disk)
+# Read (with column selection — only reads selected columns from disk)
 df_back <- arrow::read_parquet("measurements.parquet", col_select = c("value"))
 ```
 
