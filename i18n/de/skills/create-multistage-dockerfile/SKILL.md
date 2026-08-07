@@ -58,19 +58,19 @@ Multi-Stage-Dockerfiles erstellen, die minimale Produktions-Images erzeugen, ind
 Das Kernmuster: In einem grossen Image bauen, Artefakte in ein schlankes Image kopieren.
 
 ```dockerfile
-# ---- Build-Phase ----
+# ---- Build Stage ----
 FROM <build-image> AS builder
 WORKDIR /src
-COPY <abhaengigkeits-manifest> .
-RUN <abhaengigkeiten-installieren>
+COPY <dependency-manifest> .
+RUN <install-dependencies>
 COPY . .
-RUN <build-befehl>
+RUN <build-command>
 
-# ---- Laufzeit-Phase ----
-FROM <laufzeit-image>
-COPY --from=builder /src/<artefakt> /<ziel>
+# ---- Runtime Stage ----
+FROM <runtime-image>
+COPY --from=builder /src/<artifact> /<dest>
 EXPOSE <port>
-CMD [<einstiegspunkt>]
+CMD [<entrypoint>]
 ```
 
 ### Schritt 3: Sprachspezifische Muster anwenden

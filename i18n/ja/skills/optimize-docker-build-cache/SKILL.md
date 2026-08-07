@@ -46,21 +46,21 @@ translation_date: 2026-03-16
 変更頻度の低いレイヤーを先に配置する：
 
 ```dockerfile
-# 1. ベースイメージ（ほとんど変更されない）
+# 1. Base image (rarely changes)
 FROM rocker/r-ver:4.5.0
 
-# 2. システム依存関係（たまに変更される）
+# 2. System dependencies (change occasionally)
 RUN apt-get update && apt-get install -y \
     libcurl4-openssl-dev \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# 3. 依存関係ファイルのみ（依存関係変更時に変わる）
+# 3. Dependency files only (change when deps change)
 COPY renv.lock renv.lock
 COPY renv/activate.R renv/activate.R
 RUN R -e "renv::restore()"
 
-# 4. ソースコード（頻繁に変更される）
+# 4. Source code (changes frequently)
 COPY . .
 ```
 
@@ -104,14 +104,14 @@ COPY . .
 ビルド依存関係とランタイムを分離する：
 
 ```dockerfile
-# ビルドステージ - 開発ツールを含む
+# Build stage - includes dev tools
 FROM rocker/r-ver:4.5.0 AS builder
 RUN apt-get update && apt-get install -y \
     libcurl4-openssl-dev libssl-dev build-essential
 COPY renv.lock .
 RUN R -e "install.packages('renv'); renv::restore()"
 
-# ランタイムステージ - 最小限のイメージ
+# Runtime stage - minimal image
 FROM rocker/r-ver:4.5.0
 RUN apt-get update && apt-get install -y \
     libcurl4 libssl3 \
@@ -202,11 +202,11 @@ BuildKitが有効にするもの：
 ### ステップ7: パッケージマネージャー用キャッシュマウントの使用
 
 ```dockerfile
-# 永続キャッシュ付きRパッケージ
+# R packages with persistent cache
 RUN --mount=type=cache,target=/usr/local/lib/R/site-library \
     R -e "install.packages('dplyr')"
 
-# 永続キャッシュ付きnpm
+# npm with persistent cache
 RUN --mount=type=cache,target=/root/.npm \
     npm ci
 ```
