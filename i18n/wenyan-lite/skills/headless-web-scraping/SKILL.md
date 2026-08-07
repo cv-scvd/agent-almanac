@@ -51,12 +51,12 @@ Cloudflare 保護站與動態 SPA——提取資料。
 定何 scrapling 抓取器配目標站之防禦。
 
 ```python
-# 決策矩陣：
-# 1. Fetcher        — 靜態 HTML、無 JS、無反爬（最速）
-# 2. StealthyFetcher — Cloudflare/Turnstile、TLS 指紋核
-# 3. DynamicFetcher  — JS 渲染之 SPA、點擊/滾動互動
+# Decision matrix:
+# 1. Fetcher        — static HTML, no JS, no anti-bot (fastest)
+# 2. StealthyFetcher — Cloudflare/Turnstile, TLS fingerprint checks
+# 3. DynamicFetcher  — JS-rendered SPAs, click/scroll interactions
 
-# 快速試探：先 Fetcher，失則升級
+# Quick probe: try Fetcher first, escalate on failure
 from scrapling import Fetcher
 
 fetcher = Fetcher()
@@ -87,7 +87,7 @@ else:
 ```python
 from scrapling import Fetcher, StealthyFetcher, DynamicFetcher
 
-# 層一：以 TLS 指紋假冒之快速 HTTP
+# Tier 1: Fast HTTP with TLS fingerprint impersonation
 fetcher = Fetcher()
 fetcher.configure(
     timeout=30,
@@ -95,21 +95,21 @@ fetcher.configure(
     follow_redirects=True
 )
 
-# 層二：附反偵測之無頭 Chromium
+# Tier 2: Headless Chromium with anti-detection
 fetcher = StealthyFetcher()
 fetcher.configure(
     headless=True,
     timeout=60,
-    network_idle=True  # 待所有網路請求定
+    network_idle=True  # wait for all network requests to settle
 )
 
-# 層三：完全瀏覽器自動化
+# Tier 3: Full browser automation
 fetcher = DynamicFetcher()
 fetcher.configure(
     headless=True,
     timeout=90,
     network_idle=True,
-    wait_selector="div.results"  # 提取前待特定元素
+    wait_selector="div.results"  # wait for specific element before extracting
 )
 ```
 
@@ -125,26 +125,26 @@ fetcher.configure(
 導至目標 URL 並以 CSS 選擇器提取結構化資料。
 
 ```python
-# 抓取頁
+# Fetch the page
 response = fetcher.get("https://example.com/target-page")
 
-# 單元素提取
+# Single element extraction
 title = response.find("h1.page-title")
 if title:
     print(title.get_all_text())
 
-# 多元素
+# Multiple elements
 items = response.find_all("div.result-item")
 for item in items:
     name = item.find("span.name")
     price = item.find("span.price")
     print(f"{name.get_all_text()}: {price.get_all_text()}")
 
-# 取屬性值
+# Get attribute values
 links = response.find_all("a.product-link")
 urls = [link.get("href") for link in links]
 
-# 取元素之原始 HTML 內容
+# Get raw HTML content of an element
 detail_html = response.find("div.description").html_content
 ```
 
@@ -190,7 +190,7 @@ def scrape_with_fallback(url, selector):
             print(f"{tier_name} failed: {error}")
             continue
 
-        # 偵測 CAPTCHA / 挑戰頁
+        # Detect CAPTCHA / challenge pages
         page_text = response.get_all_text().lower()
         if "altcha" in page_text or "proof of work" in page_text:
             print(f"altcha CAPTCHA detected -- cannot automate")
@@ -244,7 +244,7 @@ def scrape_urls(urls, selector, delay=1.0):
         if data:
             results.append(data.get_all_text())
 
-        time.sleep(delay)  # 尊重伺服器
+        time.sleep(delay)  # respect the server
 
     return results
 ```

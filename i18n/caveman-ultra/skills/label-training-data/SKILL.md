@@ -111,7 +111,7 @@ Label Studio configuration templates for common tasks.
 # Text Classification (single label)
 TEXT_CLASSIFICATION = """
 <View>
-# ... (see EXAMPLES.md)
+# ... (see EXAMPLES.md for complete implementation)
 ```
 
 → Interface configured w/ appropriate controls for task type, data imported, interface accessible to annotators.
@@ -131,7 +131,7 @@ from typing import List, Dict
 from sklearn.cluster import KMeans
 import numpy as np
 
-# ... (see EXAMPLES.md)
+# ... (see EXAMPLES.md for complete implementation)
 ```
 
 → Data formatted for Label Studio import, sampling prioritizes informative examples, tasks include metadata for tracking.
@@ -151,7 +151,7 @@ from typing import Dict, List, Tuple
 import logging
 
 logging.basicConfig(level=logging.INFO)
-# ... (see EXAMPLES.md)
+# ... (see EXAMPLES.md for complete implementation)
 ```
 
 → IAA measured (Cohen's Kappa > 0.6 = moderate, >0.8 = good), difficult tasks ID'd for review, annotator perf tracked.
@@ -171,7 +171,7 @@ from typing import List, Dict
 import logging
 
 logger = logging.getLogger(__name__)
-# ... (see EXAMPLES.md)
+# ... (see EXAMPLES.md for complete implementation)
 ```
 
 → Annotations exported training-ready format, label distribution balanced / documented, data quality validated before training.
@@ -191,7 +191,7 @@ from datetime import datetime
 from prepare_data import DataSampler, prepare_label_studio_format
 from export_labels import LabelStudioExporter, convert_to_training_format
 import pandas as pd
-# ... (see EXAMPLES.md)
+# ... (see EXAMPLES.md for complete implementation)
 ```
 
 → Active learning selects informative examples auto, batches prep weekly, model retrained when sufficient new labels avail.

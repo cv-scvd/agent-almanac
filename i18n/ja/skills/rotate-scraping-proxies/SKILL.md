@@ -72,14 +72,14 @@ metadata:
 ゲートします。この手順を飛ばすことが、害の最大の発生源です。
 
 ```python
-# コードを書き始める前に確認すべき入力:
-# 1. データは公開されているか（ログイン不要か）？
-# 2. robots.txt は該当パスを許可しているか？
-# 3. サイトの ToS は自動アクセスを禁止していないか？（実際に読む）
-# 4. 処理対象に個人データは含まれるか？ 含まれる場合、法的根拠は何か？
-# 5. このアクセスは地理ライセンス、有料コンテンツ、認証の回避になり得るか？
-# 6. スクレイピング不要にできる公開 API やデータダンプは存在しないか？
-# 7. 範囲が大きい場合、サイト運営者に連絡したか？
+# Inputs to confirm before writing any code:
+# 1. Is the data public (no login required)?
+# 2. Does robots.txt permit the path?
+# 3. Does the site's ToS prohibit automated access? (read it)
+# 4. Would the scraping process personal data? If yes, what is the legal basis?
+# 5. Could this access circumvent geo-licensing, paywalls, or auth?
+# 6. Is there a public API or data dump that would make scraping unnecessary?
+# 7. Have you contacted the site owner if scope is large?
 ```
 
 **Expected:** すべての質問に、説明可能な書面での回答が揃っている。最初に
@@ -133,7 +133,7 @@ import os
 import random
 from scrapling import Fetcher, StealthyFetcher
 
-# パターン A: プロバイダ管理のローテーティングエンドポイント（単一 URL、プロバイダがリクエストごとに切替）
+# Pattern A: provider-managed rotating endpoint (one URL, provider rotates per request)
 PROXY_URL = os.environ["SCRAPING_PROXY_URL"]  # http://user:pass@gateway.example:7777
 
 fetcher = StealthyFetcher()
@@ -144,8 +144,8 @@ fetcher.configure(
     proxy=PROXY_URL,
 )
 
-# パターン B: 明示的なプールを自分でローテーションする
-POOL = os.environ["SCRAPING_PROXY_POOL"].split(",")  # カンマ区切りの URL
+# Pattern B: explicit pool, rotate yourself
+POOL = os.environ["SCRAPING_PROXY_POOL"].split(",")  # comma-separated URLs
 
 def fetch_with_rotation(url):
     proxy = random.choice(POOL)
@@ -173,14 +173,14 @@ def fetch_with_rotation(url):
 保ちます。
 
 ```python
-# ステートフルなフロー（ログイン、複数ページにまたがるチェックアウト系の巡回）向けのスティッキーセッション。
-# 多くのプロバイダはユーザー名にセッション ID を埋め込む形で公開している:
+# Sticky session for stateful flows (login, multi-page checkout-like crawls)
+# Most providers expose a session ID via the username:
 #   user-session-abc123:pass@gateway.example:7777
-# 同じセッション ID を持つリクエストは、約 10 分間すべて同じ IP を経由する。
+# All requests with the same session ID exit through the same IP for ~10 min.
 
-# 匿名の大量スクレイピングにはリクエスト単位のローテーション（デフォルト）を使う。
+# Per-request rotation for anonymous bulk scraping (default)
 
-# プール健全性チェック — 大規模実行の前に呼び出す
+# Pool health check — call before bulk run
 def check_pool(pool, sample_size=5):
     sample = random.sample(pool, min(sample_size, len(pool)))
     alive = []
@@ -195,7 +195,7 @@ def check_pool(pool, sample_size=5):
             pass
     return alive
 
-# 一時的なプロキシ障害に対するバックオフ
+# Backoff on transient proxy failures
 def fetch_with_backoff(url, max_attempts=3):
     for attempt in range(max_attempts):
         try:
@@ -260,7 +260,7 @@ for url in target_urls:
         break
     response = fetch_with_backoff(url)
     budget.record(success=response is not None)
-    time.sleep(1)  # ローテーションがあってもレート制限は依然として適用する
+    time.sleep(1)  # rate limiting still applies even with rotation
 ```
 
 **Expected:** 予算上限が暴走コストに先んじて発動する。ログにプロキシ

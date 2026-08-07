@@ -79,7 +79,7 @@ class Measurement:
     unit: str
     timestamp: datetime
 
-# Benutzerdefinierter Encoder fuer Nicht-Standardtypen
+# Custom encoder for non-standard types
 class CustomEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, datetime):
@@ -91,11 +91,11 @@ class CustomEncoder(json.JSONEncoder):
             return base64.b64encode(obj).decode('ascii')
         return super().default(obj)
 
-# Serialisieren
+# Serialize
 measurement = Measurement("sensor-01", 23.5, "celsius", datetime.now())
 json_str = json.dumps(asdict(measurement), cls=CustomEncoder, indent=2)
 
-# Deserialisieren
+# Deserialize
 data = json.loads(json_str)
 ```
 
@@ -148,16 +148,16 @@ protoc --go_out=. sensors.proto
 from sensors_pb2 import Measurement, MeasurementBatch
 import time
 
-# Serialisieren
+# Serialize
 m = Measurement(
     sensor_id="sensor-01",
     value=23.5,
     unit="celsius",
     timestamp_ms=int(time.time() * 1000)
 )
-binary = m.SerializeToString()  # Kompaktes Binaerformat
+binary = m.SerializeToString()  # Compact binary
 
-# Deserialisieren
+# Deserialize
 m2 = Measurement()
 m2.ParseFromString(binary)
 ```
@@ -171,7 +171,7 @@ m2.ParseFromString(binary)
 import msgpack
 from datetime import datetime
 
-# Benutzerdefiniertes Packen fuer datetime
+# Custom packing for datetime
 def encode_datetime(obj):
     if isinstance(obj, datetime):
         return {"__datetime__": True, "s": obj.isoformat()}
@@ -184,10 +184,10 @@ def decode_datetime(obj):
 
 data = {"sensor_id": "sensor-01", "value": 23.5, "ts": datetime.now()}
 
-# Serialisieren (kleiner als JSON, schneller als JSON)
+# Serialize (smaller than JSON, faster than JSON)
 packed = msgpack.packb(data, default=encode_datetime)
 
-# Deserialisieren
+# Deserialize
 unpacked = msgpack.unpackb(packed, object_hook=decode_datetime, raw=False)
 ```
 
@@ -201,7 +201,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pandas as pd
 
-# Daten erstellen
+# Create data
 df = pd.DataFrame({
     "sensor_id": ["s-01", "s-02", "s-01", "s-03"] * 1000,
     "value": [23.5, 18.2, 24.1, 19.8] * 1000,
@@ -209,11 +209,11 @@ df = pd.DataFrame({
     "timestamp": pd.date_range("2025-01-01", periods=4000, freq="min")
 })
 
-# Parquet schreiben (spaltenbasiert, komprimiert)
+# Write Parquet (columnar, compressed)
 table = pa.Table.from_pandas(df)
 pq.write_table(table, "measurements.parquet", compression="snappy")
 
-# Parquet lesen (kann bestimmte Spalten lesen ohne alle Daten zu laden)
+# Read Parquet (can read specific columns without loading all data)
 table_back = pq.read_table("measurements.parquet", columns=["sensor_id", "value"])
 df_subset = table_back.to_pandas()
 ```

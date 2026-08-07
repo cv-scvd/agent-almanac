@@ -401,7 +401,7 @@ import sys
 
 def check_error_budget(service):
     # Query Prometheus for error budget
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 CI/CDパイプラインに統合する：

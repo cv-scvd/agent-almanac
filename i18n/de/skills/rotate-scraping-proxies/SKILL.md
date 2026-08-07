@@ -75,14 +75,14 @@ und ethischen Prüfung abhängig. Das Überspringen dieses Schritts ist die mit
 Abstand größte Schadensquelle.
 
 ```python
-# Vor dem Schreiben jeglichen Codes zu bestätigende Eingaben:
-# 1. Sind die Daten öffentlich (kein Login erforderlich)?
-# 2. Erlaubt robots.txt den Pfad?
-# 3. Verbieten die AGB der Website automatisierten Zugriff? (lesen!)
-# 4. Würden beim Scraping personenbezogene Daten verarbeitet? Wenn ja, welche rechtliche Grundlage?
-# 5. Könnte dieser Zugriff Geo-Lizenzierung, Paywalls oder Authentifizierung umgehen?
-# 6. Gibt es eine öffentliche API oder einen Daten-Dump, der Scraping überflüssig macht?
-# 7. Haben Sie den Website-Betreiber kontaktiert, falls der Umfang groß ist?
+# Inputs to confirm before writing any code:
+# 1. Is the data public (no login required)?
+# 2. Does robots.txt permit the path?
+# 3. Does the site's ToS prohibit automated access? (read it)
+# 4. Would the scraping process personal data? If yes, what is the legal basis?
+# 5. Could this access circumvent geo-licensing, paywalls, or auth?
+# 6. Is there a public API or data dump that would make scraping unnecessary?
+# 7. Have you contacted the site owner if scope is large?
 ```
 
 **Expected:** Jede Frage hat eine verteidigungsfähige schriftliche Antwort.
@@ -140,7 +140,7 @@ import os
 import random
 from scrapling import Fetcher, StealthyFetcher
 
-# Muster A: anbietergesteuerter rotierender Endpoint (eine URL, Anbieter rotiert pro Anfrage)
+# Pattern A: provider-managed rotating endpoint (one URL, provider rotates per request)
 PROXY_URL = os.environ["SCRAPING_PROXY_URL"]  # http://user:pass@gateway.example:7777
 
 fetcher = StealthyFetcher()
@@ -151,8 +151,8 @@ fetcher.configure(
     proxy=PROXY_URL,
 )
 
-# Muster B: expliziter Pool, Rotation selbst durchführen
-POOL = os.environ["SCRAPING_PROXY_POOL"].split(",")  # kommagetrennte URLs
+# Pattern B: explicit pool, rotate yourself
+POOL = os.environ["SCRAPING_PROXY_POOL"].split(",")  # comma-separated URLs
 
 def fetch_with_rotation(url):
     proxy = random.choice(POOL)
@@ -180,14 +180,14 @@ Entscheiden Sie die Rotations-Granularität je nach Arbeitslast und halten
 Sie den Pool dann gesund.
 
 ```python
-# Sticky Session für zustandsbehaftete Abläufe (Login, mehrseitige Checkout-ähnliche Crawls)
-# Die meisten Anbieter stellen eine Session-ID über den Benutzernamen bereit:
+# Sticky session for stateful flows (login, multi-page checkout-like crawls)
+# Most providers expose a session ID via the username:
 #   user-session-abc123:pass@gateway.example:7777
-# Alle Anfragen mit derselben Session-ID verlassen das Netz über dieselbe IP für ca. 10 Min.
+# All requests with the same session ID exit through the same IP for ~10 min.
 
-# Rotation pro Anfrage für anonymes Massen-Scraping (Standard)
+# Per-request rotation for anonymous bulk scraping (default)
 
-# Pool-Zustandsprüfung — vor dem Massendurchlauf aufrufen
+# Pool health check — call before bulk run
 def check_pool(pool, sample_size=5):
     sample = random.sample(pool, min(sample_size, len(pool)))
     alive = []
@@ -202,7 +202,7 @@ def check_pool(pool, sample_size=5):
             pass
     return alive
 
-# Backoff bei transienten Proxy-Fehlern
+# Backoff on transient proxy failures
 def fetch_with_backoff(url, max_attempts=3):
     for attempt in range(max_attempts):
         try:
@@ -267,7 +267,7 @@ for url in target_urls:
         break
     response = fetch_with_backoff(url)
     budget.record(success=response is not None)
-    time.sleep(1)  # Ratenbegrenzung gilt weiterhin, auch bei Rotation
+    time.sleep(1)  # rate limiting still applies even with rotation
 ```
 
 **Expected:** Budget-Obergrenzen greifen, bevor Kosten außer Kontrolle

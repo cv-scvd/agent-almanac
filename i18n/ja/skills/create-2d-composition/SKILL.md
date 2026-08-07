@@ -234,32 +234,67 @@ import numpy as np
 def create_bar_chart_svg(data, labels, output_path):
     """Generate SVG bar chart from data."""
     dwg = svgwrite.Drawing(output_path, size=('600px', '400px'))
+
+    # Chart area
     margin = 50
     chart_width = 500
     chart_height = 300
     bar_spacing = 10
+
+    # Calculate bar dimensions
     n_bars = len(data)
     bar_width = (chart_width - (n_bars - 1) * bar_spacing) / n_bars
+
+    # Scale data to fit chart
     max_value = max(data)
     scale = chart_height / max_value
 
     # Draw axes
-    dwg.add(dwg.line(start=(margin, margin), end=(margin, margin + chart_height),
-        stroke='black', stroke_width=2))
-    dwg.add(dwg.line(start=(margin, margin + chart_height),
+    dwg.add(dwg.line(
+        start=(margin, margin),
+        end=(margin, margin + chart_height),
+        stroke='black',
+        stroke_width=2
+    ))
+    dwg.add(dwg.line(
+        start=(margin, margin + chart_height),
         end=(margin + chart_width, margin + chart_height),
-        stroke='black', stroke_width=2))
+        stroke='black',
+        stroke_width=2
+    ))
 
+    # Draw bars
     for i, (value, label) in enumerate(zip(data, labels)):
         x = margin + i * (bar_width + bar_spacing)
         bar_height = value * scale
         y = margin + chart_height - bar_height
-        dwg.add(dwg.rect(insert=(x, y), size=(bar_width, bar_height),
-            fill='steelblue', stroke='navy', stroke_width=1))
-        dwg.add(dwg.text(f'{value:.1f}', insert=(x + bar_width/2, y - 5),
-            text_anchor='middle', font_size='10pt', fill='black'))
-        dwg.add(dwg.text(label, insert=(x + bar_width/2, margin + chart_height + 20),
-            text_anchor='middle', font_size='10pt', fill='black'))
+
+        # Bar
+        dwg.add(dwg.rect(
+            insert=(x, y),
+            size=(bar_width, bar_height),
+            fill='steelblue',
+            stroke='navy',
+            stroke_width=1
+        ))
+
+        # Value label
+        dwg.add(dwg.text(
+            f'{value:.1f}',
+            insert=(x + bar_width/2, y - 5),
+            text_anchor='middle',
+            font_size='10pt',
+            fill='black'
+        ))
+
+        # X-axis label
+        dwg.add(dwg.text(
+            label,
+            insert=(x + bar_width/2, margin + chart_height + 20),
+            text_anchor='middle',
+            font_size='10pt',
+            fill='black'
+        ))
 
     dwg.save()
 ```
@@ -278,14 +313,37 @@ def batch_generate_badges(users, template_path, output_dir):
 
     for user in users:
         output_path = os.path.join(output_dir, f"{user['id']}_badge.svg")
+
         dwg = svgwrite.Drawing(output_path, size=('300px', '100px'))
-        dwg.add(dwg.rect(insert=(0, 0), size=('100%', '100%'),
-            fill='#3366cc', rx=10, ry=10))
-        dwg.add(dwg.text(user['name'], insert=(150, 40),
-            text_anchor='middle', font_size='20pt',
-            font_weight='bold', fill='white'))
-        dwg.add(dwg.text(user['role'], insert=(150, 70),
-            text_anchor='middle', font_size='14pt', fill='lightblue'))
+
+        # Background
+        dwg.add(dwg.rect(
+            insert=(0, 0),
+            size=('100%', '100%'),
+            fill='#3366cc',
+            rx=10,
+            ry=10
+        ))
+
+        # User name
+        dwg.add(dwg.text(
+            user['name'],
+            insert=(150, 40),
+            text_anchor='middle',
+            font_size='20pt',
+            font_weight='bold',
+            fill='white'
+        ))
+
+        # User role
+        dwg.add(dwg.text(
+            user['role'],
+            insert=(150, 70),
+            text_anchor='middle',
+            font_size='14pt',
+            fill='lightblue'
+        ))
+
         dwg.save()
         print(f"Generated badge: {output_path}")
 ```
@@ -302,12 +360,20 @@ import cairosvg
 
 def svg_to_png(svg_path, png_path, dpi=300):
     """Convert SVG to PNG with specified DPI."""
+    # Calculate pixel dimensions from DPI
+    # Assuming A4 size as example
     width_inches = 8.27
     height_inches = 11.69
+
     width_px = int(width_inches * dpi)
     height_px = int(height_inches * dpi)
-    cairosvg.svg2png(url=svg_path, write_to=png_path,
-        output_width=width_px, output_height=height_px)
+
+    cairosvg.svg2png(
+        url=svg_path,
+        write_to=png_path,
+        output_width=width_px,
+        output_height=height_px
+    )
     print(f"Converted to PNG: {png_path}")
 
 def svg_to_pdf(svg_path, pdf_path):

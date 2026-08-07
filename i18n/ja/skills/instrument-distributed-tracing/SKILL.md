@@ -155,7 +155,7 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **GoとGinフレームワーク**：
@@ -218,7 +218,7 @@ tracer = trace.get_tracer(__name__)
 
 def process_order(order_id):
     # Create a span for the entire operation
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **Goの手動スパン**：
@@ -262,7 +262,7 @@ from opentelemetry import trace
 from opentelemetry.propagate import inject
 
 tracer = trace.get_tracer(__name__)
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 ```go
@@ -284,7 +284,7 @@ from kafka import KafkaProducer
 
 producer = KafkaProducer(bootstrap_servers=['kafka:9092'])
 
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 ```python
@@ -341,7 +341,7 @@ from opentelemetry.sdk.trace.sampling import (
     TraceIdRatioBased,
     StaticSampler,
     Decision
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **Tempoを使用したテールベースサンプリング**：
@@ -399,7 +399,7 @@ from opentelemetry import trace
 # Custom log formatter with trace context
 class TraceFormatter(logging.Formatter):
     def format(self, record):
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **トレースからメトリクスを生成する**（Tempo）：
