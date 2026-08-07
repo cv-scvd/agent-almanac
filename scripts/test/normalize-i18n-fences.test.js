@@ -91,6 +91,39 @@ function run(dir, args = []) {
   return { status: r.status, stdout: r.stdout, stderr: r.stderr };
 }
 
+/**
+ * Add a second skill carrying TWO divergent fences with different tags, so a
+ * tag-scoped run has something to include and something to leave alone. This is
+ * the shape #477's batches face: 54 of the 108 files holding yaml divergences
+ * also hold bash, r or python ones belonging to later batches.
+ */
+function addMixedSkill(dir) {
+  const english = [
+    '---', 'name: mixed-skill', 'description: Two fences.', '---', '',
+    '# Mixed', '', '## Procedure', '',
+    '```bash', 'echo "english-bash"', '```', '',
+    '```yaml', 'key: english-yaml', '```', '',
+  ].join('\n');
+  mkdirSync(join(dir, 'skills', 'mixed-skill'), { recursive: true });
+  writeFileSync(join(dir, 'skills', 'mixed-skill', 'SKILL.md'), english, 'utf8');
+  git(dir, ['add', '-A']);
+  git(dir, ['commit', '-m', 'english mixed skill']);
+  const sc = git(dir, ['rev-parse', 'HEAD']);
+
+  const translatedPath = join(dir, 'i18n', 'de', 'skills', 'mixed-skill', 'SKILL.md');
+  mkdirSync(dirname(translatedPath), { recursive: true });
+  writeFileSync(translatedPath, [
+    '---', 'name: mixed-skill', 'description: Zwei Bloecke.',
+    'locale: de', 'source_locale: en', `source_commit: ${sc}`, '---', '',
+    '# Gemischt', '', '## Ablauf', '',
+    '```bash', 'echo "uebersetzt-bash"', '```', '',
+    '```yaml', 'key: uebersetzt-yaml', '```', '',
+  ].join('\n'), 'utf8');
+  git(dir, ['add', '-A']);
+  git(dir, ['commit', '-m', 'de mixed translation, both fences divergent']);
+  return translatedPath;
+}
+
 const isDirty = (dir) => git(dir, ['status', '--porcelain']) !== '';
 
 // ── the gate ────────────────────────────────────────────────────────────────
@@ -219,6 +252,77 @@ test('a preview run is unaffected by a dirty tree', async (t) => {
   // tree normally" from "previewed it and silently found nothing" — and preview
   // is now the default mode, so this count is the number a caller acts on.
   assert.match(r.stdout, /files to change: 1/);
+});
+
+// ── --tag: the #477 batch scoping ───────────────────────────────────────────
+
+test('--tag restores only the named tag, leaving other tags divergent', async (t) => {
+  const { dir } = makeFixture(t);
+  const mixed = addMixedSkill(dir);
+
+  const r = run(dir, ['--tag', 'yaml', '--write']);
+
+  assert.equal(r.status, 0, r.stderr);
+  const after = readFileSync(mixed, 'utf8');
+  assert.ok(after.includes('key: english-yaml'), 'the yaml fence should be restored');
+  assert.ok(after.includes('echo "uebersetzt-bash"'),
+    'the bash fence belongs to a later batch and must be left alone');
+});
+
+test('--tag accepts a comma list, and the = form', async (t) => {
+  const { dir } = makeFixture(t);
+  addMixedSkill(dir);
+
+  const list = run(dir, ['--tag', 'yaml,bash']);
+  assert.equal(list.status, 0, list.stderr);
+  assert.match(list.stdout, /fences to restore: 3/, 'both mixed fences plus the demo bash one');
+
+  const eq = run(dir, ['--tag=yaml']);
+  assert.equal(eq.status, 0, eq.stderr);
+  assert.match(eq.stdout, /fences to restore: 1/);
+});
+
+test('a --tag matching nothing is an error, not a clean-looking zero', async (t) => {
+  // The `--locale` lesson, one flag over: a scoping value that matches nothing
+  // reports "files to change: 0", which reads as "this batch is already done".
+  const { dir } = makeFixture(t);
+  addMixedSkill(dir);
+
+  const r = run(dir, ['--tag', 'yaml,nosuchtag', '--write']);
+
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /matched no divergent fence: nosuchtag/);
+  assert.match(r.stderr, /Divergent tags present:.*yaml/, 'should list what IS available');
+  assert.equal(isDirty(dir), false, 'a rejected batch must not have written anything');
+});
+
+test('--tag with no usable value is an error', async (t) => {
+  const { dir } = makeFixture(t);
+
+  for (const args of [['--tag'], ['--tag', '--write'], ['--tag='], ['--tag', ',, ,']]) {
+    const r = run(dir, args);
+    assert.equal(r.status, 2, `${JSON.stringify(args)} was accepted`);
+  }
+});
+
+test('--tag does NOT relax the alignment checks', async (t) => {
+  // Scoping narrows what gets repaired, never whether ordinal mapping is
+  // trustworthy. A file the unscoped run refuses to touch must stay refused,
+  // or a batch could rewrite fences on a mapping the tool knows is unsound.
+  const { dir } = makeFixture(t);
+  const mixed = addMixedSkill(dir);
+  // Drop a fence from the translation so counts no longer match the basis.
+  writeFileSync(mixed, readFileSync(mixed, 'utf8')
+    .replace('```bash\necho "uebersetzt-bash"\n```\n\n', ''), 'utf8');
+  git(dir, ['add', '-A']);
+  git(dir, ['commit', '-m', 'drop a fence, breaking ordinal mapping']);
+
+  const r = run(dir, ['--tag', 'yaml', '--write']);
+
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /skipped/, 'the misaligned file must be reported, not repaired');
+  assert.ok(readFileSync(mixed, 'utf8').includes('key: uebersetzt-yaml'),
+    'a file with unsound ordinal mapping must not be rewritten by a scoped run');
 });
 
 // ── argument parsing ────────────────────────────────────────────────────────
