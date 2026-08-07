@@ -56,11 +56,11 @@ metadata:
 すべてのメモリファイルを読み、各エントリを4つの次元で分類します。
 
 ```bash
-# メモリディレクトリのインベントリ
+# Inventory the memory directory
 ls -la <memory-dir>/
 wc -l <memory-dir>/*.md
 
-# 総エントリ数をカウント（トップレベルの箇条書きとヘッダーをカウントすることで近似）
+# Count total entries (approximate by counting top-level bullets and headers)
 grep -c "^- \|^## " <memory-dir>/MEMORY.md
 for f in <memory-dir>/*.md; do echo "$f: $(grep -c '^- \|^## ' "$f") entries"; done
 ```
@@ -97,17 +97,17 @@ for f in <memory-dir>/*.md; do echo "$f: $(grep -c '^- \|^## ' "$f") entries"; d
 5. **ツール/バージョンのドリフト**: 変更されたバージョン番号、APIシグネチャ、またはツール名（例：パッケージのリネーム）
 
 ```bash
-# 真実のソースに対してカウントをスポットチェック
+# Spot-check counts against source of truth
 grep -oP '\d+ skills' <memory-dir>/MEMORY.md
 grep -c "^      - id:" skills/_registry.yml
 
-# 存在しないファイルへの参照を確認
+# Check for references to files that no longer exist
 grep -oP '`[^`]+\.(md|yml|R|js|ts)`' <memory-dir>/MEMORY.md | sort -u | while read f; do
   path="${f//\`/}"
   [ ! -f "$path" ] && echo "STALE: $path referenced but not found"
 done
 
-# 古い名前/パスへの参照を確認
+# Check for references to old names/paths
 grep -i "old-name\|previous-name\|renamed-from" <memory-dir>/*.md
 ```
 
@@ -128,18 +128,18 @@ grep -i "old-name\|previous-name\|renamed-from" <memory-dir>/*.md
 2. **圧縮損失の検出**: メモリのサマリーを元のソース資料と比較します。50行の議論が2行のメモリに圧縮されたとき、圧縮は実行可能な洞察を保存しましたか、それともトピックラベルだけですか？
 
    ```bash
-   # メモリエントリが導出されたソースを見つける
-   # (git log、古いPR、元のファイル)
+   # Find the source that a memory entry was derived from
+   # (git log, old PRs, original files)
    git log --oneline --all --grep="<keyword from memory entry>" | head -5
    ```
 
 3. **矛盾スキャン**: 互いに矛盾するメモリ、またはCLAUDE.md/プロジェクトドキュメントと矛盾するメモリを検索します。
 
    ```bash
-   # カウントにおける潜在的な矛盾を探す
+   # Look for potential contradictions in counts
    grep -n "total" <memory-dir>/MEMORY.md
    grep -n "total" CLAUDE.md
-   # 値を比較 — 一致するべき
+   # Compare the values — they should agree
    ```
 
 4. **ユーティリティテスト**: 各メモリエントリについて、「このエントリが削除されたとしたら、次の5セッションで何か問題が起こるか？」と尋ねます。答えが「おそらくない」であれば、エントリは精度に関係なく低フィデリティ値です。

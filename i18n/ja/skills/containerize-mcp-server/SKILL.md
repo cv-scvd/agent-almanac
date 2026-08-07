@@ -165,13 +165,13 @@ HTTPトランスポートの場合（MCPサーバーがサポートしている�
 ### ステップ5: 接続の確認
 
 ```bash
-# コンテナの実行確認
+# Check container is running
 docker ps | grep mcp-server
 
-# コンテナ内のRセッションテスト
+# Test R session inside container
 docker exec -it r-mcp-server R -e "sessionInfo()"
 
-# mcptoolsの利用可能性を確認
+# Verify mcptools is available
 docker exec -it r-mcp-server R -e "library(mcptools)"
 ```
 

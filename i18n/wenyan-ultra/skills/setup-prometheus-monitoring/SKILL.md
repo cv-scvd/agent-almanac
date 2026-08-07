@@ -49,9 +49,11 @@ metadata:
 建基 Prometheus 配含全設與採間：
 
 ```bash
+# Create Prometheus directory structure
 mkdir -p /etc/prometheus/{rules,file_sd}
 mkdir -p /var/lib/prometheus
 
+# Download Prometheus (adjust version as needed)
 cd /tmp
 wget https://github.com/prometheus/prometheus/releases/download/v2.48.0/prometheus-2.48.0.linux-amd64.tar.gz
 tar xvf prometheus-2.48.0.linux-amd64.tar.gz
@@ -257,10 +259,13 @@ groups:
 驗並重載：
 
 ```bash
+# Validate rules syntax
 promtool check rules /etc/prometheus/rules/recording_rules.yml
 
+# Reload Prometheus configuration (without restart)
 curl -X POST http://localhost:9090/-/reload
 
+# Or send SIGHUP signal
 sudo killall -HUP prometheus
 ```
 

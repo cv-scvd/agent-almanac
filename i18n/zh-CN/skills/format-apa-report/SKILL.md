@@ -206,10 +206,10 @@ APA 引用样式：
 ### 第 6 步：渲染
 
 ```bash
-# Word 文档（期刊投稿常用）
+# Word document (common for journal submission)
 quarto render manuscript.qmd --to apaquarto-docx
 
-# PDF（预印本或审稿用）
+# PDF (for preprint or review)
 quarto render manuscript.qmd --to apaquarto-pdf
 ```
 

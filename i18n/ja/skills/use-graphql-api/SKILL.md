@@ -50,15 +50,15 @@ metadata:
 **GitHubの場合：**
 
 ```bash
-# 利用可能なクエリフィールドの一覧表示
+# List available query fields
 gh api graphql -f query='{ __schema { queryType { fields { name description } } } }' \
   | jq '.data.__schema.queryType.fields[] | {name, description}'
 
-# 利用可能なミューテーションフィールドの一覧表示
+# List available mutation fields
 gh api graphql -f query='{ __schema { mutationType { fields { name description } } } }' \
   | jq '.data.__schema.mutationType.fields[] | {name, description}'
 
-# 特定の型を調べる
+# Inspect a specific type
 gh api graphql -f query='{
   __type(name: "Repository") {
     fields { name type { name kind ofType { name } } }
@@ -69,7 +69,7 @@ gh api graphql -f query='{
 **汎用エンドポイントの場合：**
 
 ```bash
-# curlによる完全なイントロスペクションクエリ
+# Full introspection query via curl
 curl -s -X POST https://api.example.com/graphql \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
@@ -97,7 +97,7 @@ curl -s -X POST https://api.example.com/graphql \
 GitHub固有のオペレーションについては、[GitHub GraphQL API docs](https://docs.github.com/en/graphql)を参照してください。
 
 ```bash
-# クイックチェック：ミューテーションは存在するか？
+# Quick check: does the mutation exist?
 gh api graphql -f query='{ __schema { mutationType { fields { name } } } }' \
   | jq '.data.__schema.mutationType.fields[].name' | grep -i "discussion"
 ```
@@ -165,17 +165,17 @@ gh api graphql -f query='
 **GitHub — `gh api graphql`の使用：**
 
 ```bash
-# 単純なクエリ
+# Simple query
 gh api graphql -f query='{ viewer { login } }'
 
-# 変数を使用
+# With variables
 gh api graphql \
   -f query='query($owner: String!, $repo: String!) {
     repository(owner: $owner, name: $repo) { id name }
   }' \
   -f owner="octocat" -f repo="Hello-World"
 
-# jqによる後処理
+# With jq post-processing
 REPO_ID=$(gh api graphql \
   -f query='query($owner: String!, $repo: String!) {
     repository(owner: $owner, name: $repo) { id }
@@ -208,10 +208,10 @@ curl -s -X POST "$GRAPHQL_ENDPOINT" \
 JSONレスポンスから必要なデータを抽出します。
 
 ```bash
-# 単一の値を抽出
+# Extract a single value
 gh api graphql -f query='{ viewer { login } }' --jq '.data.viewer.login'
 
-# リストから抽出
+# Extract from a list
 gh api graphql -f query='
   query($owner: String!, $repo: String!) {
     repository(owner: $owner, name: $repo) {
@@ -223,7 +223,7 @@ gh api graphql -f query='
 ' -f owner="OWNER" -f repo="REPO" \
   --jq '.data.repository.issues.nodes[] | "\(.number): \(.title)"'
 
-# 後で使用するために変数に代入
+# Assign to a variable for later use
 CATEGORY_ID=$(gh api graphql -f query='
   query($owner: String!, $repo: String!) {
     repository(owner: $owner, name: $repo) {
@@ -248,7 +248,7 @@ CATEGORY_ID=$(gh api graphql -f query='
 1つのオペレーションの出力を次のオペレーションへの入力として使用します。
 
 ```bash
-# ステップA: リポジトリIDの取得
+# Step A: Get the repository ID
 REPO_ID=$(gh api graphql \
   -f query='query($owner: String!, $repo: String!) {
     repository(owner: $owner, name: $repo) { id }
@@ -256,7 +256,7 @@ REPO_ID=$(gh api graphql \
   -f owner="$OWNER" -f repo="$REPO" \
   --jq '.data.repository.id')
 
-# ステップB: ディスカッションカテゴリIDの取得
+# Step B: Get the discussion category ID
 CAT_ID=$(gh api graphql \
   -f query='query($owner: String!, $repo: String!) {
     repository(owner: $owner, name: $repo) {
@@ -269,7 +269,7 @@ CAT_ID=$(gh api graphql \
   --jq '.data.repository.discussionCategories.nodes[]
     | select(.name == "Show and Tell") | .id')
 
-# ステップC: 両方のIDを使ってディスカッションを作成
+# Step C: Create the discussion using both IDs
 RESULT=$(gh api graphql \
   -f query='mutation($repoId: ID!, $catId: ID!, $title: String!, $body: String!) {
     createDiscussion(input: {

@@ -170,19 +170,19 @@ services:
 ### ステップ5: ビルドと実行
 
 ```bash
-# イメージのビルド
+# Build images
 docker compose build
 
-# サービスの起動
+# Start services
 docker compose up -d
 
-# Rセッションにアタッチ
+# Attach to R session
 docker compose exec r-dev R
 
-# ログの表示
+# View logs
 docker compose logs -f r-dev
 
-# サービスの停止
+# Stop services
 docker compose down
 ```
 

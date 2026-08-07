@@ -97,14 +97,14 @@ spec:
 
 **Istioの場合：**
 ```bash
-# Namespaceに自動インジェクションのラベルを付与
+# Label namespace for automatic injection
 kubectl label namespace default istio-injection=enabled
 kubectl get namespace -L istio-injection
 ```
 
 **Linkerdの場合：**
 ```bash
-# Namespaceにインジェクションのアノテーションを付与
+# Annotate namespace for injection
 kubectl annotate namespace default linkerd.io/inject=enabled
 ```
 
@@ -127,7 +127,7 @@ spec:
 ```bash
 kubectl apply -f test-deployment.yaml
 kubectl get pods -n default
-# 2/2コンテナが期待される（app + proxy）
+# Expect 2/2 containers (app + proxy)
 ```
 
 **期待結果：** 新しいPodが2/2コンテナを表示（アプリケーション + サイドカープロキシ）。Describe出力がistio-proxyまたはlinkerd-proxyコンテナを表示。ログがプロキシの正常起動を表示。
@@ -158,15 +158,15 @@ spec:
 
 **Linkerdの場合：**
 ```bash
-# Linkerdはデフォルトでメッシュ化されたPodにmTLSを強制
+# Linkerd enforces mTLS by default for meshed pods
 linkerd viz tap deploy/test-app -n default
-# 🔒（ロック）シンボルを確認
+# Check for 🔒 (lock) symbol
 ```
 
 適用して確認します：
 ```bash
 kubectl apply -f mtls-policy.yaml
-# Istio：mTLSステータスを確認
+# Istio: verify mTLS status
 istioctl authn tls-check $(kubectl get pod -n default -l app=test-app -o jsonpath='{.items[0].metadata.name}') -n default
 ```
 
@@ -216,9 +216,9 @@ spec:
 適用してテストします：
 ```bash
 kubectl apply -f traffic-management.yaml
-# トラフィック分散をテスト
+# Test traffic distribution
 for i in {1..100}; do curl -s http://api.example.com/api/v2 | grep version; done | sort | uniq -c
-# 監視：istioctl dashboard kiali または linkerd viz dashboard
+# Monitor: istioctl dashboard kiali or linkerd viz dashboard
 ```
 
 **期待結果：** トラフィックが定義された重みに従って分割。サーキットブレーカーが連続エラー後にトリップ。一時的な失敗にリトライが発生。Kiali/Linkerdダッシュボードがトラフィックフローの可視化を表示。
@@ -236,7 +236,7 @@ for i in {1..100}; do curl -s http://api.example.com/api/v2 | grep version; done
 
 **可観測性アドオンのインストール：**
 ```bash
-# Istio：Prometheus、Grafana、Kiali、Jaeger
+# Istio: Prometheus, Grafana, Kiali, Jaeger
 kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/prometheus.yaml
 kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/grafana.yaml
 kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/kiali.yaml
@@ -264,7 +264,7 @@ spec:
 
 ダッシュボードへアクセスします：
 ```bash
-istioctl dashboard grafana  # または：linkerd viz dashboard
+istioctl dashboard grafana  # or: linkerd viz dashboard
 istioctl dashboard kiali
 istioctl dashboard jaeger
 ```
@@ -283,21 +283,21 @@ istioctl dashboard jaeger
 包括的なヘルスチェックと継続的な監視をセットアップします。
 
 ```bash
-# Istioの検証
+# Istio validation
 istioctl analyze --all-namespaces
 istioctl verify-install
 istioctl proxy-status
 
-# Linkerdの検証
+# Linkerd validation
 linkerd check
 linkerd viz check
 linkerd diagnostics policy
 
-# プロキシの同期ステータスを確認
+# Check proxy sync status
 kubectl get pods -n production -o json | \
   jq '.items[] | {name: .metadata.name, proxy: .status.containerStatuses[] | select(.name=="istio-proxy").ready}'
 
-# コントロールプレーンの健全性を監視
+# Monitor control plane health
 kubectl get pods -n istio-system -w
 kubectl top pods -n istio-system
 ```
@@ -305,11 +305,11 @@ kubectl top pods -n istio-system
 ヘルスチェックスクリプトとアラートを作成します：
 ```bash
 #!/bin/bash
-# mesh-health-check.sh（省略版）
+# mesh-health-check.sh (abbreviated)
 echo "=== Service Mesh Health Check ==="
 kubectl get pods -n istio-system
 istioctl analyze --all-namespaces
-# 完全なヘルスチェックスクリプトとアラート設定はEXAMPLES.md ステップ6を参照
+# See EXAMPLES.md Step 6 for complete health check script and alert configs
 ```
 
 **期待結果：** 全ての分析チェックが警告なしで合格。Proxy-statusがすべてのプロキシが同期済みを表示。mTLSチェックが暗号化を確認。メトリクスがトラフィックの流れを表示。コントロールプレーンのPodが低いリソース使用量で安定。

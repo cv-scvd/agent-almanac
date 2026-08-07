@@ -55,14 +55,14 @@ NGINXコントローラー、自動TLS証明書、および高度なルーティ
 HelmでNGINX Ingressコントローラーをデプロイし、クラウドプロバイダー統合を設定します。
 
 ```bash
-# NGINX Ingress HelmリポジトリをAdd
+# Add NGINX Ingress Helm repository
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
 helm repo update
 
-# Namespaceの作成
+# Create namespace
 kubectl create namespace ingress-nginx
 
-# クラウドプロバイダー向けインストール（AWS、GCP、Azure）
+# Install for cloud providers (AWS, GCP, Azure)
 helm install ingress-nginx ingress-nginx/ingress-nginx \
   --namespace ingress-nginx \
   --set controller.service.type=LoadBalancer \
@@ -71,37 +71,37 @@ helm install ingress-nginx ingress-nginx/ingress-nginx \
   --set controller.podAnnotations."prometheus\.io/scrape"=true \
   --set controller.podAnnotations."prometheus\.io/port"=10254
 
-# またはベアメタル向けNodePortでインストール
+# Or install for bare-metal with NodePort
 helm install ingress-nginx ingress-nginx/ingress-nginx \
   --namespace ingress-nginx \
   --set controller.service.type=NodePort \
   --set controller.service.nodePorts.http=30080 \
   --set controller.service.nodePorts.https=30443
 
-# AWS NLBを使用した設定
+# AWS-specific configuration with NLB
 helm install ingress-nginx ingress-nginx/ingress-nginx \
   --namespace ingress-nginx \
   --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb \
   --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-backend-protocol"=tcp \
   --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-cross-zone-load-balancing-enabled"=true
 
-# インストールの確認
+# Verify installation
 kubectl get pods -n ingress-nginx
 kubectl get svc -n ingress-nginx
 
-# LoadBalancerの外部IPを待機
+# Wait for LoadBalancer external IP
 kubectl get svc ingress-nginx-controller -n ingress-nginx -w
 
-# 外部IP/ホスト名の取得
+# Get external IP/hostname
 INGRESS_IP=$(kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 INGRESS_HOST=$(kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
 
 echo "Ingress IP: $INGRESS_IP"
 echo "Ingress Hostname: $INGRESS_HOST"
 
-# コントローラーのテスト
+# Test controller
 curl http://$INGRESS_IP
-# 404が返される（バックエンドがまだ設定されていない）
+# Should return 404 (no backend configured yet)
 ```
 
 **期待結果：** NGINX IngressコントローラーのPodがingress-nginx Namespaceで稼働中。LoadBalancerサービスに外部IPが割り当て済み。メトリクスエンドポイントがポート10254でアクセス可能。`/healthz`のヘルスチェックが200 OKを返す。
@@ -113,14 +113,14 @@ curl http://$INGRESS_IP
 cert-managerをデプロイしてLet's EncryptのClusterIssuerを設定します。
 
 ```bash
-# cert-manager CRDのインストール
+# Install cert-manager CRDs
 kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.crds.yaml
 
-# cert-manager HelmリポジトリをAdd
+# Add cert-manager Helm repository
 helm repo add jetstack https://charts.jetstack.io
 helm repo update
 
-# cert-managerのインストール
+# Install cert-manager
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
@@ -128,11 +128,11 @@ helm install cert-manager jetstack/cert-manager \
   --set prometheus.enabled=true \
   --set webhook.timeoutSeconds=30
 
-# インストールの確認
+# Verify installation
 kubectl get pods -n cert-manager
 kubectl get apiservice v1beta1.webhook.cert-manager.io -o yaml
 
-# Let's Encryptステージングイシュアーの作成（テスト用）
+# Create Let's Encrypt staging issuer (for testing)
 cat <<EOF | kubectl apply -f -
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
@@ -150,7 +150,7 @@ spec:
           class: nginx
 EOF
 
-# Let's Encrypt本番イシュアーの作成
+# Create Let's Encrypt production issuer
 cat <<EOF | kubectl apply -f -
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
@@ -170,11 +170,11 @@ spec:
         route53:
           region: us-east-1
           hostedZoneID: Z1234567890ABC
-          # EKSとIRSAを使用したIAMロール
+          # IAM role for EKS with IRSA
           role: arn:aws:iam::123456789012:role/cert-manager
 EOF
 
-# ClusterIssuerのReady確認
+# Verify ClusterIssuer ready
 kubectl get clusterissuer
 kubectl describe clusterissuer letsencrypt-prod
 ```
@@ -188,18 +188,18 @@ kubectl describe clusterissuer letsencrypt-prod
 アプリケーションをデプロイし、自動証明書発行付きのIngressで公開します。
 
 ```bash
-# サンプルアプリケーションのデプロイ
+# Deploy sample application
 kubectl create deployment web --image=nginx:alpine
 kubectl expose deployment web --port=80 --target-port=80
 
-# TLS付きIngressリソースの作成
+# Create Ingress resource with TLS
 cat <<EOF | kubectl apply -f -
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: web-ingress
   annotations:
-    cert-manager.io/cluster-issuer: "letsencrypt-staging"  # テスト中はステージングを使用
+    cert-manager.io/cluster-issuer: "letsencrypt-staging"  # Use staging for testing
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
 spec:
@@ -207,7 +207,7 @@ spec:
   tls:
   - hosts:
     - web.example.com
-    secretName: web-tls-secret  # cert-managerが作成する
+    secretName: web-tls-secret  # cert-manager will create this
   rules:
   - host: web.example.com
     http:
@@ -221,30 +221,30 @@ spec:
               number: 80
 EOF
 
-# 証明書作成の監視
+# Watch certificate creation
 kubectl get certificate -w
 kubectl describe certificate web-tls-secret
 
-# 証明書の発行確認
+# Verify certificate issued
 kubectl get secret web-tls-secret
 kubectl get secret web-tls-secret -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -text -noout
 
-# 問題がある場合はcert-managerのログを確認
+# Check cert-manager logs if issues
 kubectl logs -n cert-manager -l app=cert-manager -f
 
-# HTTPからHTTPSへのリダイレクトをテスト
+# Test HTTP to HTTPS redirect
 curl -I http://web.example.com
-# 308 Permanent Redirect to https:// が返される
+# Should return 308 Permanent Redirect to https://
 
-# HTTPSをテスト
+# Test HTTPS
 curl -v https://web.example.com
-# 有効な証明書で200 OKが返される
+# Should return 200 OK with valid certificate
 
-# テスト成功後、本番イシュアーに切り替え
+# Once tested successfully, switch to production issuer
 kubectl patch ingress web-ingress -p '{"metadata":{"annotations":{"cert-manager.io/cluster-issuer":"letsencrypt-prod"}}}'
 kubectl delete certificate web-tls-secret
 kubectl delete secret web-tls-secret
-# cert-managerが本番証明書で再作成する
+# cert-manager will recreate with production certificate
 ```
 
 **期待結果：** Ingressリソースが作成済み。cert-managerがアノテーションを検出してCertificateリソースを作成。HTTP-01チャレンジが正常に完了。有効な証明書でTLSシークレットが作成済み。有効な証明書でHTTPSリクエストが成功。HTTPがHTTPSにリダイレクト。
@@ -256,13 +256,13 @@ kubectl delete secret web-tls-secret
 パスベースルーティング、ヘッダーベースルーティング、トラフィック分割を設定します。
 
 ```bash
-# 複数のサービスをデプロイ
+# Deploy multiple services
 kubectl create deployment api --image=hashicorp/http-echo --replicas=3 -- -text="API Service"
 kubectl create deployment admin --image=hashicorp/http-echo --replicas=2 -- -text="Admin Service"
 kubectl expose deployment api --port=5678
 kubectl expose deployment admin --port=5678
 
-# パスベースルーティングのIngressを作成
+# Create Ingress with path-based routing
 cat <<EOF | kubectl apply -f -
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -306,7 +306,7 @@ spec:
               number: 5678
 EOF
 
-# トラフィック分割によるカナリアデプロイ
+# Canary deployment with traffic splitting
 kubectl create deployment api-v2 --image=hashicorp/http-echo -- -text="API Service v2"
 kubectl expose deployment api-v2 --port=5678
 
@@ -317,7 +317,7 @@ metadata:
   name: api-canary
   annotations:
     nginx.ingress.kubernetes.io/canary: "true"
-    nginx.ingress.kubernetes.io/canary-weight: "20"  # v2に20%のトラフィック
+    nginx.ingress.kubernetes.io/canary-weight: "20"  # 20% traffic to v2
 spec:
   ingressClassName: nginx
   rules:
@@ -333,7 +333,7 @@ spec:
               number: 5678
 EOF
 
-# ヘッダーベースのカナリアルーティング（テスト用）
+# Header-based canary routing (for testing)
 cat <<EOF | kubectl apply -f -
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -358,10 +358,10 @@ spec:
               number: 5678
 EOF
 
-# ルーティングのテスト
-curl https://app.example.com/            # -> webサービス
+# Test routing
+curl https://app.example.com/            # -> web service
 curl https://app.example.com/api/        # -> 80% api, 20% api-v2
-curl https://app.example.com/admin/      # -> adminサービス
+curl https://app.example.com/admin/      # -> admin service
 curl -H "X-Canary: always" https://app.example.com/api/  # -> api-v2 (100%)
 ```
 
@@ -374,13 +374,13 @@ curl -H "X-Canary: always" https://app.example.com/api/  # -> api-v2 (100%)
 レート制限、基本認証、OAuth2認証を実装します。
 
 ```bash
-# IPによるレート制限
+# Rate limiting by IP
 cat <<EOF | kubectl apply -f -
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: api-ratelimit
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **期待結果：** レート制限が過剰なリクエストを503 Service Temporarily Unavailableでブロック。基本認証がクレデンシャルを求め、未認証リクエストを拒否。OAuth2がプロバイダーのログインページにリダイレクトし、認証Cookieを設定。
@@ -392,13 +392,13 @@ metadata:
 カスタムエラーページ、CORS、リクエスト/レスポンスヘッダーを設定します。
 
 ```bash
-# カスタムエラーページのConfigMapを作成
+# Create ConfigMap with custom error pages
 kubectl create configmap custom-errors --from-file=404.html --from-file=503.html -n ingress-nginx
 
-# カスタムエラーページを使用するNGINXの設定
+# Configure NGINX to use custom error pages
 cat <<EOF | kubectl apply -f -
 apiVersion: v1
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **期待結果：** デフォルトのNGINXページの代わりにカスタム404と503ページが表示。CORSヘッダーが指定されたオリジンとメソッドを許可。セキュリティヘッダーがXSSとクリックジャッキングを防止。リクエストボディサイズ制限が大容量ファイルのアップロードを許可。タイムアウト設定が早期の接続切断を防止。

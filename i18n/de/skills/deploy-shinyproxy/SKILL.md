@@ -163,13 +163,13 @@ volumes:
 ```
 
 ```bash
-# Netzwerk zuerst erstellen (ShinyProxy startet Container auf diesem Netzwerk)
+# Create the network first (ShinyProxy spawns containers on this network)
 docker network create shinyproxy-net
 
-# ShinyProxy starten
+# Start ShinyProxy
 docker compose up -d
 
-# Logs prüfen
+# Check logs
 docker compose logs -f shinyproxy
 ```
 
@@ -308,14 +308,14 @@ specs:
 ### Schritt 8: Deployment verifizieren
 
 ```bash
-# ShinyProxy-Gesundheit prüfen
+# Check ShinyProxy health
 curl -s http://localhost:8080/actuator/health
 
-# Login testen
+# Test login
 curl -s -c cookies.txt -d "username=admin&password=admin_password" \
   http://localhost:8080/login
 
-# Apps via API auflisten
+# List apps via API
 curl -s -b cookies.txt http://localhost:8080/api/proxyspec
 ```
 

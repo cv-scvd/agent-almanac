@@ -191,11 +191,11 @@ ENTRYPOINT ["/server"]
 ### ステップ6: イメージサイズの比較
 
 ```bash
-# 両方のバリアントをビルド
+# Build both variants
 docker build -t myapp:fat --target builder .
 docker build -t myapp:slim .
 
-# サイズを比較
+# Compare sizes
 docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}" | grep myapp
 ```
 

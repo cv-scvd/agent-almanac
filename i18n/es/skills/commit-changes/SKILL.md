@@ -48,13 +48,13 @@ Preparar archivos de forma selectiva, escribir mensajes de commit claros y verif
 Verificar el estado del árbol de trabajo e inspeccionar las diferencias:
 
 ```bash
-# Ver qué archivos están modificados, preparados o sin seguimiento
+# See which files are modified, staged, or untracked
 git status
 
-# Ver cambios no preparados
+# See unstaged changes
 git diff
 
-# Ver cambios preparados
+# See staged changes
 git diff --staged
 ```
 
@@ -67,13 +67,13 @@ git diff --staged
 Preparar archivos específicos en lugar de usar `git add .` o `git add -A` para evitar incluir accidentalmente archivos sensibles o cambios no relacionados:
 
 ```bash
-# Preparar archivos específicos por nombre
+# Stage specific files by name
 git add src/feature.R tests/test-feature.R
 
-# Preparar todos los cambios en un directorio específico
+# Stage all changes in a specific directory
 git add src/
 
-# Preparar partes de un archivo de forma interactiva (no soportado en contextos no interactivos)
+# Stage parts of a file interactively (not supported in non-interactive contexts)
 # git add -p filename
 ```
 
@@ -125,14 +125,14 @@ Tipos de commit convencionales:
 Solo enmendar si el commit **no** ha sido enviado a un remoto compartido:
 
 ```bash
-# Enmendar solo el mensaje
+# Amend message only
 git commit --amend -m "$(cat <<'EOF'
 fix: correct weighted mean edge case for empty vectors
 
 EOF
 )"
 
-# Enmendar con cambios preparados adicionales
+# Amend with additional staged changes
 git add forgotten-file.R
 git commit --amend --no-edit
 ```
@@ -144,13 +144,13 @@ git commit --amend --no-edit
 ### Paso 5: Verificar el Commit
 
 ```bash
-# Ver el último commit
+# View the last commit
 git log -1 --stat
 
-# Ver el historial reciente de commits
+# View recent commit history
 git log --oneline -5
 
-# Verificar el contenido del commit
+# Verify the commit content
 git show HEAD
 ```
 

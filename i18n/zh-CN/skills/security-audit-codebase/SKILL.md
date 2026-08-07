@@ -47,18 +47,18 @@ metadata:
 搜索指示硬编码密钥的模式：
 
 ```bash
-# API 密钥和令牌
+# API keys and tokens
 grep -rn "sk-\|ghp_\|gho_\|github_pat_\|hf_\|AKIA" --include="*.{md,js,ts,py,R,json,yml,yaml}" .
 
-# 通用密钥模式
+# Generic secret patterns
 grep -rn "password\s*=\s*['\"]" --include="*.{js,ts,py,R,json}" .
 grep -rn "api[_-]key\s*[=:]\s*['\"]" --include="*.{js,ts,py,R,json}" .
 grep -rn "secret\s*[=:]\s*['\"]" --include="*.{js,ts,py,R,json}" .
 
-# 连接字符串
+# Connection strings
 grep -rn "postgresql://\|mysql://\|mongodb://" .
 
-# 私钥
+# Private keys
 grep -rn "BEGIN.*PRIVATE KEY" .
 ```
 
@@ -71,10 +71,10 @@ grep -rn "BEGIN.*PRIVATE KEY" .
 验证敏感文件已被排除：
 
 ```bash
-# 检查这些文件是否被 git 忽略
+# Check that these are git-ignored
 git check-ignore .env .Renviron credentials.json node_modules/
 
-# 查找已被跟踪的敏感文件
+# Look for tracked sensitive files
 git ls-files | grep -i "\.env\|\.renviron\|credentials\|secret"
 ```
 
@@ -115,7 +115,7 @@ renv::status()
 **SQL 注入**：
 
 ```bash
-# 查找查询中的字符串拼接
+# Look for string concatenation in queries
 grep -rn "paste.*SELECT\|paste.*INSERT\|paste.*UPDATE\|paste.*DELETE" --include="*.R" .
 grep -rn "query.*\+.*\|query.*\$\{" --include="*.{js,ts}" .
 ```
@@ -125,14 +125,14 @@ grep -rn "query.*\+.*\|query.*\$\{" --include="*.{js,ts}" .
 **命令注入**：
 
 ```bash
-# 查找使用用户输入的 shell 执行
+# Look for shell execution with user input
 grep -rn "system\(.*paste\|exec(\|spawn(" --include="*.{R,js,ts,py}" .
 ```
 
 **XSS（跨站脚本）**：
 
 ```bash
-# 查找 HTML 中未转义的用户内容
+# Look for unescaped user content in HTML
 grep -rn "innerHTML\|dangerouslySetInnerHTML\|v-html" --include="*.{js,ts,jsx,tsx,vue}" .
 ```
 
@@ -157,13 +157,13 @@ grep -rn "innerHTML\|dangerouslySetInnerHTML\|v-html" --include="*.{js,ts,jsx,ts
 ### 第 6 步：检查配置安全
 
 ```bash
-# 生产配置中的调试模式
+# Debug mode in production configs
 grep -rn "debug\s*[=:]\s*[Tt]rue\|DEBUG\s*=\s*1" --include="*.{json,yml,yaml,toml,cfg}" .
 
-# 过于宽松的 CORS
+# Permissive CORS
 grep -rn "Access-Control-Allow-Origin.*\*\|cors.*origin.*\*" --include="*.{js,ts}" .
 
-# HTTP 而非 HTTPS
+# HTTP instead of HTTPS
 grep -rn "http://" --include="*.{js,ts,py,R}" . | grep -v "localhost\|127.0.0.1\|http://"
 ```
 

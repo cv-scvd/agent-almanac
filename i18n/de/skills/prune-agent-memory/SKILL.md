@@ -60,13 +60,13 @@ Waehrend `manage-memory` sich auf das Organisieren und Wachsenlassen des Speiche
 Alle Speicherdateien lesen und jeden Eintrag nach vier Dimensionen klassifizieren.
 
 ```bash
-# Speicherverzeichnis inventarisieren
+# Inventory the memory directory
 ls -la <memory-dir>/
 wc -l <memory-dir>/*.md
 
-# Gesamteintraege zaehlen (naeherungsweise ueber Top-Level-Aufzaehlungen und Ueberschriften)
+# Count total entries (approximate by counting top-level bullets and headers)
 grep -c "^- \|^## " <memory-dir>/MEMORY.md
-for f in <memory-dir>/*.md; do echo "$f: $(grep -c '^- \|^## ' "$f") Eintraege"; done
+for f in <memory-dir>/*.md; do echo "$f: $(grep -c '^- \|^## ' "$f") entries"; done
 ```
 
 Jeden Speichereintrag in einen dieser Typen klassifizieren:
@@ -101,17 +101,17 @@ Nach diesen Veraltungsmustern suchen:
 5. **Tool-/Versions-Drift**: Versionsnummern, API-Signaturen oder Tool-Namen, die sich geaendert haben (z. B. Paketumbenennungen)
 
 ```bash
-# Zaehlen gegen Quelle der Wahrheit pruefen
+# Spot-check counts against source of truth
 grep -oP '\d+ skills' <memory-dir>/MEMORY.md
 grep -c "^      - id:" skills/_registry.yml
 
-# Auf Referenzen zu nicht mehr existierenden Dateien pruefen
+# Check for references to files that no longer exist
 grep -oP '`[^`]+\.(md|yml|R|js|ts)`' <memory-dir>/MEMORY.md | sort -u | while read f; do
   path="${f//\`/}"
-  [ ! -f "$path" ] && echo "VERALTET: $path referenziert, aber nicht gefunden"
+  [ ! -f "$path" ] && echo "STALE: $path referenced but not found"
 done
 
-# Auf Referenzen zu alten Namen/Pfaden pruefen
+# Check for references to old names/paths
 grep -i "old-name\|previous-name\|renamed-from" <memory-dir>/*.md
 ```
 
@@ -132,18 +132,18 @@ Genauigkeitspruefungsmethoden:
 2. **Kompressionsverlust-Erkennung**: Erinnerungszusammenfassungen mit dem urspruenglichen Quellmaterial vergleichen. Wenn eine 50-zeilige Diskussion zu einer 2-zeiligen Erinnerung komprimiert wurde, hat die Kompression die handlungsrelevante Erkenntnis oder nur das Thema-Label bewahrt?
 
    ```bash
-   # Die Quelle finden, aus der ein Speichereintrag abgeleitet wurde
-   # (git log, alte PRs, urspruengliche Dateien)
-   git log --oneline --all --grep="<Schluesselwort aus Speichereintrag>" | head -5
+   # Find the source that a memory entry was derived from
+   # (git log, old PRs, original files)
+   git log --oneline --all --grep="<keyword from memory entry>" | head -5
    ```
 
 3. **Widerspruchs-Scan**: Nach Erinnerungen suchen, die sich gegenseitig widersprechen oder CLAUDE.md / Projektdokumentation widersprechen.
 
    ```bash
-   # Auf potenzielle Widersprueche in Zaehlen pruefen
+   # Look for potential contradictions in counts
    grep -n "total" <memory-dir>/MEMORY.md
    grep -n "total" CLAUDE.md
-   # Werte vergleichen — sie sollten uebereinstimmen
+   # Compare the values — they should agree
    ```
 
 4. **Nuetzlichkeitstest**: Fuer jeden Speichereintrag fragen: "Wenn dieser Eintrag geloescht waere, wuerde in den naechsten 5 Sitzungen etwas schief gehen?" Wenn die Antwort "wahrscheinlich nicht" ist, hat der Eintrag unabhaengig von der Genauigkeit geringen Fidelitaetswert.

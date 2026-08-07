@@ -50,11 +50,11 @@ Einen produktionsreifen Prometheus-Einsatz mit Scrape-Zielen, Aufzeichnungsregel
 Grundkonfiguration von Prometheus mit globalen Einstellungen und Scrape-Intervallen erstellen.
 
 ```bash
-# Prometheus-Verzeichnisstruktur anlegen
+# Create Prometheus directory structure
 mkdir -p /etc/prometheus/{rules,file_sd}
 mkdir -p /var/lib/prometheus
 
-# Prometheus herunterladen (Version ggf. anpassen)
+# Download Prometheus (adjust version as needed)
 cd /tmp
 wget https://github.com/prometheus/prometheus/releases/download/v2.48.0/prometheus-2.48.0.linux-amd64.tar.gz
 tar xvf prometheus-2.48.0.linux-amd64.tar.gz
@@ -260,13 +260,13 @@ groups:
 Validieren und neu laden:
 
 ```bash
-# Regelssyntax pruefen
+# Validate rules syntax
 promtool check rules /etc/prometheus/rules/recording_rules.yml
 
-# Prometheus-Konfiguration neu laden (ohne Neustart)
+# Reload Prometheus configuration (without restart)
 curl -X POST http://localhost:9090/-/reload
 
-# Oder SIGHUP senden
+# Or send SIGHUP signal
 sudo killall -HUP prometheus
 ```
 

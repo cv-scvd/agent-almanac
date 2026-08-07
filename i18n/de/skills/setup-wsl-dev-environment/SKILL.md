@@ -125,7 +125,7 @@ ssh-keygen -t ed25519 -C "your.email@example.com"
 eval "$(ssh-agent -s)"
 ssh-add ~/.ssh/id_ed25519
 cat ~/.ssh/id_ed25519.pub
-# Zu GitHub hinzufuegen: Einstellungen > SSH und GPG-Schluessel
+# Add to GitHub: Settings > SSH and GPG keys
 ```
 
 Test: `ssh -T git@github.com`
@@ -150,14 +150,14 @@ nvm use --lts
 ### Schritt 7: Python installieren (ueber pyenv)
 
 ```bash
-# Build-Abhaengigkeiten installieren
+# Install build dependencies
 sudo apt install -y make libssl-dev zlib1g-dev libbz2-dev \
   libreadline-dev libsqlite3-dev libncursesw5-dev xz-utils \
   tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
 
 curl https://pyenv.run | bash
 
-# Zur ~/.bashrc hinzufuegen
+# Add to ~/.bashrc
 echo 'export PATH="$HOME/.pyenv/bin:$PATH"' >> ~/.bashrc
 echo 'eval "$(pyenv init -)"' >> ~/.bashrc
 source ~/.bashrc
@@ -175,26 +175,26 @@ pyenv global 3.12
 Folgendes zur `~/.bashrc` hinzufuegen:
 
 ```bash
-# Verlauf
+# History
 export HISTSIZE=10000
 export HISTFILESIZE=20000
 export HISTCONTROL=ignoredups:erasedups
 shopt -s histappend
 
-# Navigations-Aliase
+# Navigation aliases
 alias ll='ls -alF'
 alias la='ls -A'
 alias ..='cd ..'
 alias ...='cd ../..'
 
-# Entwicklungspfade
+# Development paths
 export DEV_HOME="/mnt/d/dev/p"
 alias dev='cd $DEV_HOME'
 
-# Funktionen
+# Functions
 mkcd() { mkdir -p "$1" && cd "$1"; }
 
-# PATH-Erweiterungen
+# PATH additions
 export PATH="$HOME/bin:$HOME/.local/bin:$PATH"
 ```
 
@@ -205,11 +205,11 @@ export PATH="$HOME/bin:$HOME/.local/bin:$PATH"
 ### Schritt 9: Claude Code CLI einrichten
 
 ```bash
-# Claude CLI zum PATH hinzufuegen (nach der Installation)
+# Add Claude CLI to PATH (after installation)
 echo 'export PATH="$HOME/.claude/local/node_modules/.bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
 
-# Pruefen
+# Verify
 which claude
 ```
 

@@ -52,10 +52,10 @@ Refactorizar un SKILL.md que ha superado el límite de 500 líneas o ha desarrol
 Leer la habilidad y crear un presupuesto de líneas sección por sección para identificar dónde está la inflación.
 
 ```bash
-# Recuento total de líneas
+# Total line count
 wc -l < skills/<skill-name>/SKILL.md
 
-# Recuento de líneas por sección (aproximado)
+# Line count per section (approximate)
 grep -n "^## \|^### " skills/<skill-name>/SKILL.md
 ```
 
@@ -156,17 +156,17 @@ Patrones de referencia cruzada:
 Volver a medir el recuento de líneas del SKILL.md después de todos los cambios.
 
 ```bash
-# Verificar el SKILL.md principal
+# Check main SKILL.md
 lines=$(wc -l < skills/<skill-name>/SKILL.md)
 [ "$lines" -le 500 ] && echo "SKILL.md: OK ($lines lines)" || echo "SKILL.md: STILL OVER ($lines lines)"
 
-# Verificar el archivo de referencias si fue creado
+# Check references file if created
 if [ -f skills/<skill-name>/references/EXAMPLES.md ]; then
   ref_lines=$(wc -l < skills/<skill-name>/references/EXAMPLES.md)
   echo "EXAMPLES.md: $ref_lines lines"
 fi
 
-# Contenido total
+# Total content
 echo "Total content: $((lines + ${ref_lines:-0})) lines"
 ```
 
@@ -185,7 +185,7 @@ Ejecutar la lista de verificación de `review-skill-format`:
 4. Sin referencias cruzadas huérfanas (todos los enlaces se resuelven)
 
 ```bash
-# Verificación rápida de secciones
+# Quick section check
 for section in "## When to Use" "## Inputs" "## Procedure" "## Common Pitfalls" "## Related Skills"; do
   grep -q "$section" skills/<skill-name>/SKILL.md && echo "$section: OK" || echo "$section: MISSING"
 done

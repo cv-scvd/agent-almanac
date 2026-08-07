@@ -100,10 +100,10 @@ grep -i "description:" agents/_registry.yml | grep -i "<your-domain-keywords>"
 スキルレジストリを参照し、エージェントのドメインに関連するスキルを選択する:
 
 ```bash
-# ドメインのすべてのスキルを一覧表示する
+# List all skills in a domain
 grep -A3 "domain-name:" skills/_registry.yml
 
-# キーワードでスキルを検索する
+# Search for skills by keyword
 grep -i "keyword" skills/_registry.yml
 ```
 
@@ -267,7 +267,7 @@ Description of another common use case.
 Claude Codeは `.claude/agents/` ディレクトリからエージェントを発見する。このリポジトリでは、そのディレクトリが `agents/` へのシンリンクだ:
 
 ```bash
-# シンリンクが存在し解決されることを確認する
+# Verify the symlink exists and resolves
 ls -la .claude/agents/
 readlink -f .claude/agents/<agent-name>.md
 ```

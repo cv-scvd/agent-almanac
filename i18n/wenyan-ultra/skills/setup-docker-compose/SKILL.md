@@ -171,14 +171,19 @@ services:
 ### 五：建行
 
 ```bash
+# Build images
 docker compose build
 
+# Start services
 docker compose up -d
 
+# Attach to R session
 docker compose exec r-dev R
 
+# View logs
 docker compose logs -f r-dev
 
+# Stop services
 docker compose down
 ```
 

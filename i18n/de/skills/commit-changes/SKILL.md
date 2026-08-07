@@ -49,13 +49,13 @@ Dateien gezielt bereitstellen, klare Commit-Nachrichten verfassen und die Commit
 Arbeitsbaumstatus pruefen und Diffs inspizieren:
 
 ```bash
-# Zeigt geaenderte, bereitgestellte und unverfolgte Dateien
+# See which files are modified, staged, or untracked
 git status
 
-# Zeigt nicht bereitgestellte Aenderungen
+# See unstaged changes
 git diff
 
-# Zeigt bereitgestellte Aenderungen
+# See staged changes
 git diff --staged
 ```
 
@@ -70,13 +70,13 @@ olgten Dateien.
 Bestimmte Dateien bereitstellen statt `git add .` oder `git add -A` zu verwenden, um das versehentliche Einschliessen sensibler Dateien oder nicht zusammenhaengender Aenderungen zu vermeiden:
 
 ```bash
-# Bestimmte Dateien namentlich bereitstellen
+# Stage specific files by name
 git add src/feature.R tests/test-feature.R
 
-# Alle Aenderungen in einem bestimmten Verzeichnis bereitstellen
+# Stage all changes in a specific directory
 git add src/
 
-# Teile einer Datei interaktiv bereitstellen (in nicht-interaktiven Kontexten nicht unterstuetzt)
+# Stage parts of a file interactively (not supported in non-interactive contexts)
 # git add -p filename
 ```
 
@@ -128,14 +128,14 @@ Konventionelle Commit-Typen:
 Nur nachbessern, wenn der Commit **noch nicht** auf ein gemeinsam genutztes Remote gepusht wurde:
 
 ```bash
-# Nur Nachricht aendern
+# Amend message only
 git commit --amend -m "$(cat <<'EOF'
 fix: correct weighted mean edge case for empty vectors
 
 EOF
 )"
 
-# Mit zusaetzlich bereitgestellten Aenderungen nachbessern
+# Amend with additional staged changes
 git add forgotten-file.R
 git commit --amend --no-edit
 ```
@@ -147,13 +147,13 @@ git commit --amend --no-edit
 ### Schritt 5: Commit ueberpruefen
 
 ```bash
-# Letzten Commit anzeigen
+# View the last commit
 git log -1 --stat
 
-# Letzte Commit-Historie anzeigen
+# View recent commit history
 git log --oneline -5
 
-# Commit-Inhalt ueberpruefen
+# Verify the commit content
 git show HEAD
 ```
 

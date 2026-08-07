@@ -109,7 +109,7 @@ In einer temporaeren Skriptdatei speichern.
 
 ```bash
 R_EXE="/mnt/c/Program Files/R/R-4.5.0/bin/Rscript.exe"
-"$R_EXE" /pfad/zum/skript.R
+"$R_EXE" /path/to/script.R
 ```
 
 **Erwartet:** Skript wird fehlerfrei abgeschlossen. SVG-Datei(en) in `output/` geschrieben.

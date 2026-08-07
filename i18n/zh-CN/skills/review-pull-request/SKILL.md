@@ -97,7 +97,7 @@ PR 规模指南：
 2. 对于**小型/中型 PR**，顺序阅读完整差异
 3. 对于**大型 PR**，按提交审查：
    ```bash
-   gh pr diff <number> --patch  # 完整补丁格式
+   gh pr diff <number> --patch  # full patch format
    ```
 4. 对每个已更改的文件评估：
    - **正确性**：代码是否实现了 PR 所述的功能？
@@ -157,9 +157,9 @@ PR 规模指南：
    - 称赞：指出好的工作
 2. 为具体代码位置撰写**内联评论**：
    ```bash
-   # 通过 gh API 发布内联评论
+   # Post inline comments via gh API
    gh api repos/{owner}/{repo}/pulls/{number}/comments \
-     -f body="[B] 此 SQL 查询存在注入漏洞。请改用参数化查询。\n\n\`\`\`suggestion\ndb.query('SELECT * FROM users WHERE id = $1', [userId])\n\`\`\`" \
+     -f body="[B] This SQL query is vulnerable to injection. Use parameterized queries instead.\n\n\`\`\`suggestion\ndb.query('SELECT * FROM users WHERE id = $1', [userId])\n\`\`\`" \
      -f commit_id="<sha>" \
      -f path="src/users.js" \
      -F line=42 \
@@ -171,14 +171,14 @@ PR 规模指南：
    - 对风格/模式建议链接到文档
 4. 提交审查：
    ```bash
-   # 批准
-   gh pr review <number> --approve --body "审查摘要"
+   # Approve
+   gh pr review <number> --approve --body "Review summary here"
 
-   # 请求变更（存在阻塞问题时）
-   gh pr review <number> --request-changes --body "审查摘要"
+   # Request changes (when blocking issues exist)
+   gh pr review <number> --request-changes --body "Review summary here"
 
-   # 仅评论（不确定或提供信息性反馈时）
-   gh pr review <number> --comment --body "审查摘要"
+   # Comment only (when unsure or providing FYI feedback)
+   gh pr review <number> --comment --body "Review summary here"
    ```
 
 **预期结果：** 已提交的审查包含清晰、可操作的反馈。作者确切知道需要修复什么（阻塞）、需要考虑什么（建议）以及做得好什么（称赞）。
@@ -195,13 +195,13 @@ PR 规模指南：
    ```
 2. 只重新审查处理了你反馈的变更：
    ```bash
-   gh pr diff <number>  # 检查新提交
+   gh pr diff <number>  # check new commits
    ```
 3. 在批准前验证阻塞项已解决
 4. 随着问题被处理，解决评论线程
 5. 所有阻塞项修复后批准：
    ```bash
-   gh pr review <number> --approve --body "所有阻塞问题已解决。LGTM。"
+   gh pr review <number> --approve --body "All blocking issues resolved. LGTM."
    ```
 
 **预期结果：** 阻塞问题已验证修复。审查对话已解决。PR 已批准或进一步请求变更，附具体剩余事项。

@@ -67,7 +67,7 @@ metadata:
 - 能将多位审查者的结果综合为连贯的可交付成果
 
 ```bash
-# 列出所有可用智能体
+# List all available agents
 grep "^  - id:" agents/_registry.yml
 ```
 
@@ -86,7 +86,7 @@ grep "^  - id:" agents/_registry.yml
 - **responsibilities**：一句话描述此成员做其他成员不做的什么
 
 ```bash
-# 验证每个候选智能体存在
+# Verify each candidate agent exists
 grep "id: agent-name-here" agents/_registry.yml
 ```
 
@@ -208,7 +208,7 @@ cp teams/_template.md teams/<team-name>.md
 在注册表顶部更新 `total_teams` 数量（目前为 8；添加一个团队后变为 9）。
 
 ```bash
-# 验证条目已添加
+# Verify the entry was added
 grep "id: <team-name>" teams/_registry.yml
 ```
 

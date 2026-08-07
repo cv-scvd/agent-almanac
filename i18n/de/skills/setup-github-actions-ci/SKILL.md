@@ -243,7 +243,7 @@ Zu `README.md` hinzufuegen:
 
 ```bash
 git add .github/
-git commit -m "GitHub Actions CI Workflows hinzufuegen"
+git commit -m "Add GitHub Actions CI workflows"
 git push
 ```
 

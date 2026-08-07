@@ -207,16 +207,16 @@ pass_searxng_org = false
 ### Step 6: Deploy and Verify
 
 ```bash
-# Start stack
+# Start the stack
 docker compose up -d
 
 # Check logs
 docker compose logs -f searxng
 
-# Verify running
+# Verify it's running
 curl -s http://localhost:8080 | head -5
 
-# Test search
+# Test a search
 curl -s "http://localhost:8080/search?q=test&format=json" | head -20
 ```
 

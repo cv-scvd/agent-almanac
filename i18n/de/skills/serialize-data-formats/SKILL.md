@@ -137,10 +137,10 @@ message MeasurementBatch {
 Generieren und verwenden:
 
 ```bash
-# Python-Code generieren
+# Generate Python code
 protoc --python_out=. sensors.proto
 
-# Go-Code generieren
+# Generate Go code
 protoc --go_out=. sensors.proto
 ```
 

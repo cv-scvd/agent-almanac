@@ -51,13 +51,13 @@ Einen GitHub Pull Request mit klarem Titel, strukturierter Beschreibung und ordn
 Sicherstellen, dass der Branch mit dem Zielbranch aktuell ist und alle Aenderungen committet sind:
 
 ```bash
-# Auf nicht committete Aenderungen pruefen
+# Check for uncommitted changes
 git status
 
-# Neueste Aenderungen vom Remote holen
+# Fetch latest from remote
 git fetch origin
 
-# Auf aktuellen main rebasen (oder mergen)
+# Rebase on latest main (or merge)
 git rebase origin/main
 ```
 
@@ -70,13 +70,13 @@ git rebase origin/main
 Den vollstaendigen Diff und die Commit-Historie pruefen, die im PR enthalten sein werden:
 
 ```bash
-# Alle Commits auf diesem Branch anzeigen (die nicht auf main sind)
+# See all commits on this branch (not on main)
 git log origin/main..HEAD --oneline
 
-# Vollstaendigen Diff gegen main anzeigen
+# See the full diff against main
 git diff origin/main...HEAD
 
-# Pruefen ob der Branch einen Remote verfolgt und gepusht ist
+# Check if branch tracks remote and is pushed
 git status -sb
 ```
 
@@ -87,7 +87,7 @@ git status -sb
 ### Schritt 3: Branch pushen
 
 ```bash
-# Branch zum Remote pushen (Upstream-Tracking setzen)
+# Push branch to remote (set upstream tracking)
 git push -u origin HEAD
 ```
 
@@ -131,13 +131,13 @@ gh pr create --title "WIP: Add authentication" --body "..." --draft
 Auf Review-Kommentare reagieren und Aktualisierungen pushen:
 
 ```bash
-# PR-Kommentare anzeigen
+# View PR comments
 gh api repos/{owner}/{repo}/pulls/{number}/comments
 
-# PR-Review-Status anzeigen
+# View PR review status
 gh pr checks
 
-# Nach Aenderungen committen und pushen
+# After making changes, commit and push
 git add <files>
 git commit -m "$(cat <<'EOF'
 fix: address review feedback on input validation
@@ -156,13 +156,13 @@ git push
 Nach der Genehmigung:
 
 ```bash
-# PR mergen (Squash-Merge haelt die Historie uebersichtlich)
+# Merge the PR (squash merge keeps history clean)
 gh pr merge --squash --delete-branch
 
-# Oder mit allen Commits beibehalten mergen
+# Or merge with all commits preserved
 gh pr merge --merge --delete-branch
 
-# Oder Rebase-Merge (lineare Historie)
+# Or rebase merge (linear history)
 gh pr merge --rebase --delete-branch
 ```
 

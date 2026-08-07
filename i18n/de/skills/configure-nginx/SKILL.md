@@ -253,13 +253,13 @@ upstream app {
 ### Schritt 7: Konfiguration testen
 
 ```bash
-# Konfigurationssyntax testen
+# Test config syntax
 docker compose exec nginx nginx -t
 
-# Ohne Ausfallzeit neu laden
+# Reload without downtime
 docker compose exec nginx nginx -s reload
 
-# Antwortheader pruefen
+# Check response headers
 curl -I https://example.com
 ```
 

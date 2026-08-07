@@ -110,25 +110,32 @@ metadata:
 helm repo add chaos-mesh https://charts.chaos-mesh.org
 helm repo update
 
-# Install Chaos Mesh
+# Install Chaos Mesh in isolated namespace
 helm install chaos-mesh chaos-mesh/chaos-mesh \
   --namespace chaos-mesh \
   --create-namespace \
   --set dashboard.create=true \
   --set controllerManager.replicaCount=1
 
-# Verify
+# Verify installation
 kubectl get pods -n chaos-mesh
 
-# Dashboard
+# Access dashboard
 kubectl port-forward -n chaos-mesh svc/chaos-dashboard 2333:2333
+# Open http://localhost:2333
 ```
 
 替：Litmus（中立）：
 
 ```bash
+# Install Litmus
 kubectl apply -f https://litmuschaos.github.io/litmus/litmus-operator-v2.14.0.yaml
+
+# Wait for Litmus pods
 kubectl get pods -n litmus
+
+# Install Litmus CRDs
+kubectl apply -f https://hub.litmuschaos.io/api/chaos/master?file=charts/generic/experiments.yaml
 ```
 
 得：Chaos Mesh 或 Litmus 行、面板可達。
@@ -163,9 +170,17 @@ spec:
 施驗：
 
 ```bash
+# Apply experiment
 kubectl apply -f pod-kill-experiment.yaml
+
+# Watch experiment status
 kubectl get podchaos -n chaos-testing -w
+
+# View detailed status
 kubectl describe podchaos api-pod-kill-test -n chaos-testing
+
+# Check which pods were affected
+kubectl get events -n production --sort-by=.metadata.creationTimestamp | grep api-gateway
 ```
 
 察影於 Grafana：
@@ -201,8 +216,11 @@ rate(kube_pod_container_status_restarts_total{pod=~"api-.*"}[5m])
 記驗於日誌：
 
 ```bash
+# chaos-experiment-log.csv
 date,experiment,environment,status,error_rate_peak,recovery_time_s,outcome
 2025-02-09,pod-kill-api,staging,complete,2.3%,8,failed
+2025-02-16,pod-kill-api,staging,complete,0.8%,4,passed
+2025-02-23,network-delay-db,staging,aborted,15%,N/A,failed
 ```
 
 得：習得記、修施、後驗約。
@@ -237,9 +255,13 @@ spec:
 產護：
 
 ```bash
+# Create a kill switch for production chaos
 kubectl create configmap chaos-killswitch \
   -n chaos-testing \
   --from-literal=enabled=true
+
+# Update experiments to check kill switch
+# (implementation depends on chaos tool)
 ```
 
 得：產驗於低險窗、急停備。

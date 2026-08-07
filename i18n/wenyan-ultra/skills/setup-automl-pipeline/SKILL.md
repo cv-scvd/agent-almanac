@@ -55,17 +55,19 @@ metadata:
 裝 Optuna 或 Ray Tune 含宜後端。
 
 ```bash
+# Create virtual environment
 python -m venv venv
-source venv/bin/activate
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-# Option 1: Optuna
+# Option 1: Optuna (simpler, good for single-machine)
 pip install optuna optuna-dashboard
 pip install scikit-learn xgboost lightgbm
 
-# Option 2: Ray Tune
+# Option 2: Ray Tune (distributed, good for multi-machine/GPU)
 pip install "ray[tune]" optuna hyperopt bayesian-optimization
-pip install torch torchvision
+pip install torch torchvision  # if optimizing neural networks
 
+# Visualization and tracking
 pip install mlflow tensorboard plotly
 ```
 

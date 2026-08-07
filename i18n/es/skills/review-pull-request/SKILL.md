@@ -104,7 +104,7 @@ Leer los cambios de código reales de manera sistemática.
 2. Para PRs **pequeñas/medianas**, leer el diff completo secuencialmente
 3. Para PRs **grandes**, revisar por commit:
    ```bash
-   gh pr diff <number> --patch  # formato de parche completo
+   gh pr diff <number> --patch  # full patch format
    ```
 4. Para cada archivo modificado, evaluar:
    - **Corrección**: ¿Hace el código lo que dice la PR que hace?
@@ -168,9 +168,9 @@ Componer la revisión con retroalimentación estructurada y accionable.
    - Elogio: destacar el buen trabajo
 2. Redactar **comentarios en línea** para ubicaciones específicas del código:
    ```bash
-   # Publicar comentarios en línea mediante la API de gh
+   # Post inline comments via gh API
    gh api repos/{owner}/{repo}/pulls/{number}/comments \
-     -f body="[B] Esta consulta SQL es vulnerable a inyección. Use consultas parametrizadas en su lugar.\n\n\`\`\`suggestion\ndb.query('SELECT * FROM users WHERE id = $1', [userId])\n\`\`\`" \
+     -f body="[B] This SQL query is vulnerable to injection. Use parameterized queries instead.\n\n\`\`\`suggestion\ndb.query('SELECT * FROM users WHERE id = $1', [userId])\n\`\`\`" \
      -f commit_id="<sha>" \
      -f path="src/users.js" \
      -F line=42 \
@@ -182,14 +182,14 @@ Componer la revisión con retroalimentación estructurada y accionable.
    - Enlazar a documentación para sugerencias de estilo/patrón
 4. Enviar la revisión:
    ```bash
-   # Aprobar
-   gh pr review <number> --approve --body "Resumen de revisión aquí"
+   # Approve
+   gh pr review <number> --approve --body "Review summary here"
 
-   # Solicitar cambios (cuando existen problemas bloqueantes)
-   gh pr review <number> --request-changes --body "Resumen de revisión aquí"
+   # Request changes (when blocking issues exist)
+   gh pr review <number> --request-changes --body "Review summary here"
 
-   # Solo comentar (cuando no está seguro o proporciona retroalimentación informativa)
-   gh pr review <number> --comment --body "Resumen de revisión aquí"
+   # Comment only (when unsure or providing FYI feedback)
+   gh pr review <number> --comment --body "Review summary here"
    ```
 
 **Esperado:** Una revisión enviada con retroalimentación clara y accionable. El autor sabe exactamente qué corregir (Bloqueante), qué considerar (Sugerencia) y qué salió bien (Elogio).
@@ -206,13 +206,13 @@ Rastrear la resolución de la revisión.
    ```
 2. Revisar solo los cambios que abordan su retroalimentación:
    ```bash
-   gh pr diff <number>  # verificar nuevos commits
+   gh pr diff <number>  # check new commits
    ```
 3. Verificar que los elementos Bloqueantes están resueltos antes de aprobar
 4. Resolver hilos de comentarios a medida que se abordan los problemas
 5. Aprobar cuando todos los elementos Bloqueantes están corregidos:
    ```bash
-   gh pr review <number> --approve --body "Todos los problemas bloqueantes resueltos. LGTM."
+   gh pr review <number> --approve --body "All blocking issues resolved. LGTM."
    ```
 
 **Esperado:** Los problemas Bloqueantes verificados como corregidos. Conversación de revisión resuelta. PR aprobada o se solicitan más cambios con elementos restantes específicos.

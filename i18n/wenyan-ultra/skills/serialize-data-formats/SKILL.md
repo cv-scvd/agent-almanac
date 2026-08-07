@@ -136,7 +136,10 @@ message MeasurementBatch {
 生並用：
 
 ```bash
+# Generate Python code
 protoc --python_out=. sensors.proto
+
+# Generate Go code
 protoc --go_out=. sensors.proto
 ```
 

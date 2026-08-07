@@ -114,7 +114,7 @@ If tests fail:
 4. For error failures, check if a function signature changed
 
 ```bash
-# Run failing test with verbose output
+# Run just the failing test with verbose output
 "$R_EXE" -e "testthat::test_file('tests/testthat/test-failing.R', reporter = 'summary')"
 ```
 

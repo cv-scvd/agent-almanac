@@ -304,6 +304,9 @@ EOF
 # Verify ExternalSecret synced
 kubectl get externalsecret myapp-database
 kubectl get secret myapp-db-secret -o yaml
+
+# Check synchronization status
+kubectl describe externalsecret myapp-database
 ```
 
 Fuer Azure Key Vault:

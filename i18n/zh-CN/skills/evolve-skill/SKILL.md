@@ -57,13 +57,13 @@ metadata:
 | Related Skills | 2-5 个有效技能引用 | 指向已重命名/删除技能的过期引用 |
 
 ```bash
-# 读取技能
+# Read the skill
 cat skills/<skill-name>/SKILL.md
 
-# 检查前置元数据解析
+# Check frontmatter parses
 head -20 skills/<skill-name>/SKILL.md
 
-# 验证相关技能是否仍然存在
+# Verify related skills still exist
 grep -oP '`[\w-]+`' skills/<skill-name>/SKILL.md | sort -u
 ```
 
@@ -119,12 +119,12 @@ grep -oP '`[\w-]+`' skills/<skill-name>/SKILL.md | sort -u
 直接编辑现有 SKILL.md：
 
 ```bash
-# 打开编辑
-# 添加/修改步骤
-# 强化 Expected/On failure 对
-# 添加表格或示例
-# 更新 When to Use 触发条件
-# 若范围改变则修改 Inputs
+# Open for editing
+# Add/revise procedure steps
+# Strengthen Expected/On failure pairs
+# Add tables or examples
+# Update When to Use triggers
+# Revise Inputs if scope changed
 ```
 
 遵循以下编辑规则：
@@ -137,19 +137,19 @@ grep -oP '`[\w-]+`' skills/<skill-name>/SKILL.md | sort -u
 #### 对于变体
 
 ```bash
-# 创建变体目录
+# Create the variant directory
 mkdir -p skills/<skill-name>-advanced/
 
-# 以原版为基础复制
+# Copy the original as a starting point
 cp skills/<skill-name>/SKILL.md skills/<skill-name>-advanced/SKILL.md
 
-# 编辑变体：
-# - 将 `name` 改为 `<skill-name>-advanced`
-# - 更新 `description` 反映高级范围
-# - 提高 `complexity`（例如 intermediate → advanced）
-# - 将 `version` 重置为 "1.0"
-# - 为高级用例添加/扩展步骤
-# - 在 Related Skills 中引用原版作为前置技能
+# Edit the variant:
+# - Change `name` to `<skill-name>-advanced`
+# - Update `description` to reflect the advanced scope
+# - Raise `complexity` (e.g., intermediate → advanced)
+# - Reset `version` to "1.0"
+# - Add/expand procedure steps for the advanced use case
+# - Reference the original in Related Skills as a prerequisite
 ```
 
 **预期结果：** SKILL.md（完善版或新变体）通过第 1 步的评估检查清单。
@@ -163,7 +163,7 @@ cp skills/<skill-name>/SKILL.md skills/<skill-name>-advanced/SKILL.md
 检查此已演进技能是否存在翻译，并将其更新以反映新的源状态：
 
 ```bash
-# 检查是否存在翻译
+# Check for existing translations
 ls i18n/*/skills/<skill-name>/SKILL.md 2>/dev/null
 ```
 
@@ -236,7 +236,7 @@ npm run translation:status
 不需要注册表更改（路径未改变）。仅当其他技能的 Related Skills 发生变化时更新交叉引用：
 
 ```bash
-# 检查是否有技能引用了已演进的技能
+# Check if any skill references the evolved skill
 grep -r "<skill-name>" skills/*/SKILL.md
 ```
 
@@ -259,10 +259,10 @@ grep -r "<skill-name>" skills/*/SKILL.md
 4. 为斜杠命令发现创建符号链接：
 
 ```bash
-# 项目级
+# Project-level
 ln -s ../../skills/<skill-name>-advanced .claude/skills/<skill-name>-advanced
 
-# 全局
+# Global
 ln -s /mnt/d/dev/p/agent-almanac/skills/<skill-name>-advanced ~/.claude/skills/<skill-name>-advanced
 ```
 
@@ -286,18 +286,18 @@ ln -s /mnt/d/dev/p/agent-almanac/skills/<skill-name>-advanced ~/.claude/skills/<
 - [ ] `git diff` 显示无意外的原始内容删除
 
 ```bash
-# 验证前置元数据
+# Verify frontmatter
 head -20 skills/<skill-name>/SKILL.md
 
-# 统计磁盘上的技能数与注册表的对比
+# Count skills on disk vs registry
 find skills -name SKILL.md | wc -l
 grep total_skills skills/_registry.yml
 
-# 检查符号链接（变体适用）
+# Check symlinks (for variants)
 ls -la .claude/skills/<skill-name>-advanced
 readlink -f .claude/skills/<skill-name>-advanced/SKILL.md
 
-# 审查所有更改
+# Review all changes
 git diff
 ```
 

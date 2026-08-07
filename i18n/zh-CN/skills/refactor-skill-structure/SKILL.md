@@ -48,10 +48,10 @@ metadata:
 阅读技能并创建逐章节的行数预算，以识别臃肿所在。
 
 ```bash
-# 总行数
+# Total line count
 wc -l < skills/<skill-name>/SKILL.md
 
-# 每章节行数（近似）
+# Line count per section (approximate)
 grep -n "^## \|^### " skills/<skill-name>/SKILL.md
 ```
 
@@ -152,17 +152,17 @@ grep -n "^## \|^### " skills/<skill-name>/SKILL.md
 所有更改完成后重新测量 SKILL.md 行数。
 
 ```bash
-# 检查主 SKILL.md
+# Check main SKILL.md
 lines=$(wc -l < skills/<skill-name>/SKILL.md)
 [ "$lines" -le 500 ] && echo "SKILL.md: OK ($lines lines)" || echo "SKILL.md: STILL OVER ($lines lines)"
 
-# 若已创建，检查 references 文件
+# Check references file if created
 if [ -f skills/<skill-name>/references/EXAMPLES.md ]; then
   ref_lines=$(wc -l < skills/<skill-name>/references/EXAMPLES.md)
   echo "EXAMPLES.md: $ref_lines lines"
 fi
 
-# 总内容
+# Total content
 echo "Total content: $((lines + ${ref_lines:-0})) lines"
 ```
 
@@ -181,7 +181,7 @@ echo "Total content: $((lines + ${ref_lines:-0})) lines"
 4. 没有孤立的交叉引用（所有链接可解析）
 
 ```bash
-# 快速章节检查
+# Quick section check
 for section in "## When to Use" "## Inputs" "## Procedure" "## Common Pitfalls" "## Related Skills"; do
   grep -q "$section" skills/<skill-name>/SKILL.md && echo "$section: OK" || echo "$section: MISSING"
 done

@@ -95,9 +95,9 @@ spec:
 
 デプロイ：
 ```bash
-kubectl apply -f kong-deployment.yaml  # または traefik-deployment.yaml
+kubectl apply -f kong-deployment.yaml  # OR traefik-deployment.yaml
 kubectl wait --for=condition=ready pod -l app=kong -n kong --timeout=300s
-kubectl get svc -n kong kong-proxy  # ロードバランサーIPを取得
+kubectl get svc -n kong kong-proxy  # Get load balancer IP
 ```
 
 **期待結果：** ゲートウェイのPodが2レプリカで稼働中。LoadBalancerサービスに外部IPが割り当て済み。管理APIにアクセス可能（Kong：ポート8001、Traefik：ダッシュボードポート8080）。ヘルスチェックが合格。
@@ -114,14 +114,14 @@ kubectl get svc -n kong kong-proxy  # ロードバランサーIPを取得
 
 **Kongの場合（宣言的設定にdeCKを使用）：**
 ```bash
-# decK CLIのインストール
+# Install decK CLI
 curl -sL https://github.com/Kong/deck/releases/download/v1.28.0/deck_1.28.0_linux_amd64.tar.gz | tar -xz
 sudo mv deck /usr/local/bin/
 
-# サービス、ルート、アップストリームのkong.yamlを作成
-# (完全な設定はEXAMPLES.mdを参照)
+# Create kong.yaml with services, routes, upstreams
+# (see EXAMPLES.md for complete configuration)
 deck sync --kong-addr http://localhost:8001 -s kong.yaml
-curl -i http://localhost:8001/routes  # ルートを確認
+curl -i http://localhost:8001/routes  # Verify routes
 ```
 
 **Traefikの場合（IngressRoute CRDを使用）：**
@@ -280,7 +280,7 @@ plugins:
 ```bash
 deck sync --kong-addr http://localhost:8001 -s kong-monitoring.yaml
 
-# ServiceMonitorのデプロイ（EXAMPLES.mdを参照）
+# Deploy ServiceMonitor (see EXAMPLES.md)
 kubectl apply -f kong-servicemonitor.yaml
 curl http://localhost:8100/metrics
 ```
@@ -301,7 +301,7 @@ spec:
 
 ```bash
 kubectl port-forward -n traefik svc/traefik-dashboard 8080:8080
-# http://localhost:8080/dashboard/ を開く
+# Open http://localhost:8080/dashboard/
 ```
 
 完全なモニタリング設定は[EXAMPLES.md](references/EXAMPLES.md#step-5-enable-monitoring-and-analytics)を参照
@@ -353,9 +353,9 @@ spec:
 
 バージョニングをテスト：
 ```bash
-curl -i https://api.example.com/api/v1/users  # 廃止予定
-curl -i https://api.example.com/api/v2/users  # 現行
-curl -i https://api.example.com/api/users     # v2にルーティング
+curl -i https://api.example.com/api/v1/users  # Deprecated
+curl -i https://api.example.com/api/v2/users  # Current
+curl -i https://api.example.com/api/users     # Routes to v2
 ```
 
 完全なバージョニング設定は[EXAMPLES.md](references/EXAMPLES.md#step-6-implement-api-versioning-and-deprecation)を参照

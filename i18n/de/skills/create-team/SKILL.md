@@ -71,7 +71,7 @@ Der Lead-Agent orchestriert das Team. Einen Agenten aus `agents/_registry.yml` w
 - Ergebnisse von mehreren Pruefern zu einem kohaerenten Lieferobjekt zusammenfuehren kann
 
 ```bash
-# Alle verfuegbaren Agenten auflisten
+# List all available agents
 grep "^  - id:" agents/_registry.yml
 ```
 
@@ -90,7 +90,7 @@ Der Lead muss auch als Mitglied in der Teamzusammensetzung erscheinen (der Lead 
 - **responsibilities**: Ein Satz der beschreibt, was dieses Mitglied tut, was kein anderes tut
 
 ```bash
-# Pruefen ob jeder Kandidat-Agent existiert
+# Verify each candidate agent exists
 grep "id: agent-name-here" agents/_registry.yml
 ```
 
@@ -212,7 +212,7 @@ Das Feld `subagent_type` ordnet Claude Code-Agententypen zu. Fuer Agenten in `.c
 Den `total_teams`-Zaehler am Anfang der Registry aktualisieren.
 
 ```bash
-# Pruefen ob der Eintrag hinzugefuegt wurde
+# Verify the entry was added
 grep "id: <team-name>" teams/_registry.yml
 ```
 

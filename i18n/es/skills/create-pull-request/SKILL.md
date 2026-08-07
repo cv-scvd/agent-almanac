@@ -50,13 +50,13 @@ Crear un pull request en GitHub con un título claro, descripción estructurada 
 Verificar que la rama esté actualizada con la rama base y que todos los cambios estén confirmados:
 
 ```bash
-# Verificar cambios sin confirmar
+# Check for uncommitted changes
 git status
 
-# Obtener lo último del remoto
+# Fetch latest from remote
 git fetch origin
 
-# Rebase sobre el último main (o merge)
+# Rebase on latest main (or merge)
 git rebase origin/main
 ```
 
@@ -69,13 +69,13 @@ git rebase origin/main
 Examinar la diferencia completa y el historial de commits que se incluirán en el PR:
 
 ```bash
-# Ver todos los commits en esta rama (que no están en main)
+# See all commits on this branch (not on main)
 git log origin/main..HEAD --oneline
 
-# Ver la diferencia completa contra main
+# See the full diff against main
 git diff origin/main...HEAD
 
-# Verificar si la rama rastrea el remoto y está enviada
+# Check if branch tracks remote and is pushed
 git status -sb
 ```
 
@@ -86,7 +86,7 @@ git status -sb
 ### Paso 3: Enviar la Rama
 
 ```bash
-# Enviar la rama al remoto (establecer seguimiento upstream)
+# Push branch to remote (set upstream tracking)
 git push -u origin HEAD
 ```
 
@@ -130,13 +130,13 @@ gh pr create --title "WIP: Add authentication" --body "..." --draft
 Responder a comentarios de revisión y enviar actualizaciones:
 
 ```bash
-# Ver comentarios del PR
+# View PR comments
 gh api repos/{owner}/{repo}/pulls/{number}/comments
 
-# Ver el estado de revisión del PR
+# View PR review status
 gh pr checks
 
-# Después de hacer cambios, confirmar y enviar
+# After making changes, commit and push
 git add <files>
 git commit -m "$(cat <<'EOF'
 fix: address review feedback on input validation
@@ -155,13 +155,13 @@ git push
 Después de la aprobación:
 
 ```bash
-# Fusionar el PR (squash merge mantiene el historial limpio)
+# Merge the PR (squash merge keeps history clean)
 gh pr merge --squash --delete-branch
 
-# O fusionar con todos los commits preservados
+# Or merge with all commits preserved
 gh pr merge --merge --delete-branch
 
-# O rebase merge (historial lineal)
+# Or rebase merge (linear history)
 gh pr merge --rebase --delete-branch
 ```
 

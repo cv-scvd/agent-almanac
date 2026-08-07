@@ -63,13 +63,13 @@ Leer el SKILL.md existente y evaluar cada sección frente a la lista de verifica
 | Related Skills | 2-5 referencias de habilidades válidas | Referencias obsoletas a habilidades renombradas/eliminadas |
 
 ```bash
-# Leer la habilidad
+# Read the skill
 cat skills/<skill-name>/SKILL.md
 
-# Verificar que el frontmatter se analiza
+# Check frontmatter parses
 head -20 skills/<skill-name>/SKILL.md
 
-# Verificar que las habilidades relacionadas aún existen
+# Verify related skills still exist
 grep -oP '`[\w-]+`' skills/<skill-name>/SKILL.md | sort -u
 ```
 
@@ -125,12 +125,12 @@ Usar esta matriz de decisión para determinar si refinar en el lugar o crear una
 Editar el SKILL.md existente directamente:
 
 ```bash
-# Abrir para edición
-# Añadir/revisar pasos del procedimiento
-# Fortalecer pares Expected/On failure
-# Añadir tablas o ejemplos
-# Actualizar los disparadores de When to Use
-# Revisar Inputs si el alcance cambió
+# Open for editing
+# Add/revise procedure steps
+# Strengthen Expected/On failure pairs
+# Add tables or examples
+# Update When to Use triggers
+# Revise Inputs if scope changed
 ```
 
 Seguir estas reglas de edición:
@@ -143,19 +143,19 @@ Seguir estas reglas de edición:
 #### Para Variantes
 
 ```bash
-# Crear el directorio de variante
+# Create the variant directory
 mkdir -p skills/<skill-name>-advanced/
 
-# Copiar el original como punto de partida
+# Copy the original as a starting point
 cp skills/<skill-name>/SKILL.md skills/<skill-name>-advanced/SKILL.md
 
-# Editar la variante:
-# - Cambiar `name` a `<skill-name>-advanced`
-# - Actualizar `description` para reflejar el alcance avanzado
-# - Aumentar `complexity` (p.ej., intermediate → advanced)
-# - Restablecer `version` a "1.0"
-# - Añadir/expandir pasos del procedimiento para el caso de uso avanzado
-# - Referenciar el original en Related Skills como requisito previo
+# Edit the variant:
+# - Change `name` to `<skill-name>-advanced`
+# - Update `description` to reflect the advanced scope
+# - Raise `complexity` (e.g., intermediate → advanced)
+# - Reset `version` to "1.0"
+# - Add/expand procedure steps for the advanced use case
+# - Reference the original in Related Skills as a prerequisite
 ```
 
 **Esperado:** El SKILL.md (refinado o nueva variante) pasa la lista de verificación de evaluación del Paso 1.
@@ -169,7 +169,7 @@ cp skills/<skill-name>/SKILL.md skills/<skill-name>-advanced/SKILL.md
 Comprobar si existen traducciones para la habilidad evolucionada y actualizarlas para reflejar el nuevo estado de la fuente:
 
 ```bash
-# Comprobar las traducciones existentes
+# Check for existing translations
 ls i18n/*/skills/<skill-name>/SKILL.md 2>/dev/null
 ```
 
@@ -242,7 +242,7 @@ También actualizar:
 No se necesitan cambios en el registro (la ruta no cambia). Actualizar las referencias cruzadas solo si las Habilidades Relacionadas cambiaron en otras habilidades:
 
 ```bash
-# Comprobar si alguna habilidad referencia la habilidad evolucionada
+# Check if any skill references the evolved skill
 grep -r "<skill-name>" skills/*/SKILL.md
 ```
 
@@ -265,7 +265,7 @@ Luego:
 4. Crear symlinks para el descubrimiento de comandos slash:
 
 ```bash
-# A nivel de proyecto
+# Project-level
 ln -s ../../skills/<skill-name>-advanced .claude/skills/<skill-name>-advanced
 
 # Global
@@ -292,18 +292,18 @@ Ejecutar la lista de verificación de validación completa:
 - [ ] `git diff` no muestra eliminaciones accidentales del contenido original
 
 ```bash
-# Verificar frontmatter
+# Verify frontmatter
 head -20 skills/<skill-name>/SKILL.md
 
-# Contar habilidades en disco vs registro
+# Count skills on disk vs registry
 find skills -name SKILL.md | wc -l
 grep total_skills skills/_registry.yml
 
-# Comprobar symlinks (para variantes)
+# Check symlinks (for variants)
 ls -la .claude/skills/<skill-name>-advanced
 readlink -f .claude/skills/<skill-name>-advanced/SKILL.md
 
-# Revisar todos los cambios
+# Review all changes
 git diff
 ```
 

@@ -65,16 +65,16 @@ npm install -g vercel
 ### ステップ3: リンクとデプロイ
 
 ```bash
-# Vercelにログイン
+# Login to Vercel
 vercel login
 
-# デプロイ（初回：プロジェクトを作成）
+# Deploy (first time: creates project)
 vercel
 
-# プロンプトに従う：
+# Follow prompts:
 # - Set up and deploy? Y
-# - Which scope? (アカウントを選択)
-# - Link to existing project? N (新規プロジェクトの場合)
+# - Which scope? (select your account)
+# - Link to existing project? N (for new projects)
 # - Project name: my-app
 # - Directory: ./
 # - Override settings? N
@@ -87,11 +87,11 @@ vercel
 ### ステップ4: 環境変数の設定
 
 ```bash
-# 環境変数の追加
+# Add environment variables
 vercel env add DATABASE_URL production
 vercel env add API_KEY production preview
 
-# 環境変数の一覧表示
+# List environment variables
 vercel env ls
 ```
 

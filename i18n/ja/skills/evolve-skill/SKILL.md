@@ -61,13 +61,13 @@ metadata:
 | 関連スキル | 2〜5つの有効なスキル参照 | 名前変更/削除されたスキルへの古い参照 |
 
 ```bash
-# スキルを読む
+# Read the skill
 cat skills/<skill-name>/SKILL.md
 
-# フロントマターの解析を確認する
+# Check frontmatter parses
 head -20 skills/<skill-name>/SKILL.md
 
-# 関連スキルがまだ存在するか確認する
+# Verify related skills still exist
 grep -oP '`[\w-]+`' skills/<skill-name>/SKILL.md | sort -u
 ```
 
@@ -123,12 +123,12 @@ grep -oP '`[\w-]+`' skills/<skill-name>/SKILL.md | sort -u
 既存のSKILL.mdを直接編集する:
 
 ```bash
-# 編集のために開く
-# 手順ステップを追加/改訂する
-# Expected/On failureペアを強化する
-# テーブルや例を追加する
-# 使用タイミングのトリガーを更新する
-# スコープが変わった場合、入力を改訂する
+# Open for editing
+# Add/revise procedure steps
+# Strengthen Expected/On failure pairs
+# Add tables or examples
+# Update When to Use triggers
+# Revise Inputs if scope changed
 ```
 
 これらの編集ルールに従う:
@@ -141,19 +141,19 @@ grep -oP '`[\w-]+`' skills/<skill-name>/SKILL.md | sort -u
 #### バリアントの場合
 
 ```bash
-# バリアントディレクトリを作成する
+# Create the variant directory
 mkdir -p skills/<skill-name>-advanced/
 
-# 元のものを出発点としてコピーする
+# Copy the original as a starting point
 cp skills/<skill-name>/SKILL.md skills/<skill-name>-advanced/SKILL.md
 
-# バリアントを編集する:
-# - `name` を `<skill-name>-advanced` に変更する
-# - `description` を上級スコープを反映するように更新する
-# - `complexity` を上げる（例: intermediate → advanced）
-# - `version` を "1.0" にリセットする
-# - 上級ユースケースのための手順ステップを追加/拡張する
-# - 元のスキルを前提条件として関連スキルで参照する
+# Edit the variant:
+# - Change `name` to `<skill-name>-advanced`
+# - Update `description` to reflect the advanced scope
+# - Raise `complexity` (e.g., intermediate → advanced)
+# - Reset `version` to "1.0"
+# - Add/expand procedure steps for the advanced use case
+# - Reference the original in Related Skills as a prerequisite
 ```
 
 **期待結果：** SKILL.md（改良または新しいバリアント）がステップ1の評価チェックリストをパスする。
@@ -167,7 +167,7 @@ cp skills/<skill-name>/SKILL.md skills/<skill-name>-advanced/SKILL.md
 進化したスキルの翻訳が存在するかどうかを確認し、新しいソース状態を反映するように更新する:
 
 ```bash
-# 既存の翻訳を確認する
+# Check for existing translations
 ls i18n/*/skills/<skill-name>/SKILL.md 2>/dev/null
 ```
 
@@ -240,7 +240,7 @@ semver規則に従ってフロントマターの `version` フィールドをバ
 レジストリへの変更は不要（パスは変更なし）。他のスキルで関連スキルが変更された場合のみクロスリファレンスを更新する:
 
 ```bash
-# いずれかのスキルが進化したスキルを参照しているか確認する
+# Check if any skill references the evolved skill
 grep -r "<skill-name>" skills/*/SKILL.md
 ```
 
@@ -263,10 +263,10 @@ grep -r "<skill-name>" skills/*/SKILL.md
 4. スラッシュコマンド発見のためのシンリンクを作成する:
 
 ```bash
-# プロジェクトレベル
+# Project-level
 ln -s ../../skills/<skill-name>-advanced .claude/skills/<skill-name>-advanced
 
-# グローバル
+# Global
 ln -s /mnt/d/dev/p/agent-almanac/skills/<skill-name>-advanced ~/.claude/skills/<skill-name>-advanced
 ```
 
@@ -290,18 +290,18 @@ ln -s /mnt/d/dev/p/agent-almanac/skills/<skill-name>-advanced ~/.claude/skills/<
 - [ ] `git diff` で元のコンテンツの偶発的な削除がないことを確認
 
 ```bash
-# フロントマターを確認する
+# Verify frontmatter
 head -20 skills/<skill-name>/SKILL.md
 
-# ディスク上のスキル数 vs レジストリ
+# Count skills on disk vs registry
 find skills -name SKILL.md | wc -l
 grep total_skills skills/_registry.yml
 
-# シンリンクを確認する（バリアントの場合）
+# Check symlinks (for variants)
 ls -la .claude/skills/<skill-name>-advanced
 readlink -f .claude/skills/<skill-name>-advanced/SKILL.md
 
-# すべての変更を確認する
+# Review all changes
 git diff
 ```
 

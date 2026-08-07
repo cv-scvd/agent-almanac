@@ -317,7 +317,7 @@ testthat::expect_no_error(calculate_summary(mtcars, method = "mean"))
 ```
 
 ```bash
-# Ejecutar el conjunto de pruebas completo
+# Run full test suite
 Rscript -e "devtools::test()"
 ```
 

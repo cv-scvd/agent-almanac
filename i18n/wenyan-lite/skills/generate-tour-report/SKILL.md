@@ -226,13 +226,13 @@ ggplot2::ggplot(day3_elevation, ggplot2::aes(x = dist_km, y = elev_m)) +
 編譯 Quarto 文件為最終輸出格式。
 
 ```bash
-# 渲染為獨立 HTML（離線用佳）
+# Render to self-contained HTML (best for offline use)
 quarto render tour-report.qmd --to html
 
-# 渲染為 PDF（列印用）
+# Render to PDF (for printing)
 quarto render tour-report.qmd --to pdf
 
-# 編輯時即時預覽
+# Preview with live reload during editing
 quarto preview tour-report.qmd
 ```
 

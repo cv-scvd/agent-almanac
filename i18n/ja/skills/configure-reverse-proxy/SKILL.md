@@ -223,16 +223,16 @@ labels:
 ### ステップ8: プロキシ設定の検証
 
 ```bash
-# Nginx: 設定テスト
+# Nginx: test config
 docker compose exec nginx nginx -t
 
-# ルーティングの確認
+# Check routing
 curl -H "Host: api.example.com" http://localhost/health
 
-# WebSocketの確認（wscatが必要: npm install -g wscat）
+# Check WebSocket (needs wscat: npm install -g wscat)
 wscat -c ws://localhost/ws/
 
-# Traefikダッシュボード（有効な場合）
+# Traefik dashboard (if enabled)
 # http://localhost:8080/dashboard/
 ```
 

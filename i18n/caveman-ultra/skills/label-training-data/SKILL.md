@@ -87,7 +87,7 @@ services:
     image: heartexlabs/label-studio:latest
     ports:
       - "8080:8080"
-# ... (see EXAMPLES.md)
+# ... (see EXAMPLES.md for complete implementation)
 ```
 
 ```bash

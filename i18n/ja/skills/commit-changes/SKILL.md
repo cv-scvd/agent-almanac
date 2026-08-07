@@ -47,13 +47,13 @@ metadata:
 ワーキングツリーのステータスを確認し、差分を調べる:
 
 ```bash
-# 変更済み、ステージ済み、未追跡のファイルを確認
+# See which files are modified, staged, or untracked
 git status
 
-# ステージされていない変更を表示
+# See unstaged changes
 git diff
 
-# ステージされた変更を表示
+# See staged changes
 git diff --staged
 ```
 
@@ -66,13 +66,13 @@ git diff --staged
 機密ファイルや無関係な変更を誤って含めないよう、`git add .` や `git add -A` ではなく特定のファイルを指定してステージする:
 
 ```bash
-# ファイル名を指定してステージ
+# Stage specific files by name
 git add src/feature.R tests/test-feature.R
 
-# 特定のディレクトリ内の全変更をステージ
+# Stage all changes in a specific directory
 git add src/
 
-# ファイルの一部を対話的にステージ（非対話的コンテキストでは非対応）
+# Stage parts of a file interactively (not supported in non-interactive contexts)
 # git add -p filename
 ```
 
@@ -124,14 +124,14 @@ EOF
 共有リモートにプッシュ**していない**場合のみ修正する:
 
 ```bash
-# メッセージのみ修正
+# Amend message only
 git commit --amend -m "$(cat <<'EOF'
 fix: correct weighted mean edge case for empty vectors
 
 EOF
 )"
 
-# 追加のステージ変更と合わせて修正
+# Amend with additional staged changes
 git add forgotten-file.R
 git commit --amend --no-edit
 ```
@@ -143,13 +143,13 @@ git commit --amend --no-edit
 ### ステップ5: コミットを確認する
 
 ```bash
-# 直前のコミットを表示
+# View the last commit
 git log -1 --stat
 
-# 最近のコミット履歴を表示
+# View recent commit history
 git log --oneline -5
 
-# コミット内容を確認
+# Verify the commit content
 git show HEAD
 ```
 

@@ -52,6 +52,7 @@ metadata:
 裝 Blackbox 經 Docker 或 Kubernetes：
 
 ```bash
+# Docker deployment
 docker run -d \
   --name blackbox-exporter \
   -p 9115:9115 \
@@ -263,8 +264,10 @@ scrape_configs:
 重載 Prometheus：
 
 ```bash
+# Reload Prometheus (if running in Docker)
 docker exec prometheus kill -HUP 1
 
+# Or Kubernetes
 kubectl rollout restart deployment/prometheus -n monitoring
 ```
 
@@ -331,9 +334,11 @@ groups:
 載入 Prometheus：
 
 ```bash
+# Add to prometheus.yml
 rule_files:
   - /etc/prometheus/uptime-alerts.yml
 
+# Reload
 docker exec prometheus kill -HUP 1
 ```
 
@@ -364,6 +369,7 @@ docker exec prometheus kill -HUP 1
 選甲：用 Statuspage.io（SaaS）：
 
 ```bash
+# Integrate with Statuspage.io API
 curl -X POST https://api.statuspage.io/v1/pages/PAGE_ID/incidents \
   -H "Authorization: OAuth YOUR_API_KEY" \
   -H "Content-Type: application/json" \

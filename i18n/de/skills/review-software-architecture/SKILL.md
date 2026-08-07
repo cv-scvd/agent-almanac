@@ -86,11 +86,11 @@ Untersuchen, wie stark Module voneinander abhaengen:
 - [ ] **Zeitliche Kopplung**: Muessen Operationen in einer bestimmten Reihenfolge stattfinden ohne explizite Orchestrierung?
 
 ```bash
-# Zirkulaere Abhaengigkeiten erkennen (JavaScript/TypeScript)
+# Detect circular dependencies (JavaScript/TypeScript)
 npx madge --circular src/
 
-# Importmuster erkennen (Python)
-# Nach tiefen paketuebergreifenden Importen suchen
+# Detect import patterns (Python)
+# Look for deep cross-package imports
 grep -r "from app\." --include="*.py" | sort | uniq -c | sort -rn | head -20
 ```
 

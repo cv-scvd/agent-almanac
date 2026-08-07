@@ -55,50 +55,50 @@ Argo CDまたはFluxを使用したGitOps原則でKubernetesアプリケーシ�
 Argo CDをクラスターにデプロイし、Gitリポジトリに接続します。
 
 ```bash
-# Namespaceの作成
+# Create namespace
 kubectl create namespace argocd
 
-# Argo CDのインストール
+# Install Argo CD
 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
-# Podの準備完了を待機
+# Wait for pods to be ready
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=argocd-server -n argocd --timeout=300s
 
-# Argo CD CLIのインストール
+# Install Argo CD CLI
 curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
 sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
 rm argocd-linux-amd64
 
-# UIへのアクセスのためにポートフォワード
+# Port-forward to access UI
 kubectl port-forward svc/argocd-server -n argocd 8080:443 &
 
-# 初期管理者パスワードの取得
+# Get initial admin password
 ARGOCD_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
 echo "Argo CD Admin Password: $ARGOCD_PASSWORD"
 
-# CLIでログイン
+# Login via CLI
 argocd login localhost:8080 --username admin --password "$ARGOCD_PASSWORD" --insecure
 
-# 管理者パスワードの変更
+# Change admin password
 argocd account update-password
 
-# Gitリポジトリの追加（HTTPSとトークン）
+# Add Git repository (HTTPS with token)
 argocd repo add https://github.com/USERNAME/gitops-repo \
   --username USERNAME \
   --password "$GITHUB_TOKEN" \
   --name gitops-repo
 
-# またはSSHで追加
+# Or add via SSH
 ssh-keygen -t ed25519 -C "argocd@cluster" -f argocd-deploy-key -N ""
-# argocd-deploy-key.pubをGitHubリポジトリのデプロイキーに追加
+# Add argocd-deploy-key.pub to GitHub repository deploy keys
 argocd repo add git@github.com:USERNAME/gitops-repo.git \
   --ssh-private-key-path argocd-deploy-key \
   --name gitops-repo
 
-# リポジトリ接続の確認
+# Verify repository connection
 argocd repo list
 
-# UIのIngressの設定（任意）
+# Configure Ingress for UI (optional)
 cat <<EOF | kubectl apply -f -
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -138,15 +138,15 @@ EOF
 同期ポリシーとヘルスチェック付きのArgo CDアプリケーションリソースを定義します。
 
 ```bash
-# Gitリポジトリ構造の作成
+# Create Git repository structure
 mkdir -p gitops-repo/{apps,infra,projects}
 cd gitops-repo
 
-# サンプルアプリケーションの作成
+# Create sample application
 mkdir -p apps/myapp/overlays/{dev,staging,prod}
 mkdir -p apps/myapp/base
 
-# ベースKustomization
+# Base Kustomization
 cat > apps/myapp/base/kustomization.yaml <<EOF
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -190,7 +190,7 @@ spec:
     targetPort: 8080
 EOF
 
-# 本番オーバーレイ
+# Production overlay
 cat > apps/myapp/overlays/prod/kustomization.yaml <<EOF
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -205,12 +205,12 @@ images:
   newTag: v1.0.0
 EOF
 
-# Gitにコミット
+# Commit to Git
 git add .
 git commit -m "Add myapp application manifests"
 git push
 
-# Argo CDアプリケーションの作成
+# Create Argo CD Application
 cat > argocd-apps/myapp-prod.yaml <<EOF
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -230,8 +230,8 @@ spec:
     namespace: production
   syncPolicy:
     automated:
-      prune: true      # Gitから削除されたリソースを削除
-      selfHeal: true   # ドリフト検出時に自動同期
+      prune: true      # Delete resources removed from Git
+      selfHeal: true   # Auto-sync on drift detection
       allowEmpty: false
     syncOptions:
     - CreateNamespace=true
@@ -245,10 +245,10 @@ spec:
   revisionHistoryLimit: 10
 EOF
 
-# kubectlでアプリケーションを適用
+# Apply Application via kubectl
 kubectl apply -f argocd-apps/myapp-prod.yaml
 
-# またはCLIで作成
+# Or create via CLI
 argocd app create myapp-prod \
   --repo https://github.com/USERNAME/gitops-repo \
   --path apps/myapp/overlays/prod \
@@ -258,12 +258,12 @@ argocd app create myapp-prod \
   --auto-prune \
   --self-heal
 
-# 同期ステータスの監視
+# Watch sync status
 argocd app get myapp-prod --watch
 
-# アプリケーションの確認
+# Verify application
 kubectl get all -n production
-argocd app sync myapp-prod  # 自動同期が無効の場合は手動同期
+argocd app sync myapp-prod  # Manual sync if automated disabled
 ```
 
 **期待結果：** アプリケーションがGitから自動的に同期済み。リソースがproduction Namespaceに作成済み。Argo CD UIがhealthyステータスを表示。自動同期ポリシーによりpruneとself-healが有効。リトライ制限内で同期が成功。
@@ -275,13 +275,13 @@ argocd app sync myapp-prod  # 自動同期が無効の場合は手動同期
 複数環境にわたる子アプリケーションを管理するルートアプリケーションを作成します。
 
 ```bash
-# app-of-apps構造の作成
+# Create app-of-apps structure
 mkdir -p argocd-apps/{projects,infra,apps}
 
-# RBACのためのプロジェクト定義
+# Define projects for RBAC
 cat > argocd-apps/projects/production.yaml <<EOF
 apiVersion: argoproj.io/v1alpha1
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **期待結果：** ルートアプリが全ての子アプリケーションを管理。新しいアプリケーションはGitに追加されると自動的にデプロイ。インフラアプリがアプリアプリケーションより先にデプロイ（必要に応じて同期ウェーブを使用）。プロジェクトがRBAC境界を強制。アプリツリーが親子関係を表示。
@@ -293,13 +293,13 @@ apiVersion: argoproj.io/v1alpha1
 新しいイメージバージョンを自動的にプロモーションするArgo CD Image Updaterをセットアップします。
 
 ```bash
-# Argo CD Image Updaterのインストール
+# Install Argo CD Image Updater
 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/stable/manifests/install.yaml
 
-# アノテーションによるイメージ更新戦略の設定
+# Configure image update strategy via annotations
 cat > argocd-apps/myapp-prod-autoupdate.yaml <<EOF
 apiVersion: argoproj.io/v1alpha1
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **期待結果：** Image Updaterがタグパターンに一致する新しいイメージをレジストリで監視。セマンティックバージョニング戦略が最新の安定リリースに更新。新しいイメージタグで自動的にGitコミットが作成。アプリケーションが更新されたイメージで同期。Stagingはイミュータブルデプロイのためにdigestストラテジーを使用。
@@ -311,13 +311,13 @@ apiVersion: argoproj.io/v1alpha1
 自動ロールバック付きのカナリアとブルーグリーンデプロイを有効にします。
 
 ```bash
-# Argo Rolloutsコントローラーのインストール
+# Install Argo Rollouts controller
 kubectl create namespace argo-rollouts
 kubectl apply -n argo-rollouts -f https://github.com/argoproj/argo-rollouts/releases/latest/download/install.yaml
 
-# Rollouts kubectlプラグインのインストール
+# Install Rollouts kubectl plugin
 curl -LO https://github.com/argoproj/argo-rollouts/releases/latest/download/kubectl-argo-rollouts-linux-amd64
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **期待結果：** Rolloutがカナリアにトラフィックをプログレッシブにシフト。各ステップで分析が実行され成功率を検証。成功時は自動プロモーション、失敗時はロールバック。Argo CDがRolloutリソースを同期。ダッシュボードがリアルタイムのロールアウト進捗を表示。
@@ -329,13 +329,13 @@ curl -LO https://github.com/argoproj/argo-rollouts/releases/latest/download/kube
 手動変更を監視し、Slack/メールにアラートを送信します。
 
 ```bash
-# アプリケーションでのドリフト検出の設定
+# Configure drift detection in Application
 cat > argocd-apps/myapp-strict.yaml <<EOF
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: myapp-prod
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **期待結果：** Self-healが手動kubectl変更を自動的にリバート。同期の失敗と成功したデプロイでSlackに通知。Webhookが外部システムをトリガー（PagerDuty、モニタリング、ITSM）。ドリフトアラートが変更内容と変更者（Gitの履歴から）を表示。

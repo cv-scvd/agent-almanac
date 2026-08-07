@@ -140,10 +140,10 @@ message MeasurementBatch {
 生成して使用する:
 
 ```bash
-# Pythonコードを生成
+# Generate Python code
 protoc --python_out=. sensors.proto
 
-# Goコードを生成
+# Generate Go code
 protoc --go_out=. sensors.proto
 ```
 

@@ -75,10 +75,10 @@ Haeufige Veraltungsindikatoren:
 - Konfigurationsdateiformate die sich weiterentwickelt haben
 
 ```bash
-# Nach versionsspezifischen Referenzen suchen
+# Check for version-specific references
 grep -nE '[vV][0-9]+\.[0-9]+' skills/<skill-name>/SKILL.md
 
-# Nach URLs suchen
+# Check for URLs
 grep -nE 'https?://' skills/<skill-name>/SKILL.md
 ```
 
@@ -130,12 +130,12 @@ Alle Querverweise im Abschnitt Verwandte Skills verifizieren und fehlende Verknu
 
 1. Fuer jeden referenzierten Skill verifizieren dass er existiert:
    ```bash
-   # Pruefen ob referenzierter Skill existiert
-   test -d skills/referenced-skill-name && echo "EXISTIERT" || echo "NICHT GEFUNDEN"
+   # Check if referenced skill exists
+   test -d skills/referenced-skill-name && echo "EXISTS" || echo "NOT FOUND"
    ```
 2. Nach Skills suchen die diesen Skill referenzieren (diese sollten querverknuepft sein):
    ```bash
-   # Skills finden die diesen Skill referenzieren
+   # Find skills that reference this skill
    grep -rl "skill-name" skills/*/SKILL.md
    ```
 3. Auf offensichtlich verwandte Skills basierend auf Domain und Tags pruefen

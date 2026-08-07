@@ -54,11 +54,11 @@ metadata:
 读取所有记忆文件，按四个维度对每个条目进行分类。
 
 ```bash
-# 列出记忆目录清单
+# Inventory the memory directory
 ls -la <memory-dir>/
 wc -l <memory-dir>/*.md
 
-# 统计总条目数（通过计算顶层项目符号和标题近似）
+# Count total entries (approximate by counting top-level bullets and headers)
 grep -c "^- \|^## " <memory-dir>/MEMORY.md
 for f in <memory-dir>/*.md; do echo "$f: $(grep -c '^- \|^## ' "$f") entries"; done
 ```
@@ -95,17 +95,17 @@ for f in <memory-dir>/*.md; do echo "$f: $(grep -c '^- \|^## ' "$f") entries"; d
 5. **工具/版本漂移**：已更改的版本号、API 签名或工具名称（例如包重命名）
 
 ```bash
-# 对照真实来源抽查计数
+# Spot-check counts against source of truth
 grep -oP '\d+ skills' <memory-dir>/MEMORY.md
 grep -c "^      - id:" skills/_registry.yml
 
-# 检查不再存在的文件的引用
+# Check for references to files that no longer exist
 grep -oP '`[^`]+\.(md|yml|R|js|ts)`' <memory-dir>/MEMORY.md | sort -u | while read f; do
   path="${f//\`/}"
   [ ! -f "$path" ] && echo "STALE: $path referenced but not found"
 done
 
-# 检查旧名称/路径的引用
+# Check for references to old names/paths
 grep -i "old-name\|previous-name\|renamed-from" <memory-dir>/*.md
 ```
 
@@ -126,18 +126,18 @@ grep -i "old-name\|previous-name\|renamed-from" <memory-dir>/*.md
 2. **压缩损失检测**：将记忆摘要与原始源材料进行比较。当一个 50 行的讨论被压缩为 2 行的记忆时，压缩是否保留了可操作的洞见，还是仅保留了主题标签？
 
    ```bash
-   # 查找记忆条目来源的原始内容
-   # （git log、旧 PR、原始文件）
+   # Find the source that a memory entry was derived from
+   # (git log, old PRs, original files)
    git log --oneline --all --grep="<keyword from memory entry>" | head -5
    ```
 
 3. **矛盾扫描**：搜索相互矛盾的记忆，或与 CLAUDE.md/项目文档矛盾的记忆。
 
    ```bash
-   # 在计数中寻找潜在矛盾
+   # Look for potential contradictions in counts
    grep -n "total" <memory-dir>/MEMORY.md
    grep -n "total" CLAUDE.md
-   # 比较数值——它们应该一致
+   # Compare the values — they should agree
    ```
 
 4. **实用性测试**：对每个记忆条目，询问：「如果删除此条目，接下来 5 个会话中会出现问题吗？」若答案是「可能不会」，则该条目的保真度价值低，无论其准确性如何。

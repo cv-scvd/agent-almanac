@@ -60,11 +60,11 @@ Donde `manage-memory` se centra en organizar y hacer crecer la memoria (qué con
 Leer todos los archivos de memoria y clasificar cada entrada en cuatro dimensiones.
 
 ```bash
-# Inventariar el directorio de memoria
+# Inventory the memory directory
 ls -la <memory-dir>/
 wc -l <memory-dir>/*.md
 
-# Contar entradas totales (aproximación contando viñetas y encabezados de nivel superior)
+# Count total entries (approximate by counting top-level bullets and headers)
 grep -c "^- \|^## " <memory-dir>/MEMORY.md
 for f in <memory-dir>/*.md; do echo "$f: $(grep -c '^- \|^## ' "$f") entries"; done
 ```
@@ -101,17 +101,17 @@ Verificar estos patrones de obsolescencia:
 5. **Deriva de herramientas/versiones**: Números de versión, firmas de API o nombres de herramientas que cambiaron (p.ej., renombrado de paquetes)
 
 ```bash
-# Verificar conteos contra la fuente de verdad
+# Spot-check counts against source of truth
 grep -oP '\d+ skills' <memory-dir>/MEMORY.md
 grep -c "^      - id:" skills/_registry.yml
 
-# Verificar referencias a archivos que ya no existen
+# Check for references to files that no longer exist
 grep -oP '`[^`]+\.(md|yml|R|js|ts)`' <memory-dir>/MEMORY.md | sort -u | while read f; do
   path="${f//\`/}"
   [ ! -f "$path" ] && echo "STALE: $path referenced but not found"
 done
 
-# Verificar referencias a nombres/rutas antiguas
+# Check for references to old names/paths
 grep -i "old-name\|previous-name\|renamed-from" <memory-dir>/*.md
 ```
 
@@ -132,18 +132,18 @@ Métodos de verificación de fidelidad:
 2. **Detección de pérdida por compresión**: Comparar resúmenes de memoria con el material fuente original. Cuando una discusión de 50 líneas fue comprimida a una memoria de 2 líneas, ¿la compresión preservó la perspectiva accionable o solo la etiqueta del tema?
 
    ```bash
-   # Encontrar la fuente de la que se derivó una entrada de memoria
-   # (git log, PRs antiguos, archivos originales)
+   # Find the source that a memory entry was derived from
+   # (git log, old PRs, original files)
    git log --oneline --all --grep="<keyword from memory entry>" | head -5
    ```
 
 3. **Escaneo de contradicciones**: Buscar memorias que se contradigan entre sí o que contradigan CLAUDE.md / la documentación del proyecto.
 
    ```bash
-   # Buscar posibles contradicciones en conteos
+   # Look for potential contradictions in counts
    grep -n "total" <memory-dir>/MEMORY.md
    grep -n "total" CLAUDE.md
-   # Comparar los valores — deben coincidir
+   # Compare the values — they should agree
    ```
 
 4. **Prueba de utilidad**: Para cada entrada de memoria, preguntar: "Si esta entrada fuera eliminada, ¿algo saldría mal en las próximas 5 sesiones?" Si la respuesta es "probablemente no," la entrada tiene bajo valor de fidelidad independientemente de su precisión.

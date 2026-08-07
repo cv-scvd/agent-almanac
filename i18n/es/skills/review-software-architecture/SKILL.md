@@ -85,11 +85,11 @@ Examinar cómo dependen entre sí los módulos:
 - [ ] **Acoplamiento temporal**: ¿Las operaciones deben ocurrir en un orden específico sin orquestación explícita?
 
 ```bash
-# Detectar dependencias circulares (JavaScript/TypeScript)
+# Detect circular dependencies (JavaScript/TypeScript)
 npx madge --circular src/
 
-# Detectar patrones de importación (Python)
-# Buscar importaciones profundas entre paquetes
+# Detect import patterns (Python)
+# Look for deep cross-package imports
 grep -r "from app\." --include="*.py" | sort | uniq -c | sort -rn | head -20
 ```
 

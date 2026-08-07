@@ -66,16 +66,16 @@ npm install -g vercel
 ### Paso 3: Vincular y Desplegar
 
 ```bash
-# Iniciar sesión en Vercel
+# Login to Vercel
 vercel login
 
-# Desplegar (la primera vez: crea el proyecto)
+# Deploy (first time: creates project)
 vercel
 
-# Sigue las indicaciones:
+# Follow prompts:
 # - Set up and deploy? Y
-# - Which scope? (selecciona tu cuenta)
-# - Link to existing project? N (para proyectos nuevos)
+# - Which scope? (select your account)
+# - Link to existing project? N (for new projects)
 # - Project name: my-app
 # - Directory: ./
 # - Override settings? N
@@ -88,11 +88,11 @@ vercel
 ### Paso 4: Configurar Variables de Entorno
 
 ```bash
-# Añadir variables de entorno
+# Add environment variables
 vercel env add DATABASE_URL production
 vercel env add API_KEY production preview
 
-# Listar variables de entorno
+# List environment variables
 vercel env ls
 ```
 

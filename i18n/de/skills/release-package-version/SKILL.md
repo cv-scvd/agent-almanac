@@ -110,7 +110,7 @@ urlchecker::url_check()
 
 ```bash
 git add DESCRIPTION NEWS.md
-git commit -m "Release paketname v0.2.0"
+git commit -m "Release packagename v0.2.0"
 ```
 
 **Erwartet:** Ein einzelner Commit der die Versionserhoehung in DESCRIPTION und die aktualisierte NEWS.md enthaelt.
@@ -132,7 +132,7 @@ git push origin main --tags
 
 ```bash
 gh release create v0.2.0 \
-  --title "paketname v0.2.0" \
+  --title "packagename v0.2.0" \
   --notes-file NEWS.md
 ```
 
@@ -158,7 +158,7 @@ Dies aendert die Version zu `0.2.0.9000` als Kennzeichnung fuer Entwicklung.
 
 ```bash
 git add DESCRIPTION NEWS.md
-git commit -m "Entwicklung fuer naechste Version beginnen"
+git commit -m "Begin development for next version"
 git push
 ```
 

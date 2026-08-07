@@ -66,16 +66,16 @@ npm install -g vercel
 ### Schritt 3: Verknuepfen und deployen
 
 ```bash
-# Bei Vercel anmelden
+# Login to Vercel
 vercel login
 
-# Deployen (beim ersten Mal: erstellt Projekt)
+# Deploy (first time: creates project)
 vercel
 
-# Eingabeaufforderungen folgen:
+# Follow prompts:
 # - Set up and deploy? Y
-# - Which scope? (Konto auswaehlen)
-# - Link to existing project? N (fuer neue Projekte)
+# - Which scope? (select your account)
+# - Link to existing project? N (for new projects)
 # - Project name: my-app
 # - Directory: ./
 # - Override settings? N
@@ -88,11 +88,11 @@ vercel
 ### Schritt 4: Umgebungsvariablen konfigurieren
 
 ```bash
-# Umgebungsvariablen hinzufuegen
+# Add environment variables
 vercel env add DATABASE_URL production
 vercel env add API_KEY production preview
 
-# Umgebungsvariablen auflisten
+# List environment variables
 vercel env ls
 ```
 

@@ -49,13 +49,17 @@ Diagnosticar y resolver fallos de conexión de servidores MCP.
 
 **Claude Code** (WSL):
 ```bash
+# View MCP configuration
 claude mcp list
-claude mcp get nombre-servidor
+claude mcp get server-name
+
+# Configuration stored in
 cat ~/.claude.json | python3 -m json.tool
 ```
 
 **Claude Desktop** (Windows):
 ```bash
+# Configuration file location
 cat "/mnt/c/Users/$USER/AppData/Roaming/Claude/claude_desktop_config.json"
 ```
 
@@ -67,6 +71,7 @@ cat "/mnt/c/Users/$USER/AppData/Roaming/Claude/claude_desktop_config.json"
 
 **r-mcptools**:
 ```bash
+# Test if R can start the server
 "/mnt/c/Program Files/R/R-4.5.0/bin/Rscript.exe" -e "mcptools::mcp_server()"
 ```
 
@@ -77,7 +82,10 @@ Si falla:
 
 **Hugging Face MCP**:
 ```bash
+# Test mcp-remote directly
 mcp-remote https://huggingface.co/mcp
+
+# Check if mcp-remote is installed
 which mcp-remote
 npm list -g mcp-remote
 ```
@@ -125,7 +133,10 @@ Solución: Usar variables de entorno en lugar de argumentos `--header`:
 ### Paso 4: Verificar Red y Autenticación
 
 ```bash
+# Test Hugging Face API connectivity
 curl -I "https://huggingface.co/mcp"
+
+# Verify token validity
 curl -H "Authorization: Bearer $HF_TOKEN" https://huggingface.co/api/whoami
 ```
 
@@ -136,7 +147,8 @@ curl -H "Authorization: Bearer $HF_TOKEN" https://huggingface.co/api/whoami
 ### Paso 5: Verificar Sintaxis JSON de Configuración
 
 ```bash
-python3 -m json.tool /ruta/al/archivo/config.json
+# Validate JSON (common issue: trailing commas, missing quotes)
+python3 -m json.tool /path/to/config.json
 ```
 
 **Esperado:** El JSON se analiza sin errores.
@@ -164,8 +176,12 @@ python3 -m json.tool /ruta/al/archivo/config.json
 
 Si todo lo demás falla:
 ```bash
-claude mcp remove nombre-servidor
-claude mcp add nombre-servidor stdio "/ruta/completa/al/ejecutable" -- args
+# Remove and re-add the server (Claude Code)
+claude mcp remove server-name
+claude mcp add server-name stdio "/full/path/to/executable" -- args
+
+# Restart Claude Desktop after config changes
+# (close and reopen the application)
 ```
 
 **Esperado:** Después de eliminar y re-agregar, `claude mcp list` muestra el servidor correctamente.

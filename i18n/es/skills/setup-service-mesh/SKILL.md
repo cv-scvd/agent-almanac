@@ -160,7 +160,7 @@ spec:
 ```bash
 # Linkerd enforces mTLS by default for meshed pods
 linkerd viz tap deploy/test-app -n default
-# Check for lock symbol
+# Check for 🔒 (lock) symbol
 ```
 
 Aplicar y verificar:

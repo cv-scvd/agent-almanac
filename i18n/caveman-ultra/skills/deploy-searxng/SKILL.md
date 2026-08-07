@@ -207,16 +207,16 @@ pass_searxng_org = false
 ### Step 6: Deploy + Verify
 
 ```bash
-# Start stack
+# Start the stack
 docker compose up -d
 
-# Logs
+# Check logs
 docker compose logs -f searxng
 
-# Check running
+# Verify it's running
 curl -s http://localhost:8080 | head -5
 
-# Test search
+# Test a search
 curl -s "http://localhost:8080/search?q=test&format=json" | head -20
 ```
 
@@ -255,13 +255,13 @@ See `configure-nginx` → full SSL Nginx config.
 ### Step 8: Update + Maint
 
 ```bash
-# Pull latest
+# Pull latest image
 docker compose pull searxng
 
-# Restart w/ new img
+# Restart with new image
 docker compose up -d
 
-# Backup config
+# Backup configuration
 cp -r config/ config-backup-$(date +%Y%m%d)/
 ```
 

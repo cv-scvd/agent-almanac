@@ -206,10 +206,10 @@ APA引用スタイル:
 ### ステップ6: レンダリング
 
 ```bash
-# Word文書（雑誌投稿によく使用）
+# Word document (common for journal submission)
 quarto render manuscript.qmd --to apaquarto-docx
 
-# PDF（プレプリントまたはレビュー用）
+# PDF (for preprint or review)
 quarto render manuscript.qmd --to apaquarto-pdf
 ```
 

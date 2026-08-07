@@ -106,15 +106,15 @@ Dateien in ihre konventionellen Verzeichnisse umlagern.
 
 Fuer jede Verschiebung:
 ```bash
-# Pruefen ob Datei irgendwo referenziert wird
+# Check if file is referenced anywhere
 grep -r "filename" .
 
-# Wenn keine Referenzen oder nur relative Pfadreferenzen:
+# If no references or only relative path references:
 mkdir -p target_directory/
 git mv source/file target_directory/file
 
-# Alle Imports/Requires aktualisieren
-# (sprachspezifisch — siehe repair-broken-references Skill)
+# Update any imports/requires
+# (language-specific — see repair-broken-references skill)
 ```
 
 **Erwartet:** Alle Dateien an konventionellen Positionen; Git-Historie ueber `git mv` erhalten
@@ -133,17 +133,17 @@ Veraltete Informationen in allen README-Dateien identifizieren.
 5. Kein Lizenz-Badge oder defekte Badge-Links
 
 ```bash
-# Alle READMEs finden
+# Find all READMEs
 find . -name "README.md" -o -name "readme.md"
 
-# Fuer jede README:
-# - Letztes Aenderungsdatum pruefen
+# For each README:
+# - Check last modified date
 git log -1 --format="%ci" README.md
 
-# - Auf defekte Links pruefen
+# - Check for broken links
 markdown-link-check README.md
 
-# - Beispielcode auf Funktionsfaehigkeit pruefen (erstes Beispiel testen)
+# - Verify example code still runs (sample first example)
 ```
 
 **Erwartet:** Liste veralteter READMEs in `readme_freshness.txt` mit konkreten Problemen
@@ -235,25 +235,25 @@ Nicht mehr benoetigte Dateien verschieben oder loeschen.
 
 **Archivierungsprozess**:
 ```bash
-# Archivverzeichnis erstellen (wenn archive_mode=move)
+# Create archive directory (if archive_mode=move)
 mkdir -p archive/YYYY-MM-DD/
 
-# Fuer jede veraltete Datei:
-# 1. Pruefen ob nirgends referenziert
+# For each deprecated file:
+# 1. Verify not referenced anywhere
 grep -r "filename" .
 
-# 2. Git-Historie auf letzte Aenderung pruefen
+# 2. Check git history for last modification
 git log -1 --format="%ci" filename
 
-# 3. Wenn seit >1 Jahr nicht geaendert und keine Referenzen:
+# 3. If not modified in >1 year and no references:
 if [ "$archive_mode" = "move" ]; then
   git mv filename archive/YYYY-MM-DD/
 else
   git rm filename
 fi
 
-# 4. In ARCHIVE_LOG.md dokumentieren
-echo "- filename (Grund, letzte Aenderung: DATUM)" >> ARCHIVE_LOG.md
+# 4. Document in ARCHIVE_LOG.md
+echo "- filename (reason, last modified: DATE)" >> ARCHIVE_LOG.md
 ```
 
 **Erwartet:** Veraltete Dateien archiviert; `ARCHIVE_LOG.md` aktualisiert
@@ -271,13 +271,13 @@ Auf inkonsistente Dateibenennung im Projekt pruefen.
 - **camelCase**: `myUtility.js` (JavaScript-Funktionen)
 
 ```bash
-# Dateien finden die gegen Konventionen verstossen
-# Beispiel: Python-Projekt mit erwarteter snake_case
+# Find files violating conventions
+# Example: Python project expecting snake_case
 find . -name "*.py" | grep -v "__pycache__" | grep -E "[A-Z-]"
 
-# Fuer jeden Verstoss entweder:
-# 1. Umbenennen um Konventionen einzuhalten
-# 2. Ausnahme dokumentieren (z.B. Django settings.py Konvention)
+# For each violation, either:
+# 1. Rename to match conventions
+# 2. Document exception (e.g., Django settings.py convention)
 ```
 
 **Erwartet:** Alle Dateien folgen Namenskonventionen oder Ausnahmen dokumentiert

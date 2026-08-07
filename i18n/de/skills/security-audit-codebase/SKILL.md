@@ -51,18 +51,18 @@ Eine systematische Sicherheitsueberpruefung einer Codebasis durchfuehren, um Sch
 Nach Mustern suchen, die auf hartcodierte Geheimnisse hindeuten:
 
 ```bash
-# API-Schluessel und Token
+# API keys and tokens
 grep -rn "sk-\|ghp_\|gho_\|github_pat_\|hf_\|AKIA" --include="*.{md,js,ts,py,R,json,yml,yaml}" .
 
-# Allgemeine Geheimnis-Muster
+# Generic secret patterns
 grep -rn "password\s*=\s*['\"]" --include="*.{js,ts,py,R,json}" .
 grep -rn "api[_-]key\s*[=:]\s*['\"]" --include="*.{js,ts,py,R,json}" .
 grep -rn "secret\s*[=:]\s*['\"]" --include="*.{js,ts,py,R,json}" .
 
-# Verbindungszeichenfolgen
+# Connection strings
 grep -rn "postgresql://\|mysql://\|mongodb://" .
 
-# Private Schluessel
+# Private keys
 grep -rn "BEGIN.*PRIVATE KEY" .
 ```
 
@@ -75,10 +75,10 @@ grep -rn "BEGIN.*PRIVATE KEY" .
 Sicherstellen, dass sensible Dateien ausgeschlossen sind:
 
 ```bash
-# Pruefen, dass diese Dateien git-ignoriert werden
+# Check that these are git-ignored
 git check-ignore .env .Renviron credentials.json node_modules/
 
-# Nach verfolgten sensiblen Dateien suchen
+# Look for tracked sensitive files
 git ls-files | grep -i "\.env\|\.renviron\|credentials\|secret"
 ```
 
@@ -119,7 +119,7 @@ renv::status()
 **SQL-Injection**:
 
 ```bash
-# Nach String-Verkettung in Abfragen suchen
+# Look for string concatenation in queries
 grep -rn "paste.*SELECT\|paste.*INSERT\|paste.*UPDATE\|paste.*DELETE" --include="*.R" .
 grep -rn "query.*\+.*\|query.*\$\{" --include="*.{js,ts}" .
 ```
@@ -129,14 +129,14 @@ Alle Datenbankabfragen sollten parametrisierte Abfragen verwenden, keine String-
 **Command-Injection**:
 
 ```bash
-# Nach Shell-Ausfuehrung mit Benutzereingabe suchen
+# Look for shell execution with user input
 grep -rn "system\(.*paste\|exec(\|spawn(" --include="*.{R,js,ts,py}" .
 ```
 
 **XSS (Cross-Site-Scripting)**:
 
 ```bash
-# Nach nicht escaptem Benutzerinhalt in HTML suchen
+# Look for unescaped user content in HTML
 grep -rn "innerHTML\|dangerouslySetInnerHTML\|v-html" --include="*.{js,ts,jsx,tsx,vue}" .
 ```
 
@@ -161,13 +161,13 @@ Checkliste:
 ### Schritt 6: Konfigurationssicherheit pruefen
 
 ```bash
-# Debug-Modus in Produktionskonfigurationen
+# Debug mode in production configs
 grep -rn "debug\s*[=:]\s*[Tt]rue\|DEBUG\s*=\s*1" --include="*.{json,yml,yaml,toml,cfg}" .
 
-# Zu offenes CORS
+# Permissive CORS
 grep -rn "Access-Control-Allow-Origin.*\*\|cors.*origin.*\*" --include="*.{js,ts}" .
 
-# HTTP statt HTTPS
+# HTTP instead of HTTPS
 grep -rn "http://" --include="*.{js,ts,py,R}" . | grep -v "localhost\|127.0.0.1\|http://"
 ```
 

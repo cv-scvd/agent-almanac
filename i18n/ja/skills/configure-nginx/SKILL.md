@@ -250,13 +250,13 @@ upstream app {
 ### ステップ7: 設定のテスト
 
 ```bash
-# 設定構文のテスト
+# Test config syntax
 docker compose exec nginx nginx -t
 
-# ダウンタイムなしでリロード
+# Reload without downtime
 docker compose exec nginx nginx -s reload
 
-# レスポンスヘッダーの確認
+# Check response headers
 curl -I https://example.com
 ```
 

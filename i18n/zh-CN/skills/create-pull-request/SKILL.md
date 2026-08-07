@@ -47,13 +47,13 @@ metadata:
 验证分支已与基准分支同步，且所有变更已提交：
 
 ```bash
-# 检查未提交的变更
+# Check for uncommitted changes
 git status
 
-# 从远程获取最新代码
+# Fetch latest from remote
 git fetch origin
 
-# 在最新的 main 上变基（或合并）
+# Rebase on latest main (or merge)
 git rebase origin/main
 ```
 
@@ -66,13 +66,13 @@ git rebase origin/main
 检查将包含在 PR 中的完整差异和提交历史：
 
 ```bash
-# 查看此分支上的所有提交（不在 main 上的）
+# See all commits on this branch (not on main)
 git log origin/main..HEAD --oneline
 
-# 查看与 main 的完整差异
+# See the full diff against main
 git diff origin/main...HEAD
 
-# 检查分支是否跟踪远程并已推送
+# Check if branch tracks remote and is pushed
 git status -sb
 ```
 
@@ -83,7 +83,7 @@ git status -sb
 ### 第 3 步：推送分支
 
 ```bash
-# 推送分支到远程（设置上游跟踪）
+# Push branch to remote (set upstream tracking)
 git push -u origin HEAD
 ```
 
@@ -127,13 +127,13 @@ gh pr create --title "WIP: Add authentication" --body "..." --draft
 回应评审意见并推送更新：
 
 ```bash
-# 查看 PR 评论
+# View PR comments
 gh api repos/{owner}/{repo}/pulls/{number}/comments
 
-# 查看 PR 检查状态
+# View PR review status
 gh pr checks
 
-# 完成修改后，提交并推送
+# After making changes, commit and push
 git add <files>
 git commit -m "$(cat <<'EOF'
 fix: address review feedback on input validation
@@ -152,13 +152,13 @@ git push
 获得批准后：
 
 ```bash
-# 合并 PR（压缩合并保持历史整洁）
+# Merge the PR (squash merge keeps history clean)
 gh pr merge --squash --delete-branch
 
-# 或保留所有提交的合并
+# Or merge with all commits preserved
 gh pr merge --merge --delete-branch
 
-# 或变基合并（线性历史）
+# Or rebase merge (linear history)
 gh pr merge --rebase --delete-branch
 ```
 

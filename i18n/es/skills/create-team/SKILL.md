@@ -71,7 +71,7 @@ El agente líder orquesta el equipo. Elegir un agente de `agents/_registry.yml` 
 - Pueda sintetizar los resultados de múltiples revisores en un entregable coherente
 
 ```bash
-# Listar todos los agentes disponibles
+# List all available agents
 grep "^  - id:" agents/_registry.yml
 ```
 
@@ -90,7 +90,7 @@ Elegir de 2 a 5 miembros (incluyendo al líder) con responsabilidades claras y n
 - **responsibilities**: Una oración que describe qué hace este miembro que ningún otro miembro hace
 
 ```bash
-# Verificar que cada agente candidato existe
+# Verify each candidate agent exists
 grep "id: agent-name-here" agents/_registry.yml
 ```
 
@@ -212,7 +212,7 @@ Editar `teams/_registry.yml` para añadir el nuevo equipo:
 Actualizar el recuento `total_teams` al inicio del registro.
 
 ```bash
-# Verificar que la entrada fue añadida
+# Verify the entry was added
 grep "id: <team-name>" teams/_registry.yml
 ```
 

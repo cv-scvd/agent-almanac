@@ -60,16 +60,16 @@ metadata:
 | See Also | 指向智能体、指南、团队的有效交叉引用 | 指向已重命名或删除文件的过期链接 |
 
 ```bash
-# 读取智能体文件
+# Read the agent file
 cat agents/<agent-name>.md
 
-# 检查前置元数据解析
+# Check frontmatter parses
 head -20 agents/<agent-name>.md
 
-# 验证前置元数据中的技能存在于注册表
+# Verify skills in frontmatter exist in registry
 grep "skills:" -A 20 agents/<agent-name>.md
 
-# 检查智能体是否被任何团队引用
+# Check if agent is referenced by any team
 grep -r "<agent-name>" teams/*.md
 ```
 
@@ -148,16 +148,16 @@ grep -r "<agent-name>" teams/*.md
 #### 对于变体
 
 ```bash
-# 以原版为基础复制
+# Copy the original as a starting point
 cp agents/<agent-name>.md agents/<agent-name>-advanced.md
 
-# 编辑变体：
-# - 将 `name` 改为 `<agent-name>-advanced`
-# - 更新 `description` 反映高级范围
-# - 若需要提高 `model`（例如 sonnet → opus）
-# - 将 `version` 重置为 "1.0.0"
-# - 为高级用例扩展技能、能力和示例
-# - 在 See Also 中引用原版作为更简单的替代
+# Edit the variant:
+# - Change `name` to `<agent-name>-advanced`
+# - Update `description` to reflect the advanced scope
+# - Raise `model` if needed (e.g., sonnet → opus)
+# - Reset `version` to "1.0.0"
+# - Expand skills, capabilities, and examples for the advanced use case
+# - Reference the original in See Also as a simpler alternative
 ```
 
 **预期结果：** 智能体文件（完善版或新变体）通过第 1 步的评估检查清单。
@@ -171,7 +171,7 @@ cp agents/<agent-name>.md agents/<agent-name>-advanced.md
 检查此已演进智能体是否存在翻译，并将其更新以反映新的源状态：
 
 ```bash
-# 检查是否存在翻译
+# Check for existing translations
 ls i18n/*/agents/<agent-name>.md 2>/dev/null
 ```
 
@@ -245,7 +245,7 @@ npm run translation:status
 更新 `agents/_registry.yml` 中的现有条目以匹配修订的前置元数据：
 
 ```bash
-# 找到智能体的注册表条目
+# Find the agent's registry entry
 grep -A 10 "id: <agent-name>" agents/_registry.yml
 ```
 
@@ -254,10 +254,10 @@ grep -A 10 "id: <agent-name>" agents/_registry.yml
 若智能体的能力或名称发生变化，更新其他文件中的交叉引用：
 
 ```bash
-# 检查是否有团队引用此智能体
+# Check if any team references this agent
 grep -r "<agent-name>" teams/*.md
 
-# 检查是否有指南引用此智能体
+# Check if any guide references this agent
 grep -r "<agent-name>" guides/*.md
 ```
 
@@ -306,19 +306,19 @@ grep -r "<agent-name>" guides/*.md
 - [ ] `git diff` 显示无意外的原始内容删除
 
 ```bash
-# 验证前置元数据
+# Verify frontmatter
 head -20 agents/<agent-name>.md
 
-# 检查技能存在
+# Check skills exist
 for skill in skill-a skill-b; do
   grep "id: $skill" skills/_registry.yml
 done
 
-# 统计磁盘上的智能体数与注册表的对比
+# Count agents on disk vs registry
 ls agents/*.md | grep -v template | wc -l
 grep total_agents agents/_registry.yml
 
-# 审查所有更改
+# Review all changes
 git diff
 ```
 

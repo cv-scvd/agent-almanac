@@ -157,7 +157,7 @@ volumes:
 ```
 
 ```bash
-# Create network first (ShinyProxy spawns containers on this network)
+# Create the network first (ShinyProxy spawns containers on this network)
 docker network create shinyproxy-net
 
 # Start ShinyProxy

@@ -48,11 +48,11 @@ metadata:
 グローバル設定とスクレイプインターバルを含むベースのPrometheus設定を作成する。
 
 ```bash
-# Prometheusディレクトリ構造を作成
+# Create Prometheus directory structure
 mkdir -p /etc/prometheus/{rules,file_sd}
 mkdir -p /var/lib/prometheus
 
-# Prometheusのダウンロード（バージョンは必要に応じて調整）
+# Download Prometheus (adjust version as needed)
 cd /tmp
 wget https://github.com/prometheus/prometheus/releases/download/v2.48.0/prometheus-2.48.0.linux-amd64.tar.gz
 tar xvf prometheus-2.48.0.linux-amd64.tar.gz
@@ -258,13 +258,13 @@ groups:
 検証とリロード:
 
 ```bash
-# ルール構文を検証
+# Validate rules syntax
 promtool check rules /etc/prometheus/rules/recording_rules.yml
 
-# Prometheus設定をリロード（再起動なし）
+# Reload Prometheus configuration (without restart)
 curl -X POST http://localhost:9090/-/reload
 
-# またはSIGHUPシグナルを送信
+# Or send SIGHUP signal
 sudo killall -HUP prometheus
 ```
 

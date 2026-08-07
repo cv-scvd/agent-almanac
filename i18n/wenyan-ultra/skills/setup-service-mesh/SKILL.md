@@ -96,12 +96,14 @@ spec:
 
 **Istio：**
 ```bash
+# Label namespace for automatic injection
 kubectl label namespace default istio-injection=enabled
 kubectl get namespace -L istio-injection
 ```
 
 **Linkerd：**
 ```bash
+# Annotate namespace for injection
 kubectl annotate namespace default linkerd.io/inject=enabled
 ```
 
@@ -124,7 +126,7 @@ spec:
 ```bash
 kubectl apply -f test-deployment.yaml
 kubectl get pods -n default
-# Expect 2/2 containers
+# Expect 2/2 containers (app + proxy)
 ```
 
 得：新 pod 示 2/2 容（應 + 旁代）。述出含 istio-proxy 或 linkerd-proxy 容。日示成代啟。
@@ -155,12 +157,15 @@ spec:
 
 **Linkerd：**
 ```bash
+# Linkerd enforces mTLS by default for meshed pods
 linkerd viz tap deploy/test-app -n default
+# Check for 🔒 (lock) symbol
 ```
 
 施驗：
 ```bash
 kubectl apply -f mtls-policy.yaml
+# Istio: verify mTLS status
 istioctl authn tls-check $(kubectl get pod -n default -l app=test-app -o jsonpath='{.items[0].metadata.name}') -n default
 ```
 
@@ -209,8 +214,9 @@ spec:
 施測：
 ```bash
 kubectl apply -f traffic-management.yaml
+# Test traffic distribution
 for i in {1..100}; do curl -s http://api.example.com/api/v2 | grep version; done | sort | uniq -c
-istioctl dashboard kiali
+# Monitor: istioctl dashboard kiali or linkerd viz dashboard
 ```
 
 得：流按定權分。行斷後續誤跳。重於暫敗發。Kiali/Linkerd 板示流可視。
@@ -228,7 +234,7 @@ istioctl dashboard kiali
 
 **裝察附：**
 ```bash
-# Istio
+# Istio: Prometheus, Grafana, Kiali, Jaeger
 kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/prometheus.yaml
 kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/grafana.yaml
 kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/kiali.yaml
@@ -256,7 +262,7 @@ spec:
 
 達板：
 ```bash
-istioctl dashboard grafana
+istioctl dashboard grafana  # or: linkerd viz dashboard
 istioctl dashboard kiali
 istioctl dashboard jaeger
 ```
@@ -275,21 +281,21 @@ istioctl dashboard jaeger
 行全健察設續察。
 
 ```bash
-# Istio
+# Istio validation
 istioctl analyze --all-namespaces
 istioctl verify-install
 istioctl proxy-status
 
-# Linkerd
+# Linkerd validation
 linkerd check
 linkerd viz check
 linkerd diagnostics policy
 
-# Proxy sync
+# Check proxy sync status
 kubectl get pods -n production -o json | \
   jq '.items[] | {name: .metadata.name, proxy: .status.containerStatuses[] | select(.name=="istio-proxy").ready}'
 
-# Control plane health
+# Monitor control plane health
 kubectl get pods -n istio-system -w
 kubectl top pods -n istio-system
 ```
@@ -301,6 +307,7 @@ kubectl top pods -n istio-system
 echo "=== Service Mesh Health Check ==="
 kubectl get pods -n istio-system
 istioctl analyze --all-namespaces
+# See EXAMPLES.md Step 6 for complete health check script and alert configs
 ```
 
 得：諸析察過無警。proxy-status 示諸代同步。mTLS 察確加密。指示流通。控面 pod 穩低資。

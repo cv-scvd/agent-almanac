@@ -75,10 +75,10 @@ Indicadores comunes de desactualización:
 - Formatos de archivos de configuración que hayan evolucionado
 
 ```bash
-# Verificar referencias a versiones específicas
+# Check for version-specific references
 grep -nE '[vV][0-9]+\.[0-9]+' skills/<skill-name>/SKILL.md
 
-# Verificar URLs
+# Check for URLs
 grep -nE 'https?://' skills/<skill-name>/SKILL.md
 ```
 
@@ -130,12 +130,12 @@ Verificar que todas las referencias cruzadas en la sección de Habilidades Relac
 
 1. Para cada habilidad referenciada, verificar que existe:
    ```bash
-   # Verificar si la habilidad referenciada existe
+   # Check if referenced skill exists
    test -d skills/referenced-skill-name && echo "EXISTS" || echo "NOT FOUND"
    ```
 2. Buscar habilidades que hagan referencia a esta habilidad (deberían estar referenciadas cruzadamente):
    ```bash
-   # Encontrar habilidades que referencian esta habilidad
+   # Find skills that reference this skill
    grep -rl "skill-name" skills/*/SKILL.md
    ```
 3. Verificar habilidades relacionadas obvias basándose en el dominio y las etiquetas

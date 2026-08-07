@@ -51,10 +51,10 @@ Eine SKILL.md refaktorieren, die das 500-Zeilen-Limit ueberschritten hat oder st
 Den Skill lesen und ein abschnittsbezogenes Zeilenbudget erstellen, um zu identifizieren, wo die Aufblaehung liegt.
 
 ```bash
-# Gesamte Zeilenzahl
+# Total line count
 wc -l < skills/<skill-name>/SKILL.md
 
-# Zeilenzahl pro Abschnitt (ungefaehr)
+# Line count per section (approximate)
 grep -n "^## \|^### " skills/<skill-name>/SKILL.md
 ```
 
@@ -155,18 +155,18 @@ Querverweis-Muster:
 Die SKILL.md-Zeilenzahl nach allen Aenderungen neu messen.
 
 ```bash
-# Haupt-SKILL.md pruefen
+# Check main SKILL.md
 lines=$(wc -l < skills/<skill-name>/SKILL.md)
-[ "$lines" -le 500 ] && echo "SKILL.md: OK ($lines Zeilen)" || echo "SKILL.md: NOCH DRÜBER ($lines Zeilen)"
+[ "$lines" -le 500 ] && echo "SKILL.md: OK ($lines lines)" || echo "SKILL.md: STILL OVER ($lines lines)"
 
-# References-Datei pruefen falls erstellt
+# Check references file if created
 if [ -f skills/<skill-name>/references/EXAMPLES.md ]; then
   ref_lines=$(wc -l < skills/<skill-name>/references/EXAMPLES.md)
-  echo "EXAMPLES.md: $ref_lines Zeilen"
+  echo "EXAMPLES.md: $ref_lines lines"
 fi
 
-# Gesamter Inhalt
-echo "Gesamter Inhalt: $((lines + ${ref_lines:-0})) Zeilen"
+# Total content
+echo "Total content: $((lines + ${ref_lines:-0})) lines"
 ```
 
 **Erwartet:** SKILL.md ist unter 500 Zeilen. Idealerweise unter 400 Zeilen, um Raum fuer zukuenftiges Wachstum zu lassen. Fuer `references/EXAMPLES.md` gibt es kein Zeilenlimit.
@@ -184,11 +184,11 @@ Die `review-skill-format`-Checkliste ausfuehren:
 4. Keine verwaisten Querverweise (alle Links loesen sich auf)
 
 ```bash
-# Schnelle Abschnitts-Pruefung
+# Quick section check
 for section in "## When to Use" "## Inputs" "## Procedure" "## Common Pitfalls" "## Related Skills"; do
-  grep -q "$section" skills/<skill-name>/SKILL.md && echo "$section: OK" || echo "$section: FEHLT"
+  grep -q "$section" skills/<skill-name>/SKILL.md && echo "$section: OK" || echo "$section: MISSING"
 done
-grep -qE "## Validation( Checklist)?" skills/<skill-name>/SKILL.md && echo "Validation: OK" || echo "Validation: FEHLT"
+grep -qE "## Validation( Checklist)?" skills/<skill-name>/SKILL.md && echo "Validation: OK" || echo "Validation: MISSING"
 ```
 
 **Erwartet:** Alle Abschnitte vorhanden. Kein Inhalt wurde bei der Auslagerung versehentlich geloescht. Querverweise in SKILL.md loesen sich zu tatsaechlichen Ueberschriften in EXAMPLES.md auf.

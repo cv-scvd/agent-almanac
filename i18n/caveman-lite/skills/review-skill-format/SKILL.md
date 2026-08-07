@@ -130,7 +130,7 @@ Required sections:
 
 ```bash
 # Check each required section
-for section in "## When to Use" "## Inputs" "## Procedure" "## Pitfalls" "## Related Skills"; do
+for section in "## When to Use" "## Inputs" "## Procedure" "## Common Pitfalls" "## Related Skills"; do
   grep -q "$section" skills/<skill-name>/SKILL.md && echo "$section: OK" || echo "$section: MISSING"
 done
 

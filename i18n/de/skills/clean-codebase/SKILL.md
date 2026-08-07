@@ -55,16 +55,16 @@ Diesen Skill verwenden wenn eine Codebasis Hygieneschulden angehaeuft hat:
 Den aktuellen Zustand messen um Verbesserungen spaeter zu quantifizieren.
 
 ```bash
-# Lint-Warnungen nach Schweregrad zaehlen
+# Count lint warnings by severity
 lint_tool --format json > lint_before.json
 
-# Codezeilen zaehlen
+# Count lines of code
 cloc . --json > cloc_before.json
 
-# Ungenutzte Symbole auflisten (sprachabhaengig)
-# JavaScript/TypeScript: ts-prune oder depcheck
+# List unused symbols (language-dependent)
+# JavaScript/TypeScript: ts-prune or depcheck
 # Python: vulture
-# R: lintr-Pruefung ungenutzter Funktionen
+# R: lintr unused function checks
 ```
 
 **Erwartet:** Ausgangskennzahlen in `lint_before.json` und `cloc_before.json` gespeichert
@@ -148,7 +148,7 @@ autoflake --remove-all-unused-imports --in-place --recursive .
 
 **R**:
 ```bash
-# Manuelle Pruefung: nach library()-Aufrufen suchen, pruefen ob Paket verwendet wird
+# Manual review: grep for library() calls, check if package used
 grep -r "library(" . | cut -d: -f2 | sort | uniq
 ```
 
@@ -187,7 +187,7 @@ Konsistente Formatierung ueber alle Dateien sicherstellen (auch wenn nicht von L
 4. Einrueckung normalisieren (Leerzeichen vs Tabs, Einrueckungstiefe)
 
 ```bash
-# Beispiel: Zeilenenden und nachfolgende Leerzeichen beheben
+# Example: Fix line endings and trailing whitespace
 find . -type f -name "*.js" -exec sed -i 's/\r$//' {} +
 find . -type f -name "*.js" -exec sed -i 's/[[:space:]]*$//' {} +
 ```
@@ -201,7 +201,7 @@ find . -type f -name "*.js" -exec sed -i 's/[[:space:]]*$//' {} +
 Validieren dass die Bereinigung die Funktionalitaet nicht beeintraechtigt hat.
 
 ```bash
-# Sprachspezifischer Testbefehl
+# Language-specific test command
 npm test              # JavaScript
 pytest                # Python
 R CMD check           # R

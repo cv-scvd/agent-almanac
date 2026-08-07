@@ -117,7 +117,7 @@ Wenn Tests fehlschlagen:
 4. Bei Fehlererrors pruefen ob sich eine Funktionssignatur geaendert hat
 
 ```bash
-# Nur den fehlschlagenden Test mit ausfuehrlicher Ausgabe ausfuehren
+# Run just the failing test with verbose output
 "$R_EXE" -e "testthat::test_file('tests/testthat/test-failing.R', reporter = 'summary')"
 ```
 

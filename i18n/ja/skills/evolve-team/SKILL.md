@@ -66,16 +66,16 @@ metadata:
 | See Also | メンバーエージェント、関連チーム、ガイドへの有効なリンク | 古いリンク |
 
 ```bash
-# チームファイルを読む
+# Read the team file
 cat teams/<team-name>.md
 
-# すべてのメンバーエージェントが依然として存在することを確認
+# Verify all member agents still exist
 grep "id:" teams/<team-name>.md | while read line; do
   agent=$(echo "$line" | grep -oP '(?<=id: )[\w-]+')
   grep "id: $agent" agents/_registry.yml || echo "MISSING: $agent"
 done
 
-# チームがいずれかのガイドで参照されているか確認
+# Check if the team is referenced by any guide
 grep -r "<team-name>" guides/*.md
 ```
 
@@ -167,16 +167,16 @@ grep -r "<team-name>" guides/*.md
 #### バリアントの場合
 
 ```bash
-# 出発点として元をコピー
+# Copy the original as a starting point
 cp teams/<team-name>.md teams/<team-name>-<specialty>.md
 
-# バリアントを編集:
-# - `name` を `<team-name>-<specialty>` に変更
-# - `description` を専門化されたスコープを反映するように更新
-# - 必要に応じて `coordination` パターンを調整
-# - `version` を "1.0.0" にリセット
-# - 専門化されたユースケース向けにメンバー、タスク、CONFIGブロックを変更
-# - 汎用的な代替としてSee Alsoで元を参照
+# Edit the variant:
+# - Change `name` to `<team-name>-<specialty>`
+# - Update `description` to reflect the specialized scope
+# - Adjust `coordination` pattern if needed
+# - Reset `version` to "1.0.0"
+# - Modify members, tasks, and CONFIG block for the specialized use case
+# - Reference the original in See Also as a general-purpose alternative
 ```
 
 **期待結果：** チームファイル（改良版または新しいバリアント）がステップ1の評価チェックリストをパスし、すべてのセクションが内部的に一貫している。
@@ -190,7 +190,7 @@ cp teams/<team-name>.md teams/<team-name>-<specialty>.md
 進化したチームの翻訳が存在するかどうかを確認し、新しいソース状態を反映するように更新する:
 
 ```bash
-# 既存の翻訳を確認する
+# Check for existing translations
 ls i18n/*/teams/<team-name>.md 2>/dev/null
 ```
 
@@ -296,7 +296,7 @@ team:
 `teams/_registry.yml` の既存エントリを修正されたフロントマターと一致するように更新します：
 
 ```bash
-# チームのレジストリエントリを見つける
+# Find the team's registry entry
 grep -A 10 "id: <team-name>" teams/_registry.yml
 ```
 
@@ -351,19 +351,19 @@ npm run update-readmes
 - [ ] `git diff` に元のコンテンツからの意図しない削除がない
 
 ```bash
-# フロントマターを確認
+# Verify frontmatter
 head -25 teams/<team-name>.md
 
-# すべてのメンバーエージェントが存在することを確認
+# Verify all member agents exist
 for agent in agent-a agent-b agent-c; do
   grep "id: $agent" agents/_registry.yml
 done
 
-# ディスク上のチーム数 vs レジストリ
+# Count teams on disk vs registry
 ls teams/*.md | grep -v template | wc -l
 grep total_teams teams/_registry.yml
 
-# すべての変更を確認
+# Review all changes
 git diff
 ```
 
