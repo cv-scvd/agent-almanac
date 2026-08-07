@@ -71,7 +71,7 @@ linkerd check
 
 リソース制限とトレーシングを含むサービスメッシュ設定を作成します：
 ```yaml
-# service-mesh-config.yaml（省略版）
+# service-mesh-config.yaml (abbreviated)
 spec:
   profile: production
   meshConfig:
@@ -80,7 +80,7 @@ spec:
     pilot:
       k8s:
         resources: { requests: { cpu: 500m, memory: 2Gi } }
-# 完全な設定はEXAMPLES.md ステップ1を参照
+# See EXAMPLES.md Step 1 for complete configuration
 ```
 
 **期待結果：** コントロールプレーンのPodがistio-system（Istio）またはlinkerd（Linkerd）Namespaceで稼働中。`istioctl version`または`linkerd version`がクライアントとサーバーの一致するバージョンを表示。
@@ -110,7 +110,7 @@ kubectl annotate namespace default linkerd.io/inject=enabled
 
 サンプルデプロイでサイドカーインジェクションをテストします：
 ```yaml
-# test-deployment.yaml（省略版）
+# test-deployment.yaml (abbreviated)
 apiVersion: apps/v1
 kind: Deployment
 spec:
@@ -120,7 +120,7 @@ spec:
       containers:
       - name: app
         image: nginx:alpine
-# 完全なテストデプロイはEXAMPLES.md ステップ2を参照
+# See EXAMPLES.md Step 2 for complete test deployment
 ```
 
 適用して確認します：
@@ -144,7 +144,7 @@ kubectl get pods -n default
 
 **Istioの場合：**
 ```yaml
-# mtls-policy.yaml（省略版）
+# mtls-policy.yaml (abbreviated)
 apiVersion: security.istio.io/v1beta1
 kind: PeerAuthentication
 metadata:
@@ -153,7 +153,7 @@ metadata:
 spec:
   mtls:
     mode: STRICT
-# Namespace単位とpermissiveモードの例はEXAMPLES.md ステップ3を参照
+# See EXAMPLES.md Step 3 for per-namespace and permissive mode examples
 ```
 
 **Linkerdの場合：**
@@ -184,7 +184,7 @@ istioctl authn tls-check $(kubectl get pod -n default -l app=test-app -o jsonpat
 
 トラフィック管理ポリシーを作成します：
 ```yaml
-# traffic-management.yaml（省略版）
+# traffic-management.yaml (abbreviated)
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
 spec:
@@ -197,7 +197,7 @@ spec:
     - destination: { host: api-service, subset: v1 }
       weight: 90
     retries: { attempts: 3, perTryTimeout: 2s }
-# 完全なルーティング、サーキットブレーカー、ゲートウェイ設定はEXAMPLES.md ステップ4を参照
+# See EXAMPLES.md Step 4 for complete routing, circuit breaker, and gateway configs
 ```
 
 **Linkerdのトラフィック分割：**
@@ -249,7 +249,7 @@ linkerd jaeger install | kubectl apply -f -
 
 カスタムメトリクスとダッシュボードを設定します：
 ```yaml
-# service-monitor.yaml（省略版）
+# service-monitor.yaml (abbreviated)
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -259,7 +259,7 @@ spec:
   endpoints:
   - port: http-monitoring
     interval: 30s
-# GrafanaダッシュボードとテレメトリはEXAMPLES.md ステップ5を参照
+# See EXAMPLES.md Step 5 for Grafana dashboards and telemetry config
 ```
 
 ダッシュボードへアクセスします：

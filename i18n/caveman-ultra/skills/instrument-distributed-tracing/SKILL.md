@@ -106,7 +106,7 @@ server:
 distributor:
   receivers:
     jaeger:
-# ... (see EXAMPLES.md)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **Prod w/ S3 storage**:
@@ -408,7 +408,7 @@ metrics_generator:
     external_labels:
       cluster: production
   storage:
-# ... (see EXAMPLES.md)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 Prometheus metrics produced:

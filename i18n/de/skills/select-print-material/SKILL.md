@@ -275,7 +275,7 @@ print_speed: 50mm/s
 retraction_distance: 4.5mm
 retraction_speed: 40mm/s
 cooling: 50% (after layer 3)
-notes: "Maessiges Stringing, Z-hop hilft. 6h bei 65°C getrocknet."
+notes: "Strings moderately, Z-hop helps. Dried 6h at 65°C."
 ```
 
 **SLA-Einstellungsvorlage**:
@@ -287,7 +287,7 @@ exposure_time: 6s
 bottom_exposure: 40s
 lift_distance: 6mm
 lift_speed: 65mm/min
-notes: "Nachhaerten 15min bei 60°C fuer volle Festigkeit. Ohne Haertung sproede."
+notes: "Post-cure 15min at 60°C for full strength. Brittle without cure."
 ```
 
 **Erwartet:** Einstellungen in Projektnotizen oder Slicer-Profilbibliothek dokumentiert.

@@ -98,7 +98,7 @@ Solución: Usar variables de entorno en lugar de argumentos `--header`:
   "hf-mcp-server": {
     "command": "mcp-remote",
     "args": ["https://huggingface.co/mcp"],
-    "env": { "HF_TOKEN": "tu_token" }
+    "env": { "HF_TOKEN": "your_token" }
   }
 }
 ```

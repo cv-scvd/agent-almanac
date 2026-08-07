@@ -260,10 +260,10 @@ team:
   tasks:
     - name: <task-name>
       assignee: <agent-id>
-      description: <einzeilig>
+      description: <one-line>
     - name: synthesize-results
       assignee: <lead-agent>
-      description: Alle Mitglieder-Ausgaben sammeln und synthetisieren
+      description: Collect and synthesize all member outputs
       blocked_by: [<prior-task-names>]
 ```
 
@@ -314,7 +314,7 @@ Das neue Team zu `teams/_registry.yml` hinzufuegen:
   lead: <lead-agent>
   members: [agent-1, agent-2, agent-3]
   coordination: <pattern>
-  description: Einzeilige Beschreibung der spezialisierten Variante
+  description: One-line description of the specialized variant
 ```
 
 Dann:

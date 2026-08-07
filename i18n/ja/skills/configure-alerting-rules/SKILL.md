@@ -65,7 +65,7 @@ services:
       - "9093:9093"
     volumes:
       - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml
-    # ... (完全な設定はEXAMPLES.mdを参照)
+    # ... (see EXAMPLES.md for complete configuration)
 ```
 
 **基本的なAlertmanager設定**（`alertmanager.yml`の抜粋）：
@@ -87,7 +87,7 @@ route:
         severity: critical
       receiver: pagerduty-critical
 
-# ... (完全なルーティング、インヒビションルール、レシーバーはEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete routing, inhibition rules, and receivers)
 ```
 
 **AlertmanagerをPrometheusに設定**（`prometheus.yml`）：
@@ -139,7 +139,7 @@ groups:
           severity: warning
         annotations:
           summary: "High CPU usage on {{ $labels.instance }}"
-          # ... (完全なアラートはEXAMPLES.mdを参照)
+          # ... (see EXAMPLES.md for complete alerts)
 ```
 
 **アラート設計のベストプラクティス**：
@@ -238,7 +238,7 @@ route:
           repeat_interval: 15m
           continue: true   # Also send to Slack
 
-# ... (時間間隔付きの完全なルーティングはEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete routing with time intervals)
 ```
 
 **グルーピング戦略**：
@@ -281,7 +281,7 @@ inhibit_rules:
       alertname: '(HighLatency|HighErrorRate)'
     equal: ['service', 'namespace']
 
-# ... (その他のインヒビションパターンはEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for more inhibition patterns)
 ```
 
 **サイレンスをプログラムで作成**：
@@ -322,7 +322,7 @@ receivers:
         details:
           firing: '{{ .Alerts.Firing | len }}'
           alertname: '{{ .GroupLabels.alertname }}'
-        # ... (完全な統合例はEXAMPLES.mdを参照)
+        # ... (see EXAMPLES.md for complete integration examples)
 ```
 
 **カスタム統合のためのWebhook**：

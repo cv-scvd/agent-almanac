@@ -134,7 +134,7 @@ server:
   http_listen_port: 3100
   grpc_listen_port: 9096
 
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 S3ストレージを使用した**本番環境**向け：
@@ -172,7 +172,7 @@ server:
 
 positions:
   filename: /tmp/positions.yaml
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 Promtailの主要な概念：
@@ -399,7 +399,7 @@ compactor:
   compaction_interval: 10m
   retention_enabled: true
   retention_delete_delay: 2h
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 複数のルールが一致する場合の優先度（数字が小さいほど優先度が高い）。
@@ -413,7 +413,7 @@ chunk_store_config:
     fifocache:
       max_size_bytes: 1GB
       ttl: 24h
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **保持の監視**：

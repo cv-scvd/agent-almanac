@@ -350,7 +350,7 @@ metadata:
   name: myapp-ingress
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
-# ... (see EXAMPLES.md)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 → cert-manager obtains cert from Let's Encrypt. TLS secret created w/ valid cert + private key. Cert auto-renews before expiration. Ingress uses for HTTPS termination.
@@ -403,7 +403,7 @@ kind: Namespace
 metadata:
   name: production
 ---
-# ... (see EXAMPLES.md)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 Test RBAC:

@@ -177,16 +177,16 @@ El bloque CONFIG entre los marcadores `<!-- CONFIG:START -->` y `<!-- CONFIG:END
         - agent: <agent-id>
           role: <role-title>
           subagent_type: <agent-id>  # Claude Code subagent type for spawning
-        # ... repetir para cada miembro
+        # ... repeat for each member
       tasks:
         - name: <task-name>
           assignee: <agent-id>
           description: <one-line description>
-        # ... repetir para cada tarea
-        - name: synthesize-report  # tarea final si hub-and-spoke
+        # ... repeat for each task
+        - name: synthesize-report  # final task if hub-and-spoke
           assignee: <lead-agent-id>
           description: <synthesis description>
-          blocked_by: [<prior-task-names>]  # para ordenación de dependencias
+          blocked_by: [<prior-task-names>]  # for dependency ordering
     ```
     <!-- CONFIG:END -->
 

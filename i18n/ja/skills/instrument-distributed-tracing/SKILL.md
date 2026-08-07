@@ -109,7 +109,7 @@ server:
 distributor:
   receivers:
     jaeger:
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **S3ストレージを使用した本番環境**：
@@ -411,7 +411,7 @@ metrics_generator:
     external_labels:
       cluster: production
   storage:
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 これにより以下のPrometheusメトリクスが生成される：

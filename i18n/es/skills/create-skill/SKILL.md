@@ -77,11 +77,11 @@ Convenciones de nomenclatura:
 ---
 name: skill-name-here
 description: >
-  Una a tres oraciones más los disparadores clave de activación. Debe ser
-  suficientemente claro para que un agente decida si activar esta habilidad
-  solo a partir de la descripción. Máx. 1024 caracteres. Comenzar con un verbo.
+  One to three sentences plus key activation triggers. Must be clear
+  enough for an agent to decide whether to activate this skill from
+  the description alone. Max 1024 characters. Start with a verb.
 license: MIT
-allowed-tools: Read Write Edit Bash Grep Glob  # opcional, experimental
+allowed-tools: Read Write Edit Bash Grep Glob  # optional, experimental
 metadata:
   author: Philipp Thoss
   version: "1.0"

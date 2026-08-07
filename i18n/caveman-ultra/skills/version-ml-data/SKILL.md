@@ -286,11 +286,6 @@ GitHub Actions CI/CD:
 ```yaml
 # .github/workflows/ml-pipeline.yml
 name: ML Pipeline
-locale: caveman-ultra
-source_locale: en
-source_commit: 82c77053
-translator: "Julius Brussee homage — caveman"
-translation_date: "2026-04-19"
 
 on:
   push:

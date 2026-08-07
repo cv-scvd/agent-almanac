@@ -115,11 +115,6 @@ Create a multi-node cluster with ingress and local registry support.
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 name: dev-cluster
-locale: caveman-lite
-source_locale: en
-source_commit: 82c77053
-translator: "Julius Brussee homage — caveman"
-translation_date: "2026-04-19"
 nodes:
 - role: control-plane
   extraPortMappings:

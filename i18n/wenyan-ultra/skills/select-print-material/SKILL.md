@@ -254,7 +254,7 @@ exposure_time: 6s
 bottom_exposure: 40s
 lift_distance: 6mm
 lift_speed: 65mm/min
-notes: "Post-cure 15min at 60°C for full strength."
+notes: "Post-cure 15min at 60°C for full strength. Brittle without cure."
 ```
 
 得：設文於項註或切片器庫。

@@ -63,6 +63,7 @@ docker run -d \
 Kubernetes 釋：
 
 ```yaml
+# blackbox-exporter-deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -113,7 +114,9 @@ spec:
 建 `blackbox.yml` 含諸探型：
 
 ```yaml
+# blackbox.yml
 modules:
+  # Basic HTTP 200 check
   http_2xx:
     prober: http
     timeout: 5s
@@ -123,6 +126,7 @@ modules:
       follow_redirects: true
       preferred_ip_protocol: "ip4"
 
+  # HTTP with authentication
   http_2xx_auth:
     prober: http
     timeout: 5s
@@ -132,6 +136,7 @@ modules:
       headers:
         Authorization: "Bearer ${AUTH_TOKEN}"
 
+  # API health check (expects JSON response)
   http_json_health:
     prober: http
     timeout: 5s
@@ -141,6 +146,7 @@ modules:
       fail_if_body_not_matches_regexp:
         - '"status":"healthy"'
 
+  # SSL certificate check
   http_2xx_ssl:
     prober: http
     timeout: 5s
@@ -151,18 +157,21 @@ modules:
         insecure_skip_verify: false
       fail_if_ssl_not_present: true
 
+  # TCP port check (e.g., database)
   tcp_connect:
     prober: tcp
     timeout: 5s
     tcp:
       preferred_ip_protocol: "ip4"
 
+  # ICMP ping
   icmp:
     prober: icmp
     timeout: 5s
     icmp:
       preferred_ip_protocol: "ip4"
 
+  # DNS resolution check
   dns_google:
     prober: dns
     timeout: 5s
@@ -191,11 +200,14 @@ kubectl create configmap blackbox-exporter-config \
 加 Blackbox 標於 Prometheus 配：
 
 ```yaml
+# prometheus.yml
 scrape_configs:
+  # Blackbox exporter itself
   - job_name: 'blackbox-exporter'
     static_configs:
       - targets: ['blackbox-exporter:9115']
 
+  # HTTP endpoint checks
   - job_name: 'blackbox-http'
     metrics_path: /probe
     params:
@@ -213,6 +225,7 @@ scrape_configs:
       - target_label: __address__
         replacement: blackbox-exporter:9115
 
+  # SSL certificate expiry checks
   - job_name: 'blackbox-ssl'
     metrics_path: /probe
     params:
@@ -229,6 +242,7 @@ scrape_configs:
       - target_label: __address__
         replacement: blackbox-exporter:9115
 
+  # TCP connectivity checks (databases, etc.)
   - job_name: 'blackbox-tcp'
     metrics_path: /probe
     params:
@@ -263,6 +277,7 @@ kubectl rollout restart deployment/prometheus -n monitoring
 定警則：
 
 ```yaml
+# uptime-alerts.yml
 groups:
   - name: uptime
     interval: 30s
@@ -365,6 +380,7 @@ curl -X POST https://api.statuspage.io/v1/pages/PAGE_ID/incidents \
 選乙：自託 Cachet：
 
 ```yaml
+# docker-compose.yml for Cachet
 version: '3'
 services:
   cachet:

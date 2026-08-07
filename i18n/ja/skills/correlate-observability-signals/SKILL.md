@@ -411,7 +411,7 @@ GrafanaでLokiデータソースを設定する:
     "templating": {
       "list": [
         {
-# ... (完全な設定はEXAMPLES.mdを参照)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 インシデント中のワークフロー:

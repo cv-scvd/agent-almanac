@@ -312,7 +312,7 @@ grep -A 10 "id: <team-name>" teams/_registry.yml
   lead: <lead-agent>
   members: [agent-1, agent-2, agent-3]
   coordination: <pattern>
-  description: 専門化されたバリアントの一行説明
+  description: One-line description of the specialized variant
 ```
 
 次に：

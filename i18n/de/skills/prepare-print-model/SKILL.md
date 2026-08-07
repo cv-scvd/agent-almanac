@@ -248,20 +248,20 @@ Verfahrensgerechte Parameter einstellen:
 **FDM**:
 ```yaml
 layer_height: 0.2mm
-line_width: 0.4mm (= Duesendurchmesser)
-perimeters: 3-4 (strukturell), 2 (kosmetisch)
-top_bottom_layers: 5 (0.2mm Schichten = 1mm Vollmaterial)
-infill_percentage: 20% (kosmetisch), 40-60% (funktional)
-infill_pattern: gyroid (FDM), grid (einfach)
-print_speed: 50mm/s Perimeter, 80mm/s Fuellung
-temperature: materialspezifisch (siehe select-print-material Skill)
+line_width: 0.4mm (= nozzle diameter)
+perimeters: 3-4 (structural), 2 (cosmetic)
+top_bottom_layers: 5 (0.2mm layers = 1mm solid)
+infill_percentage: 20% (cosmetic), 40-60% (functional)
+infill_pattern: gyroid (FDM), grid (basic)
+print_speed: 50mm/s perimeter, 80mm/s infill
+temperature: material-specific (see select-print-material skill)
 ```
 
 **SLA**:
 ```yaml
 layer_height: 0.05mm
-bottom_layers: 6-8 (starke Betthaftung)
-exposure_time: materialspezifisch (2-8s pro Schicht)
+bottom_layers: 6-8 (strong bed adhesion)
+exposure_time: material-specific (2-8s per layer)
 bottom_exposure_time: 30-60s
 lift_speed: 60-80mm/min
 retract_speed: 150-180mm/min

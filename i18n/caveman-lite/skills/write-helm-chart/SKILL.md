@@ -99,11 +99,6 @@ cd my-app
 # Chart.yaml (excerpt - see EXAMPLES.md for complete file)
 apiVersion: v2
 name: my-app
-locale: caveman-lite
-source_locale: en
-source_commit: 82c77053
-translator: "Julius Brussee homage — caveman"
-translation_date: "2026-04-19"
 description: A Helm chart for deploying my-app to Kubernetes
 version: 0.1.0
 appVersion: "1.0.0"

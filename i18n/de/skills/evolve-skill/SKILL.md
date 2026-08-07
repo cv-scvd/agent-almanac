@@ -254,7 +254,7 @@ Den neuen Skill zu `skills/_registry.yml` hinzufuegen:
   path: <skill-name>-advanced/SKILL.md
   complexity: advanced
   language: multi
-  description: Einzeilige Beschreibung der fortgeschrittenen Variante
+  description: One-line description of the advanced variant
 ```
 
 Dann:

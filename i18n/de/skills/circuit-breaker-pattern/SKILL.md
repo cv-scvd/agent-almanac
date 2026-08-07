@@ -61,44 +61,44 @@ Dokumentieren, was jedes Tool bereitstellt und welche Alternativen existieren. D
 ```yaml
 capability_map:
   - tool: Grep
-    provides: Inhaltssuche ueber Dateien
+    provides: content search across files
     alternatives:
       - tool: Bash
-        method: "rg oder grep Befehl"
-        degradation: "verliert Greps eingebaute Ausgabeformatierung"
+        method: "rg or grep command"
+        degradation: "loses Grep's built-in output formatting"
       - tool: Read
-        method: "vermutete Dateien direkt lesen"
-        degradation: "erfordert zu wissen welche Dateien zu pruefen; keine breite Suche"
-    fallback: "Nutzer fragen, welche Dateien untersucht werden sollen"
+        method: "read suspected files directly"
+        degradation: "requires knowing which files to check; no broad search"
+    fallback: "ask the user which files to examine"
 
   - tool: Bash
-    provides: Befehlsausfuehrung, Build-Tools, Git-Operationen
+    provides: command execution, build tools, git operations
     alternatives: []
-    fallback: "Befehle berichten, die manuell ausgefuehrt werden muessen"
+    fallback: "report commands that need to be run manually"
 
   - tool: Read
-    provides: Dateiinhalt-Inspektion
+    provides: file content inspection
     alternatives:
       - tool: Bash
-        method: "cat oder head Befehl"
-        degradation: "verliert Zeilennummerierung und Kuerzungssicherheit"
-    fallback: "Nutzer bitten, Dateiinhalte einzufuegen"
+        method: "cat or head command"
+        degradation: "loses line numbering and truncation safety"
+    fallback: "ask the user to paste file contents"
 
   - tool: Write
-    provides: Dateierstellung
+    provides: file creation
     alternatives:
       - tool: Edit
-        method: "ueber vollstaendige Datei-Edit erstellen"
-        degradation: "erfordert, dass die Datei bereits fuer Edit existiert"
+        method: "create via full-file edit"
+        degradation: "requires file to already exist for Edit"
       - tool: Bash
         method: "echo/cat heredoc"
-        degradation: "verliert Writes atomare Dateierstellung"
-    fallback: "Dateiinhalte ausgeben, damit Nutzer manuell speichert"
+        degradation: "loses Write's atomic file creation"
+    fallback: "output file contents for the user to save manually"
 
   - tool: WebSearch
-    provides: Externe Informationsabfrage
+    provides: external information retrieval
     alternatives: []
-    fallback: "Benoettigte Informationen benennen; Nutzer bitten sie bereitzustellen"
+    fallback: "state what information is needed; ask user to provide it"
 ```
 
 Fuer jedes Tool dokumentieren:

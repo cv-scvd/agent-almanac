@@ -210,11 +210,6 @@ Run `tools/check-redaction.sh` on every commit to the public-sync branch. A fail
 ```yaml
 # .github/workflows/redaction-check.yml (in the public mirror repo)
 name: redaction-check
-locale: caveman-lite
-source_locale: en
-source_commit: 82c77053
-translator: "Julius Brussee homage — caveman"
-translation_date: "2026-04-26"
 on:
   push:
     branches: [main, publish-*]

@@ -197,18 +197,18 @@ Sofortloesungen fuer gaengige Probleme umsetzen:
 
 **Einzugs-Tuning**:
 ```yaml
-# Direktantrieb-Extruder:
+# Direct drive extruder:
 retraction_distance: 1.0-2.0mm
 retraction_speed: 40-50mm/s
 
-# Bowden-Extruder:
+# Bowden extruder:
 retraction_distance: 4.0-6.0mm
 retraction_speed: 40-60mm/s
 
-# Wenn Fadenziehen bestehen bleibt:
-- Z-Hop aktivieren: 0.2-0.4mm (hebt Duese bei Fahrwegen an)
-- Fahrgeschwindigkeit reduzieren (hilft paradoxerweise)
-- Combing-Modus aktivieren (Fahrwege innerhalb der Fuellung)
+# If stringing persists:
+- Enable z-hop: 0.2-0.4mm (lifts nozzle during travel)
+- Reduce travel speed (paradoxically helps)
+- Enable combing mode (travels within infill)
 ```
 
 **Erwartet:** Minimales Fadenziehen, duenne Faeden leicht von Hand entfernbar.
@@ -235,11 +235,11 @@ retraction_speed: 40-60mm/s
 
 **Geschwindigkeitsreduzierung**:
 ```yaml
-# Diese Geschwindigkeiten reduzieren:
-perimeter_speed: 40mm/s (von 50)
-travel_speed: 120mm/s (von 150)
-acceleration: 500mm/s² (von 1000)
-jerk: 8mm/s (von 15)
+# Reduce these speeds:
+perimeter_speed: 40mm/s (from 50)
+travel_speed: 120mm/s (from 150)
+acceleration: 500mm/s² (from 1000)
+jerk: 8mm/s (from 15)
 ```
 
 **Erwartet:** Keine Schichtversetzungen im Neudruck mit gespannten Riemen und reduzierten Geschwindigkeiten.
@@ -250,19 +250,19 @@ jerk: 8mm/s (von 15)
 
 **Waermemanagement**:
 ```yaml
-# Betttemperatur erhoehen:
+# Increase bed temperature:
 PLA: 60°C → 65°C
 PETG: 80°C → 85°C
 ABS: 100°C → 110°C
 
-# Teilekuehlung deaktivieren/reduzieren:
+# Disable/reduce part cooling:
 first_layer_fan: 0%
 regular_fan: 25% max (ABS), 50% (PETG), 100% (PLA)
 
-# Drucker einhausen (kritisch fuer ABS/ASA):
-# - Karton (temporaer)
-# - Acrylplatten (permanent)
-# - Ziel-Bauraumtemperatur: 40-50 Grad C
+# Enclose printer (critical for ABS/ASA):
+- Cardboard box (temporary)
+- Acrylic panels (permanent)
+- Target chamber temp: 40-50°C
 ```
 
 **Haftungsverbesserung**:
@@ -310,13 +310,13 @@ regular_fan: 25% max (ABS), 50% (PETG), 100% (PLA)
 
 **Durchflussraten-Reduzierung**:
 ```yaml
-# Durchfluss in 2%-Schritten reduzieren:
+# Reduce flow in 2% increments:
 extrusion_multiplier: 0.98 → 0.96 → 0.94
 
-# Zeichen fuer korrekten Durchfluss:
-- Glatte obere Oberflaeche (nicht uebergefuellt)
-- Perimeter woelben sich nicht nach aussen
-- Fuellung ueberfuellt nicht und drueckt Schichten nicht auseinander
+# Signs of correct flow:
+- Smooth top surface (not overstuffed)
+- Perimeters don't bulge outward
+- Infill doesn't overfill and push layers apart
 ```
 
 **Massgenauigkeitstest**:
@@ -354,17 +354,17 @@ Erfolgreiche Korrektur fuer zukuenftige Referenz festhalten:
 **Problemprotokoll-Vorlage**:
 ```yaml
 date: 2026-02-16
-issue: "Schichtversatz bei 50mm Hoehe"
-symptoms: "X-Achse versetzt sich um 10mm, passiert konsistent bei gleicher Hoehe"
+issue: "Layer shifts at 50mm height"
+symptoms: "X-axis shifts 10mm, happens consistently at same height"
 printer: "Ender 3 V2"
 material: "PETG, PolyMaker PolyLite"
-root_cause: "Loser X-Achsen-Riemen, Riemenscheiben-Madenschraube nicht auf Abflachung"
+root_cause: "Loose X-axis belt, pulley set screw not on flat"
 solution:
-  - "X-Achsen-Riemen auf 120Hz Resonanz gespannt"
-  - "Riemenscheiben-Madenschraube auf Motorwellen-Abflachung ausgerichtet"
-  - "Druckgeschwindigkeit auf 40mm/s Perimeter reduziert"
-verification: "100mm Testzylinder gedruckt - keine Versetzungen"
-notes: "Riemenspannung monatlich pruefen, Riemenscheibe neigt zum Verrutschen"
+  - "Tightened X-axis belt to 120Hz resonance"
+  - "Realigned pulley set screw on motor shaft flat"
+  - "Reduced print speed to 40mm/s perimeter"
+verification: "Printed 100mm test cylinder - no shifts"
+notes: "Check belt tension monthly, pulley tends to slip"
 ```
 
 **Erwartet:** Problem mit Grundursache und Loesung fuer Wissensdatenbank dokumentiert.

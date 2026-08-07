@@ -69,22 +69,27 @@ global:
     cluster: 'production'
     region: 'us-east-1'
 
+# Alertmanager configuration
 alerting:
   alertmanagers:
     - static_configs:
         - targets:
             - localhost:9093
 
+# Load recording and alerting rules
 rule_files:
   - "rules/*.yml"
 
+# Scrape configurations
 scrape_configs:
+  # Prometheus self-monitoring
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
         labels:
           env: 'production'
 
+  # Node exporter for host metrics
   - job_name: 'node'
     static_configs:
       - targets:
@@ -93,6 +98,7 @@ scrape_configs:
         labels:
           env: 'production'
 
+  # Application metrics with file-based service discovery
   - job_name: 'app-services'
     file_sd_configs:
       - files:
@@ -123,16 +129,20 @@ scrape_configs:
     kubernetes_sd_configs:
       - role: pod
     relabel_configs:
+      # Only scrape pods with prometheus.io/scrape annotation
       - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
         action: keep
         regex: true
+      # Use custom port if specified
       - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
         action: replace
         target_label: __address__
         regex: ([^:]+)(?::\d+)?;(\d+)
         replacement: $1:$2
+      # Add namespace as label
       - source_labels: [__meta_kubernetes_namespace]
         target_label: kubernetes_namespace
+      # Add pod name as label
       - source_labels: [__meta_kubernetes_pod_name]
         target_label: kubernetes_pod_name
 ```
@@ -166,7 +176,7 @@ scrape_configs:
   - job_name: 'consul-services'
     consul_sd_configs:
       - server: 'consul.example.com:8500'
-        services: []
+        services: []  # Empty list means discover all services
     relabel_configs:
       - source_labels: [__meta_consul_service]
         target_label: job
@@ -193,12 +203,14 @@ groups:
   - name: api_aggregations
     interval: 30s
     rules:
+      # Calculate request rate per endpoint (5m window)
       - record: job:http_requests:rate5m
         expr: |
           sum by (job, endpoint, method) (
             rate(http_requests_total[5m])
           )
 
+      # Calculate error rate percentage
       - record: job:http_errors:rate5m
         expr: |
           sum by (job) (
@@ -207,6 +219,7 @@ groups:
             rate(http_requests_total[5m])
           ) * 100
 
+      # P95 latency by endpoint
       - record: job:http_request_duration_seconds:p95
         expr: |
           histogram_quantile(0.95,
@@ -218,18 +231,21 @@ groups:
   - name: resource_aggregations
     interval: 1m
     rules:
+      # CPU usage by instance
       - record: instance:cpu_usage:ratio
         expr: |
           1 - avg by (instance) (
             rate(node_cpu_seconds_total{mode="idle"}[5m])
           )
 
+      # Memory usage percentage
       - record: instance:memory_usage:ratio
         expr: |
           1 - (
             node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes
           )
 
+      # Disk usage by mount point
       - record: instance:disk_usage:ratio
         expr: |
           1 - (
@@ -336,8 +352,11 @@ scrape_configs:
     metrics_path: '/federate'
     params:
       'match[]':
+        # Aggregate only pre-computed recording rules
         - '{__name__=~"job:.*"}'
+        # Include alert states
         - '{__name__=~"ALERTS.*"}'
+        # Include critical infrastructure metrics
         - 'up{job=~".*"}'
     static_configs:
       - targets:
@@ -375,11 +394,16 @@ scrape_configs:
 用 **Thanos** 或 **Cortex** 為真 HA、或簡負衡：
 
 ```yaml
+# prometheus-1.yml and prometheus-2.yml (identical configs)
 global:
   scrape_interval: 15s
   external_labels:
-    prometheus: 'prometheus-1'
+    prometheus: 'prometheus-1'  # Different per instance
     replica: 'A'
+
+# Use --web.external-url flag for each instance
+# prometheus-1: --web.external-url=http://prometheus-1.example.com:9090
+# prometheus-2: --web.external-url=http://prometheus-2.example.com:9090
 ```
 
 配 Grafana 詢二：

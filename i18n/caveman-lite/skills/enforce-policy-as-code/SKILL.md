@@ -357,11 +357,6 @@ echo "=== Policy Validation for CI/CD ==="
 ```yaml
 # .github/workflows/policy-validation.yaml
 name: Policy Validation
-locale: caveman-lite
-source_locale: en
-source_commit: 82c77053
-translator: "Julius Brussee homage — caveman"
-translation_date: "2026-04-19"
 
 on:
   pull_request:

@@ -73,7 +73,8 @@
  *   node scripts/normalize-i18n-fences.js --dry          # preview, explicitly
  *   node scripts/normalize-i18n-fences.js --write        # apply
  *   node scripts/normalize-i18n-fences.js --basis head
- *   node scripts/normalize-i18n-fences.js --locale de    # restrict
+ *   node scripts/normalize-i18n-fences.js --locale de    # restrict to one locale
+ *   node scripts/normalize-i18n-fences.js --tag yaml,json  # restrict to tags (#477 batches)
  */
 
 import { readFileSync, writeFileSync, readdirSync, existsSync, statSync } from 'fs';
@@ -111,7 +112,7 @@ const argv = process.argv.slice(2);
  * `"--dry"` as the locale value.
  */
 const BOOL_FLAGS = new Set(['--write', '--dry']);
-const VALUE_FLAGS = new Set(['--basis', '--locale']);
+const VALUE_FLAGS = new Set(['--basis', '--locale', '--tag']);
 
 function usageError(message) {
   console.error(`ERROR: ${message}`);
@@ -119,7 +120,7 @@ function usageError(message) {
   process.exit(2);
 }
 
-const opts = { write: false, dry: false, basis: 'source-commit', locale: null };
+const opts = { write: false, dry: false, basis: 'source-commit', locale: null, tag: null };
 for (let i = 0; i < argv.length; i++) {
   const arg = argv[i];
   const eq = arg.indexOf('=');
@@ -157,6 +158,28 @@ if (!['source-commit', 'head'].includes(BASIS)) {
   console.error(`ERROR: --basis must be 'source-commit' or 'head' (got '${BASIS}')`);
   process.exit(2);
 }
+
+/**
+ * Restrict the run to fences carrying these tags — the tag-scoped batches #477
+ * calls for, so a 1,307-fence backlog lands as reviewable, individually
+ * revertable slices instead of one 300-file diff.
+ *
+ * Scoping is applied to the DIVERGENT set only, never to the soundness checks:
+ * fence-count and tag-sequence alignment still consider every fence in the file,
+ * because whether ordinal mapping is trustworthy is a property of the whole
+ * file, not of the slice being repaired. Narrowing those would let a batch
+ * rewrite fences in a file the unscoped run correctly refuses to touch.
+ */
+const ONLY_TAGS = opts.tag === null ? null : new Set(
+  opts.tag.split(',').map((t) => t.trim().toLowerCase()).filter((t) => t !== ''),
+);
+if (ONLY_TAGS !== null && ONLY_TAGS.size === 0) {
+  console.error("ERROR: --tag was given no usable value (got '" + opts.tag + "').");
+  process.exit(2);
+}
+// `untagged` names the empty info string, which is gated under default-deny and
+// would otherwise be unaddressable from the command line.
+const tagOf = (fence) => (fence.lang === '' ? 'untagged' : fence.lang);
 
 /**
  * The locales this tool can actually scan: a directory under `i18n/` carrying a
@@ -327,6 +350,8 @@ const changedByLocale = new Map();
 // Every edit is planned first and applied afterwards, so preview and write walk
 // identical code and the preview cannot describe a run the write does not make.
 const plan = [];
+/** tag -> divergent-fence count, for validating --tag against reality. */
+const seenTags = new Map();
 
 for (const t of targets) {
   let basisText = null;
@@ -355,7 +380,12 @@ for (const t of targets) {
   // English revision. Using the same predicate as the checker is what keeps the
   // two tools from disagreeing — an ordinal-only test would rewrite fences the
   // gate considers legitimately stale.
-  const divergent = translatedFences.filter((f) => isGated(f) && !everEnglish.has(f.body));
+  const allDivergent = translatedFences.filter((f) => isGated(f) && !everEnglish.has(f.body));
+  // Every divergent tag anywhere in the corpus, INCLUDING in files this run will
+  // skip as unrepairable — the set `--tag` is validated against. Collecting only
+  // from repairable files would reject a real tag as a typo.
+  for (const f of allDivergent) seenTags.set(tagOf(f), (seenTags.get(tagOf(f)) || 0) + 1);
+  const divergent = ONLY_TAGS === null ? allDivergent : allDivergent.filter((f) => ONLY_TAGS.has(tagOf(f)));
   if (divergent.length === 0) continue;
 
   if (translatedFences.length !== basisFences.length) {
@@ -405,6 +435,23 @@ for (const t of targets) {
   fencesRestored += restoredHere;
   changedByLocale.set(t.locale, (changedByLocale.get(t.locale) || 0) + restoredHere);
   plan.push({ path: t.path, relPath: t.relPath, text: lines.join('\n'), n: restoredHere, basisLabel });
+}
+
+// Validate `--tag` against what the scan actually saw, not against a hand-kept
+// list of language names. A tag matching nothing would otherwise report
+// "files to change: 0" — the clean-looking zero `--locale` already exists to
+// prevent, arriving by typo. Checked after the scan because the accept-list is
+// the scan's own output; checked before any write, so a mistyped batch cannot
+// touch the corpus.
+if (ONLY_TAGS !== null) {
+  const unknown = [...ONLY_TAGS].filter((t) => !seenTags.has(t));
+  if (unknown.length) {
+    console.error(`ERROR: --tag matched no divergent fence: ${unknown.join(', ')}`);
+    console.error('Nothing would be restored, and the run would report a clean-looking zero.');
+    const available = [...seenTags.entries()].sort((a, b) => b[1] - a[1]);
+    console.error(`Divergent tags present: ${available.map(([t, n]) => `${t}=${n}`).join('  ')}`);
+    process.exit(2);
+  }
 }
 
 if (!PREVIEW && plan.length) {

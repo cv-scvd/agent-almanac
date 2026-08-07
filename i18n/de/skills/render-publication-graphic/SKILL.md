@@ -55,39 +55,39 @@ Publikationsfertige Grafiken erzeugen die technische Anforderungen fuer akademis
 Technische Spezifikationen fuer die Zielpublikation identifizieren:
 
 ```yaml
-# Gaengige Publikationsanforderungen
+# Common publication requirements
 
 academic_journal:
   dpi: 300-600
   format: TIFF, EPS, PDF
-  color_space: RGB oder CMYK (Richtlinien pruefen)
-  max_width: 180mm (einspaltig) oder 390mm (zweispaltig)
-  fonts: Einbetten oder als Pfade konvertieren
+  color_space: RGB or CMYK (check guidelines)
+  max_width: 180mm (single column) or 390mm (double column)
+  fonts: Embed or outline
   resolution_minimums:
     line_art: 1000 DPI
     halftone: 300 DPI
     combination: 600 DPI
 
 web_publication:
-  dpi: 72-96 (Retina: 144-192)
+  dpi: 72-96 (retina: 144-192)
   format: PNG, WebP, SVG
   color_space: sRGB
   max_file_size: 200KB-500KB
-  optimization: Komprimieren, progressives Laden
+  optimization: Compress, progressive loading
 
 presentation:
   dpi: 96-150
   format: PNG, PDF, SVG
   color_space: RGB
-  dimensions: 16:9 oder 4:3 Seitenverhaeltnis
-  contrast: Hoher Kontrast fuer Projektoren
+  dimensions: 16:9 or 4:3 aspect ratio
+  contrast: High contrast for projectors
 
 print_book:
   dpi: 300-600
   format: TIFF, PDF/X
   color_space: CMYK
-  bleed: 3-5mm ueber Beschnitt hinaus
-  fonts: Eingebettet
+  bleed: 3-5mm beyond trim
+  fonts: Embedded
 ```
 
 **Erwartet:** Klares Verstaendnis der Zielanforderungen

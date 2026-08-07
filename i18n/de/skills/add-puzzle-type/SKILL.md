@@ -190,7 +190,7 @@ Standards und Beschraenkungen fuer den neuen Typ hinzufuegen:
     default: 20
     min: 5
     max: 50
-  # Typspezifische Parameter hier hinzufuegen
+  # Add type-specific params here
 ```
 
 **Erwartet:** Konfiguration ist gueltiges YAML. Standardwerte erzeugen ein funktionierendes Puzzle bei Verwendung durch `generate_puzzle()`.
