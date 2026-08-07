@@ -66,14 +66,14 @@ Dies aktualisiert das `Version`-Feld in DESCRIPTION und fuegt eine Ueberschrift 
 
 **Erwartet:** DESCRIPTION-Version aktualisiert. NEWS.md hat einen neuen Abschnittstitel fuer die Veroeffentlichungsversion.
 
-**Bei Fehler:** Wenn `usethis::use_version()` nicht verfuegbar ist, manuell das `Version`-Feld in DESCRIPTION aktualisieren und eine `# paketname x.y.z`-Ueberschrift zu NEWS.md hinzufuegen.
+**Bei Fehler:** Wenn `usethis::use_version()` nicht verfuegbar ist, manuell das `Version`-Feld in DESCRIPTION aktualisieren und eine `# packagename x.y.z`-Ueberschrift zu NEWS.md hinzufuegen.
 
 ### Schritt 3: NEWS.md aktualisieren
 
 Die Veroeffentlichungsnotizen unter der neuen Versionsueuberschrift ausfuellen:
 
 ```markdown
-# paketname 0.2.0
+# packagename 0.2.0
 
 ## Neue Features
 - `neue_funktion()` zur Datenverarbeitung hinzugefuegt (#42)
@@ -164,7 +164,7 @@ git push
 
 **Erwartet:** DESCRIPTION-Version ist jetzt `0.2.0.9000` (Entwicklungsversion). NEWS.md hat eine neue Ueberschrift fuer die Entwicklungsversion. Aenderungen sind zum Remote gepusht.
 
-**Bei Fehler:** Wenn `usethis::use_dev_version()` nicht verfuegbar ist, die Version manuell zu `x.y.z.9000` in DESCRIPTION aendern und eine `# paketname (Entwicklungsversion)`-Ueberschrift zu NEWS.md hinzufuegen.
+**Bei Fehler:** Wenn `usethis::use_dev_version()` nicht verfuegbar ist, die Version manuell zu `x.y.z.9000` in DESCRIPTION aendern und eine `# packagename (Entwicklungsversion)`-Ueberschrift zu NEWS.md hinzufuegen.
 
 ## Validierung
 
