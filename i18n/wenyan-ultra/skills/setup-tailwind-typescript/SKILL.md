@@ -193,7 +193,7 @@ export function Button({ className, variant = "primary", ...props }: ButtonProps
 
 ```typescript
 const config: Config = {
-  darkMode: "class",
+  darkMode: "class", // or "media" for system preference
   // ... rest of config
 };
 ```

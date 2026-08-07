@@ -93,10 +93,10 @@ my-app/
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Reactストリクトモードを有効にする
+  // Enable React strict mode
   reactStrictMode: true,
 
-  // 画像最適化ドメイン
+  // Image optimization domains
   images: {
     remotePatterns: [
       {

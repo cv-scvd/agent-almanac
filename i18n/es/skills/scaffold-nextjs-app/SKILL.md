@@ -94,10 +94,10 @@ Edita `next.config.ts` según las necesidades del proyecto:
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Habilitar modo estricto de React
+  // Enable React strict mode
   reactStrictMode: true,
 
-  // Dominios de optimización de imágenes
+  // Image optimization domains
   images: {
     remotePatterns: [
       {
