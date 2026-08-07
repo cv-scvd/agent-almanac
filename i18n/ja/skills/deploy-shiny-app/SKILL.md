@@ -136,26 +136,26 @@ rsconnect::deployApp(
 ```dockerfile
 FROM rocker/shiny-verse:4.4.0
 
-# システム依存関係のインストール
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     libcurl4-openssl-dev \
     libssl-dev \
     libxml2-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Rパッケージのインストール
+# Install R packages
 RUN R -e "install.packages(c('shiny', 'bslib', 'DT', 'plotly'))"
 
-# アプリをコピー
+# Copy app
 COPY . /srv/shiny-server/myapp/
 
-# Shiny Serverの設定
+# Configure Shiny Server
 COPY shiny-server.conf /etc/shiny-server/shiny-server.conf
 
-# ポートを公開
+# Expose port
 EXPOSE 3838
 
-# 実行
+# Run
 CMD ["/usr/bin/shiny-server"]
 ```
 

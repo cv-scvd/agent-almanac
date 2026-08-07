@@ -136,26 +136,26 @@ Crea un `Dockerfile`:
 ```dockerfile
 FROM rocker/shiny-verse:4.4.0
 
-# Instalar dependencias del sistema
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     libcurl4-openssl-dev \
     libssl-dev \
     libxml2-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Instalar paquetes R
+# Install R packages
 RUN R -e "install.packages(c('shiny', 'bslib', 'DT', 'plotly'))"
 
-# Copiar la app
+# Copy app
 COPY . /srv/shiny-server/myapp/
 
-# Configurar Shiny Server
+# Configure Shiny Server
 COPY shiny-server.conf /etc/shiny-server/shiny-server.conf
 
-# Exponer puerto
+# Expose port
 EXPOSE 3838
 
-# Ejecutar
+# Run
 CMD ["/usr/bin/shiny-server"]
 ```
 

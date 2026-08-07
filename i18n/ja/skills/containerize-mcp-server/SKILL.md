@@ -47,7 +47,7 @@ R MCPサーバーをDockerコンテナにパッケージ化し、ポータブル
 ```dockerfile
 FROM rocker/r-ver:4.5.0
 
-# システム依存関係のインストール
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     libcurl4-openssl-dev \
     libssl-dev \
@@ -58,26 +58,26 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Rパッケージのインストール
+# Install R packages
 RUN R -e "install.packages(c( \
     'remotes', \
     'ellmer' \
     ), repos='https://cloud.r-project.org/')"
 
-# mcptoolsのインストール
+# Install mcptools
 RUN R -e "remotes::install_github('posit-dev/mcptools')"
 
-# 作業ディレクトリの設定
+# Set working directory
 WORKDIR /workspace
 
-# MCPサーバーポートの公開
+# Expose MCP server ports
 EXPOSE 3000 3001 3002
 
-# 環境変数
+# Environment variables
 ENV R_LIBS_USER=/workspace/renv/library
 ENV RENV_PATHS_CACHE=/workspace/renv/cache
 
-# デフォルト: MCPサーバーの起動
+# Default: start MCP server
 CMD ["R", "-e", "mcptools::mcp_server()"]
 ```
 

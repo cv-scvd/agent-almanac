@@ -57,7 +57,7 @@ translation_date: 2026-03-16
 コアパターン：大きなイメージでビルドし、成果物をスリムなイメージにコピーする。
 
 ```dockerfile
-# ---- ビルドステージ ----
+# ---- Build Stage ----
 FROM <build-image> AS builder
 WORKDIR /src
 COPY <dependency-manifest> .
@@ -65,7 +65,7 @@ RUN <install-dependencies>
 COPY . .
 RUN <build-command>
 
-# ---- ランタイムステージ ----
+# ---- Runtime Stage ----
 FROM <runtime-image>
 COPY --from=builder /src/<artifact> /<dest>
 EXPOSE <port>

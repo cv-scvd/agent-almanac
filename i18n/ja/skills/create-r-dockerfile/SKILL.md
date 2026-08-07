@@ -59,18 +59,18 @@ rockerベースイメージを使用し、適切な依存関係管理を行うR�
 ```dockerfile
 FROM rocker/r-ver:4.5.0
 
-# システム依存関係のインストール
-# 目的別にグループ化して明確にする
+# Install system dependencies
+# Group by purpose for clarity
 RUN apt-get update && apt-get install -y \
     # HTTP/SSL
     libcurl4-openssl-dev \
     libssl-dev \
-    # XML処理
+    # XML processing
     libxml2-dev \
-    # Git統合
+    # Git integration
     libgit2-dev \
     libssh2-1-dev \
-    # グラフィックス
+    # Graphics
     libfontconfig1-dev \
     libharfbuzz-dev \
     libfribidi-dev \
@@ -78,33 +78,33 @@ RUN apt-get update && apt-get install -y \
     libpng-dev \
     libtiff5-dev \
     libjpeg-dev \
-    # ユーティリティ
+    # Utilities
     git \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Rパッケージのインストール
-# 順序: キャッシュ効率のため変更頻度の低いものから
+# Install R packages
+# Order: least-changing first for cache efficiency
 RUN R -e "install.packages(c( \
     'remotes', \
     'devtools', \
     'renv' \
     ), repos='https://cloud.r-project.org/')"
 
-# 作業ディレクトリの設定
+# Set working directory
 WORKDIR /workspace
 
-# renvファイルを先にコピー（キャッシュレイヤー）
+# Copy renv files first (cache layer)
 COPY renv.lock renv.lock
 COPY renv/activate.R renv/activate.R
 
-# ロックファイルからパッケージを復元
+# Restore packages from lockfile
 RUN R -e "renv::restore()"
 
-# プロジェクトファイルをコピー
+# Copy project files
 COPY . .
 
-# デフォルトコマンド
+# Default command
 CMD ["R"]
 ```
 
@@ -146,13 +146,13 @@ docker run --rm -it r-project:latest R -e "sessionInfo()"
 本番デプロイにはマルチステージビルドを使用する：
 
 ```dockerfile
-# ビルドステージ
+# Build stage
 FROM rocker/r-ver:4.5.0 AS builder
 RUN apt-get update && apt-get install -y libcurl4-openssl-dev libssl-dev
 COPY renv.lock .
 RUN R -e "install.packages('renv'); renv::restore()"
 
-# ランタイムステージ
+# Runtime stage
 FROM rocker/r-ver:4.5.0
 COPY --from=builder /usr/local/lib/R/site-library /usr/local/lib/R/site-library
 COPY . /app

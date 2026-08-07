@@ -48,7 +48,7 @@ Einen R-MCP-Server in einen Docker-Container fuer portables Deployment verpacken
 ```dockerfile
 FROM rocker/r-ver:4.5.0
 
-# Systemabhaengigkeiten installieren
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     libcurl4-openssl-dev \
     libssl-dev \
@@ -59,26 +59,26 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# R-Pakete installieren
+# Install R packages
 RUN R -e "install.packages(c( \
     'remotes', \
     'ellmer' \
     ), repos='https://cloud.r-project.org/')"
 
-# mcptools installieren
+# Install mcptools
 RUN R -e "remotes::install_github('posit-dev/mcptools')"
 
-# Arbeitsverzeichnis setzen
+# Set working directory
 WORKDIR /workspace
 
-# MCP-Server-Ports freigeben
+# Expose MCP server ports
 EXPOSE 3000 3001 3002
 
-# Umgebungsvariablen
+# Environment variables
 ENV R_LIBS_USER=/workspace/renv/library
 ENV RENV_PATHS_CACHE=/workspace/renv/cache
 
-# Standard: MCP-Server starten
+# Default: start MCP server
 CMD ["R", "-e", "mcptools::mcp_server()"]
 ```
 

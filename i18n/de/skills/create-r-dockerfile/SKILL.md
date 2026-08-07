@@ -62,18 +62,18 @@ Erstelle ein Dockerfile fuer R-Projekte mit rocker-Basisimages und ordnungsgemae
 ```dockerfile
 FROM rocker/r-ver:4.5.0
 
-# Systemabhaengigkeiten installieren
-# Nach Zweck gruppiert fuer Uebersichtlichkeit
+# Install system dependencies
+# Group by purpose for clarity
 RUN apt-get update && apt-get install -y \
     # HTTP/SSL
     libcurl4-openssl-dev \
     libssl-dev \
-    # XML-Verarbeitung
+    # XML processing
     libxml2-dev \
-    # Git-Integration
+    # Git integration
     libgit2-dev \
     libssh2-1-dev \
-    # Grafik
+    # Graphics
     libfontconfig1-dev \
     libharfbuzz-dev \
     libfribidi-dev \
@@ -81,33 +81,33 @@ RUN apt-get update && apt-get install -y \
     libpng-dev \
     libtiff5-dev \
     libjpeg-dev \
-    # Hilfsprogramme
+    # Utilities
     git \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# R-Pakete installieren
-# Reihenfolge: am wenigsten aenderbare zuerst fuer Cache-Effizienz
+# Install R packages
+# Order: least-changing first for cache efficiency
 RUN R -e "install.packages(c( \
     'remotes', \
     'devtools', \
     'renv' \
     ), repos='https://cloud.r-project.org/')"
 
-# Arbeitsverzeichnis setzen
+# Set working directory
 WORKDIR /workspace
 
-# Zuerst renv-Dateien kopieren (Cache-Layer)
+# Copy renv files first (cache layer)
 COPY renv.lock renv.lock
 COPY renv/activate.R renv/activate.R
 
-# Pakete aus Lockfile wiederherstellen
+# Restore packages from lockfile
 RUN R -e "renv::restore()"
 
-# Projektdateien kopieren
+# Copy project files
 COPY . .
 
-# Standardbefehl
+# Default command
 CMD ["R"]
 ```
 
@@ -149,13 +149,13 @@ docker run --rm -it r-project:latest R -e "sessionInfo()"
 Fuer Produktions-Deployments Multi-Stage-Builds verwenden:
 
 ```dockerfile
-# Build-Phase
+# Build stage
 FROM rocker/r-ver:4.5.0 AS builder
 RUN apt-get update && apt-get install -y libcurl4-openssl-dev libssl-dev
 COPY renv.lock .
 RUN R -e "install.packages('renv'); renv::restore()"
 
-# Laufzeit-Phase
+# Runtime stage
 FROM rocker/r-ver:4.5.0
 COPY --from=builder /usr/local/lib/R/site-library /usr/local/lib/R/site-library
 COPY . /app
