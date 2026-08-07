@@ -122,7 +122,6 @@ theme: {
   }
 }
 ```
-```text
 
 ## Limitations
 

@@ -50,7 +50,7 @@ usethis::use_vignette("getting-started", title = "Getting Started with packagena
 
 ### Step 2: Write Vignette Content
 
-```markdown
+````markdown
 ---
 title: "Getting Started with packagename"
 output: rmarkdown::html_vignette
@@ -93,7 +93,7 @@ Cover optional or advanced functionality.
 ## Conclusion
 
 Summarize and point to other vignettes or resources.
-```text
+````
 
 **Expected:** The vignette Rmd file contains Introduction, Installation, Basic Usage, Advanced Features, and Conclusion sections. Code examples use the package's exported functions and produce visible output.
 
@@ -133,26 +133,37 @@ knitr::opts_chunk$set(
 
 ### Step 4: Handle External Dependencies
 
-For vignettes that need network access or optional packages:
+For vignettes that need network access or optional packages, write these chunks into
+the `.Rmd` itself:
 
-```r
-{r check-available, include=FALSE}
+````markdown
+```{r check-available, include=FALSE}
 has_suggested <- requireNamespace("optionalpkg", quietly = TRUE)
+```
 
-{r use-suggested, eval=has_suggested}
+```{r use-suggested, eval=has_suggested}
 optionalpkg::special_function()
 ```
+````
 
-For long-running computations, pre-compute and save results:
+For long-running computations, pre-compute once and load the cached result at build
+time. The two snippets run in **different working directories**, which is why the paths
+differ.
+
+Run this once from the package root, outside the vignette:
 
 ```r
-# Save pre-computed results to vignettes/
 saveRDS(expensive_result, "vignettes/precomputed.rds")
+```
 
-# Load in vignette
-{r load-precomputed}
+Then read it from the vignette, which knitr builds with `vignettes/` as the working
+directory:
+
+````markdown
+```{r load-precomputed}
 result <- readRDS("precomputed.rds")
 ```
+````
 
 **Expected:** External dependencies are handled gracefully: optional packages are conditionally loaded with `requireNamespace()`, network-dependent code uses `eval=FALSE` or `tryCatch()`, and expensive computations use pre-computed `.rds` files.
 
