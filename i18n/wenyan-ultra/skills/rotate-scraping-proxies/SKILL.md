@@ -98,7 +98,8 @@ import os
 import random
 from scrapling import Fetcher, StealthyFetcher
 
-PROXY_URL = os.environ["SCRAPING_PROXY_URL"]
+# Pattern A: provider-managed rotating endpoint (one URL, provider rotates per request)
+PROXY_URL = os.environ["SCRAPING_PROXY_URL"]  # http://user:pass@gateway.example:7777
 
 fetcher = StealthyFetcher()
 fetcher.configure(
@@ -108,7 +109,8 @@ fetcher.configure(
     proxy=PROXY_URL,
 )
 
-POOL = os.environ["SCRAPING_PROXY_POOL"].split(",")
+# Pattern B: explicit pool, rotate yourself
+POOL = os.environ["SCRAPING_PROXY_POOL"].split(",")  # comma-separated URLs
 
 def fetch_with_rotation(url):
     proxy = random.choice(POOL)
@@ -129,6 +131,14 @@ def fetch_with_rotation(url):
 按工選輪粒，繼保池健。
 
 ```python
+# Sticky session for stateful flows (login, multi-page checkout-like crawls)
+# Most providers expose a session ID via the username:
+#   user-session-abc123:pass@gateway.example:7777
+# All requests with the same session ID exit through the same IP for ~10 min.
+
+# Per-request rotation for anonymous bulk scraping (default)
+
+# Pool health check — call before bulk run
 def check_pool(pool, sample_size=5):
     sample = random.sample(pool, min(sample_size, len(pool)))
     alive = []
@@ -143,6 +153,7 @@ def check_pool(pool, sample_size=5):
             pass
     return alive
 
+# Backoff on transient proxy failures
 def fetch_with_backoff(url, max_attempts=3):
     for attempt in range(max_attempts):
         try:
@@ -200,7 +211,7 @@ for url in target_urls:
         break
     response = fetch_with_backoff(url)
     budget.record(success=response is not None)
-    time.sleep(1)
+    time.sleep(1)  # rate limiting still applies even with rotation
 ```
 
 得：限觸先於失控費。日誌示代功率以辨除。

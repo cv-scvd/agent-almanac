@@ -61,13 +61,13 @@ metadata:
 
 ```python
 # Inputs to confirm before writing any code:
-# 1. 数据是否公开（无需登录）？
-# 2. robots.txt 是否允许访问该路径？
-# 3. 站点的服务条款是否禁止自动化访问？（请通读）
-# 4. 抓取过程是否会处理个人数据？如果会，法律依据是什么？
-# 5. 此次访问是否会绕过地域授权、付费墙或身份认证？
-# 6. 是否存在公开 API 或数据转储，使抓取变得不必要？
-# 7. 如果范围较大，是否已与站点所有者联系？
+# 1. Is the data public (no login required)?
+# 2. Does robots.txt permit the path?
+# 3. Does the site's ToS prohibit automated access? (read it)
+# 4. Would the scraping process personal data? If yes, what is the legal basis?
+# 5. Could this access circumvent geo-licensing, paywalls, or auth?
+# 6. Is there a public API or data dump that would make scraping unnecessary?
+# 7. Have you contacted the site owner if scope is large?
 ```
 
 **Expected:** 每个问题都有可辩护的书面答案。出现第一个"否"或"未知"
@@ -116,7 +116,7 @@ import os
 import random
 from scrapling import Fetcher, StealthyFetcher
 
-# Pattern A: 服务商托管的轮换入口（单一 URL，服务商按请求内部轮换）
+# Pattern A: provider-managed rotating endpoint (one URL, provider rotates per request)
 PROXY_URL = os.environ["SCRAPING_PROXY_URL"]  # http://user:pass@gateway.example:7777
 
 fetcher = StealthyFetcher()
@@ -127,8 +127,8 @@ fetcher.configure(
     proxy=PROXY_URL,
 )
 
-# Pattern B: 显式代理池，自行轮换
-POOL = os.environ["SCRAPING_PROXY_POOL"].split(",")  # 逗号分隔的 URL 列表
+# Pattern B: explicit pool, rotate yourself
+POOL = os.environ["SCRAPING_PROXY_POOL"].split(",")  # comma-separated URLs
 
 def fetch_with_rotation(url):
     proxy = random.choice(POOL)
@@ -153,14 +153,14 @@ def fetch_with_rotation(url):
 按工作负载确定轮换粒度，然后持续维持代理池的健康。
 
 ```python
-# 有状态流程（登录、类似购物车多页面抓取）使用粘滞会话
-# 多数服务商通过用户名暴露会话 ID：
+# Sticky session for stateful flows (login, multi-page checkout-like crawls)
+# Most providers expose a session ID via the username:
 #   user-session-abc123:pass@gateway.example:7777
-# 使用同一个会话 ID 的所有请求会在约 10 分钟内从同一个 IP 出口。
+# All requests with the same session ID exit through the same IP for ~10 min.
 
-# 匿名批量抓取使用按请求轮换（默认）
+# Per-request rotation for anonymous bulk scraping (default)
 
-# 代理池健康检查——在批量运行前调用
+# Pool health check — call before bulk run
 def check_pool(pool, sample_size=5):
     sample = random.sample(pool, min(sample_size, len(pool)))
     alive = []
@@ -175,7 +175,7 @@ def check_pool(pool, sample_size=5):
             pass
     return alive
 
-# 对瞬时代理故障进行退避重试
+# Backoff on transient proxy failures
 def fetch_with_backoff(url, max_attempts=3):
     for attempt in range(max_attempts):
         try:
@@ -236,7 +236,7 @@ for url in target_urls:
         break
     response = fetch_with_backoff(url)
     budget.record(success=response is not None)
-    time.sleep(1)  # 即便启用了轮换，也仍需保持限速
+    time.sleep(1)  # rate limiting still applies even with rotation
 ```
 
 **Expected:** 预算上限在成本失控前就先触发。日志中记录了每个代理的成功

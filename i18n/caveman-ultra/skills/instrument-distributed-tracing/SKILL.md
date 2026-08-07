@@ -152,7 +152,7 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-# ... (see EXAMPLES.md)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **Go w/ Gin**:
@@ -215,7 +215,7 @@ tracer = trace.get_tracer(__name__)
 
 def process_order(order_id):
     # Create a span for the entire operation
-# ... (see EXAMPLES.md)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **Go manual spans**:
@@ -259,7 +259,7 @@ from opentelemetry import trace
 from opentelemetry.propagate import inject
 
 tracer = trace.get_tracer(__name__)
-# ... (see EXAMPLES.md)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 ```go
@@ -281,7 +281,7 @@ from kafka import KafkaProducer
 
 producer = KafkaProducer(bootstrap_servers=['kafka:9092'])
 
-# ... (see EXAMPLES.md)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 ```python
@@ -338,7 +338,7 @@ from opentelemetry.sdk.trace.sampling import (
     TraceIdRatioBased,
     StaticSampler,
     Decision
-# ... (see EXAMPLES.md)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **Tail-based sampling w/ Tempo**:
@@ -396,7 +396,7 @@ from opentelemetry import trace
 # Custom log formatter with trace context
 class TraceFormatter(logging.Formatter):
     def format(self, record):
-# ... (see EXAMPLES.md)
+# ... (see EXAMPLES.md for complete configuration)
 ```
 
 **Gen metrics from traces** (Tempo):

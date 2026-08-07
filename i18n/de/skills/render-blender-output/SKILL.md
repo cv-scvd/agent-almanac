@@ -60,23 +60,23 @@ Render-Engine und Grundparameter festlegen:
 import bpy
 
 def setup_cycles_engine():
-    """Cycles-Render-Engine konfigurieren."""
+    """Configure Cycles render engine."""
     scene = bpy.context.scene
     scene.render.engine = 'CYCLES'
 
-    # Geraeteeinstellungen
-    scene.cycles.device = 'GPU'  # oder 'CPU'
+    # Device settings
+    scene.cycles.device = 'GPU'  # or 'CPU'
 
     # Sampling
-    scene.cycles.samples = 128
+    scene.cycles.samples = 128  # Viewport: fewer samples
     scene.cycles.use_adaptive_sampling = True
     scene.cycles.adaptive_threshold = 0.01
 
-    # Entrauschen
+    # Denoising
     scene.cycles.use_denoising = True
-    scene.cycles.denoiser = 'OPTIX'  # oder 'OPENIMAGEDENOISE', 'NLM'
+    scene.cycles.denoiser = 'OPTIX'  # or 'OPENIMAGEDENOISE', 'NLM'
 
-    # Lichtpfade
+    # Light paths
     scene.cycles.max_bounces = 12
     scene.cycles.diffuse_bounces = 4
     scene.cycles.glossy_bounces = 4
@@ -84,25 +84,25 @@ def setup_cycles_engine():
     scene.cycles.volume_bounces = 0
 
 def setup_eevee_engine():
-    """EEVEE-Render-Engine konfigurieren."""
+    """Configure EEVEE render engine."""
     scene = bpy.context.scene
     scene.render.engine = 'BLENDER_EEVEE'
 
     # Sampling
     scene.eevee.taa_render_samples = 64
 
-    # Effekte
+    # Effects
     scene.eevee.use_bloom = True
     scene.eevee.bloom_threshold = 0.8
     scene.eevee.bloom_intensity = 0.1
 
-    scene.eevee.use_gtao = True  # Umgebungsverdeckung
+    scene.eevee.use_gtao = True  # Ambient occlusion
     scene.eevee.gtao_distance = 0.2
 
-    scene.eevee.use_ssr = True  # Bildschirmraum-Reflexionen
+    scene.eevee.use_ssr = True  # Screen space reflections
     scene.eevee.ssr_quality = 0.5
 
-    # Schatten
+    # Shadows
     scene.eevee.shadow_cube_size = '1024'
     scene.eevee.shadow_cascade_size = '1024'
 ```
@@ -116,30 +116,30 @@ Ausgabedimensionen und Dateiformat konfigurieren:
 
 ```python
 def configure_output(width=1920, height=1080, file_format='PNG', color_depth='16'):
-    """Ausgabeaufloesung und -format festlegen."""
+    """Set output resolution and format."""
     scene = bpy.context.scene
 
-    # Aufloesung
+    # Resolution
     scene.render.resolution_x = width
     scene.render.resolution_y = height
     scene.render.resolution_percentage = 100
 
-    # Seitenverhaeltnis
+    # Aspect ratio
     scene.render.pixel_aspect_x = 1.0
     scene.render.pixel_aspect_y = 1.0
 
-    # Dateiformat
+    # File format
     scene.render.image_settings.file_format = file_format
 
     if file_format == 'PNG':
         scene.render.image_settings.color_mode = 'RGBA'
-        scene.render.image_settings.color_depth = color_depth  # '8' oder '16'
+        scene.render.image_settings.color_depth = color_depth  # '8' or '16'
         scene.render.image_settings.compression = 15  # 0-100
 
     elif file_format == 'OPEN_EXR':
         scene.render.image_settings.color_mode = 'RGBA'
-        scene.render.image_settings.color_depth = '32'  # oder '16'
-        scene.render.image_settings.exr_codec = 'ZIP'  # oder 'DWAA', 'PIZ'
+        scene.render.image_settings.color_depth = '32'  # or '16'
+        scene.render.image_settings.exr_codec = 'ZIP'  # or 'DWAA', 'PIZ'
 
     elif file_format == 'JPEG':
         scene.render.image_settings.color_mode = 'RGB'
@@ -150,7 +150,7 @@ def configure_output(width=1920, height=1080, file_format='PNG', color_depth='16
         scene.render.image_settings.color_depth = color_depth
         scene.render.image_settings.tiff_codec = 'DEFLATE'
 
-    # Bildbereich (fuer Animationen)
+    # Frame range (for animations)
     scene.frame_start = 1
     scene.frame_end = 250
     scene.frame_step = 1
@@ -165,7 +165,7 @@ Compositing-Knotengraph einrichten:
 
 ```python
 def setup_compositing():
-    """Compositing-Knoten-Setup erstellen."""
+    """Create compositing node setup."""
     scene = bpy.context.scene
     scene.use_nodes = True
 
@@ -173,20 +173,24 @@ def setup_compositing():
     nodes = tree.nodes
     links = tree.links
 
-    # Standardknoten loeschen
+    # Clear default nodes
     nodes.clear()
 
-    # Render-Ebenen-Eingabe
+    # Render Layers input
     render_layers = nodes.new(type='CompositorNodeRLayers')
     render_layers.location = (-400, 300)
 
-    # Farbkorrektur
+    # Denoise (if not using Cycles denoiser)
+    # denoise = nodes.new(type='CompositorNodeDenoise')
+    # denoise.location = (-200, 300)
+
+    # Color correction
     color_correct = nodes.new(type='CompositorNodeColorCorrection')
     color_correct.location = (0, 300)
     color_correct.master_saturation = 1.1
     color_correct.master_gain = 1.05
 
-    # Glanz-Effekt
+    # Glare effect
     glare = nodes.new(type='CompositorNodeGlare')
     glare.location = (200, 200)
     glare.glare_type = 'FOG_GLOW'
@@ -199,21 +203,21 @@ def setup_compositing():
     lens_distortion.inputs['Dispersion'].default_value = 0.0
     lens_distortion.inputs['Distortion'].default_value = -0.02
 
-    # Mischknoten
+    # Mix nodes
     mix1 = nodes.new(type='CompositorNodeMixRGB')
     mix1.location = (400, 250)
     mix1.blend_type = 'ADD'
     mix1.inputs['Fac'].default_value = 0.3
 
-    # Composite-Ausgabe
+    # Composite output
     composite = nodes.new(type='CompositorNodeComposite')
     composite.location = (600, 300)
 
-    # Betrachter-Ausgabe (fuer Vorschau)
+    # Viewer output (for preview)
     viewer = nodes.new(type='CompositorNodeViewer')
     viewer.location = (600, 100)
 
-    # Knoten verbinden
+    # Link nodes
     links.new(render_layers.outputs['Image'], color_correct.inputs['Image'])
     links.new(color_correct.outputs['Image'], mix1.inputs[1])
     links.new(color_correct.outputs['Image'], glare.inputs['Image'])
@@ -234,21 +238,25 @@ import os
 from pathlib import Path
 
 def set_output_path(base_dir, project_name, use_frame_number=True):
-    """Ausgabedateipfad konfigurieren."""
+    """Configure output file path."""
     scene = bpy.context.scene
 
-    # Ausgabeverzeichnis erstellen
+    # Create output directory
     output_dir = Path(base_dir) / project_name / "renders"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Dateipfad festlegen
+    # Set filepath
     if use_frame_number:
-        # #### wird durch Bildnummer ersetzt (0001, 0002, usw.)
+        # #### is replaced with frame number (0001, 0002, etc.)
         filename = f"{project_name}_####"
     else:
         filename = project_name
 
     scene.render.filepath = str(output_dir / filename)
+
+    # Optional: Set file extension explicitly
+    # Extension added automatically based on file_format
+    # But can override: scene.render.file_extension = '.png'
 ```
 
 **Erwartet:** Ausgabeverzeichnis erstellt, Dateipfad mit Bildnummerierung konfiguriert
@@ -260,19 +268,19 @@ Render-Paesse fuer Compositing einrichten:
 
 ```python
 def configure_view_layers():
-    """Render-Paesse aktivieren."""
+    """Enable render passes."""
     scene = bpy.context.scene
     view_layer = scene.view_layers['ViewLayer']
 
-    # Paesse aktivieren
+    # Enable passes
     view_layer.use_pass_combined = True
-    view_layer.use_pass_z = True  # Tiefe
+    view_layer.use_pass_z = True  # Depth
     view_layer.use_pass_mist = False
     view_layer.use_pass_normal = True
-    view_layer.use_pass_vector = True  # Bewegungsvektoren
+    view_layer.use_pass_vector = True  # Motion vectors
     view_layer.use_pass_ambient_occlusion = True
 
-    # Cycles-spezifische Paesse
+    # Cycles-specific passes
     cycles = view_layer.cycles
     cycles.use_pass_diffuse_direct = True
     cycles.use_pass_diffuse_indirect = True
@@ -281,7 +289,7 @@ def configure_view_layers():
     cycles.use_pass_emission = True
     cycles.use_pass_environment = True
 
-    # Cryptomatte-Paesse (fuer Postproduktion)
+    # Cryptomatte passes (for post-production)
     cycles.use_pass_crypto_object = True
     cycles.use_pass_crypto_material = True
     cycles.use_pass_crypto_asset = True
@@ -296,33 +304,33 @@ Ueber Python-API oder Kommandozeile rendern:
 
 ```python
 def render_still():
-    """Aktuelles Bild rendern."""
+    """Render current frame."""
     bpy.ops.render.render(write_still=True)
 
 def render_animation():
-    """Animations-Bildbereich rendern."""
+    """Render animation frame range."""
     bpy.ops.render.render(animation=True)
 
 def render_frame(frame_number):
-    """Bestimmtes Bild rendern."""
+    """Render specific frame."""
     scene = bpy.context.scene
     scene.frame_set(frame_number)
     bpy.ops.render.render(write_still=True)
 
-# Kommandozeilen-Rendering (vom Terminal ausfuehren)
-# Einzelbild:
+# Command-line rendering (run from terminal)
+# Single frame:
 # blender scene.blend --background --render-frame 1
 
 # Animation:
 # blender scene.blend --background --render-anim
 
-# Bestimmter Bildbereich:
+# Specific frame range:
 # blender scene.blend --background --frame-start 10 --frame-end 20 --render-anim
 
-# Ausgabepfad ueberschreiben:
+# Override output path:
 # blender scene.blend --background --render-output /tmp/render_#### --render-anim
 
-# Python-Skript verwenden:
+# Use Python script:
 # blender scene.blend --background --python render_script.py
 ```
 
@@ -335,25 +343,25 @@ Aus mehreren Kamerawinkeln rendern:
 
 ```python
 def render_all_cameras(output_dir):
-    """Szene aus allen Kameras rendern."""
+    """Render scene from all cameras."""
     scene = bpy.context.scene
     original_camera = scene.camera
 
     cameras = [obj for obj in bpy.data.objects if obj.type == 'CAMERA']
 
     for camera in cameras:
-        # Aktive Kamera setzen
+        # Set active camera
         scene.camera = camera
 
-        # Ausgabepfad aktualisieren
+        # Update output path
         camera_name = camera.name.replace(' ', '_')
         scene.render.filepath = os.path.join(output_dir, f"{camera_name}_####")
 
-        # Rendern
+        # Render
         bpy.ops.render.render(write_still=True)
-        print(f"Gerendert von Kamera: {camera.name}")
+        print(f"Rendered from camera: {camera.name}")
 
-    # Urspruengliche Kamera wiederherstellen
+    # Restore original camera
     scene.camera = original_camera
 ```
 
@@ -366,11 +374,11 @@ Leistungseinstellungen konfigurieren:
 
 ```python
 def optimize_performance():
-    """Rendereinstellungen fuer Geschwindigkeit optimieren."""
+    """Optimize render settings for speed."""
     scene = bpy.context.scene
 
     if scene.render.engine == 'CYCLES':
-        # Kachelgroesse (GPU: groessere Kacheln, CPU: kleinere Kacheln)
+        # Tile size (GPU: larger tiles, CPU: smaller tiles)
         if scene.cycles.device == 'GPU':
             scene.render.tile_x = 256
             scene.render.tile_y = 256
@@ -378,24 +386,24 @@ def optimize_performance():
             scene.render.tile_x = 32
             scene.render.tile_y = 32
 
-        # Leistungseinstellungen
+        # Performance settings
         scene.cycles.use_adaptive_sampling = True
-        scene.render.use_persistent_data = True  # Szene im Speicher halten
+        scene.render.use_persistent_data = True  # Keep scene in memory
 
-        # Lichtpfad-Komplexitaet fuer Vorschau reduzieren
+        # Reduce light path complexity for preview
         scene.cycles.max_bounces = 4
         scene.cycles.diffuse_bounces = 2
         scene.cycles.glossy_bounces = 2
 
-        # Progressives Verfeinern (fuer Viewport)
+        # Progressive refine (for viewport)
         scene.cycles.use_progressive_refine = True
 
     elif scene.render.engine == 'BLENDER_EEVEE':
-        # Vereinfachungseinstellungen fuer Vorschau
+        # Simplify settings for preview
         scene.render.use_simplify = True
         scene.render.simplify_subdivision = 2
 
-        # Sampling reduzieren
+        # Reduce sampling
         scene.eevee.taa_render_samples = 32
 ```
 

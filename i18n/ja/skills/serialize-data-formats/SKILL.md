@@ -82,7 +82,7 @@ class Measurement:
     unit: str
     timestamp: datetime
 
-# 非標準型のカスタムエンコーダ
+# Custom encoder for non-standard types
 class CustomEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, datetime):
@@ -94,11 +94,11 @@ class CustomEncoder(json.JSONEncoder):
             return base64.b64encode(obj).decode('ascii')
         return super().default(obj)
 
-# シリアライズ
+# Serialize
 measurement = Measurement("sensor-01", 23.5, "celsius", datetime.now())
 json_str = json.dumps(asdict(measurement), cls=CustomEncoder, indent=2)
 
-# デシリアライズ
+# Deserialize
 data = json.loads(json_str)
 ```
 
@@ -151,16 +151,16 @@ protoc --go_out=. sensors.proto
 from sensors_pb2 import Measurement, MeasurementBatch
 import time
 
-# シリアライズ
+# Serialize
 m = Measurement(
     sensor_id="sensor-01",
     value=23.5,
     unit="celsius",
     timestamp_ms=int(time.time() * 1000)
 )
-binary = m.SerializeToString()  # コンパクトなバイナリ
+binary = m.SerializeToString()  # Compact binary
 
-# デシリアライズ
+# Deserialize
 m2 = Measurement()
 m2.ParseFromString(binary)
 ```
@@ -174,7 +174,7 @@ m2.ParseFromString(binary)
 import msgpack
 from datetime import datetime
 
-# datetimeのカスタムパッキング
+# Custom packing for datetime
 def encode_datetime(obj):
     if isinstance(obj, datetime):
         return {"__datetime__": True, "s": obj.isoformat()}
@@ -187,10 +187,10 @@ def decode_datetime(obj):
 
 data = {"sensor_id": "sensor-01", "value": 23.5, "ts": datetime.now()}
 
-# シリアライズ（JSONより小さく、JSONより速い）
+# Serialize (smaller than JSON, faster than JSON)
 packed = msgpack.packb(data, default=encode_datetime)
 
-# デシリアライズ
+# Deserialize
 unpacked = msgpack.unpackb(packed, object_hook=decode_datetime, raw=False)
 ```
 
@@ -204,7 +204,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pandas as pd
 
-# データ作成
+# Create data
 df = pd.DataFrame({
     "sensor_id": ["s-01", "s-02", "s-01", "s-03"] * 1000,
     "value": [23.5, 18.2, 24.1, 19.8] * 1000,
@@ -212,11 +212,11 @@ df = pd.DataFrame({
     "timestamp": pd.date_range("2025-01-01", periods=4000, freq="min")
 })
 
-# Parquet書き込み（カラムナ、圧縮）
+# Write Parquet (columnar, compressed)
 table = pa.Table.from_pandas(df)
 pq.write_table(table, "measurements.parquet", compression="snappy")
 
-# Parquet読み込み（全データをロードせずに特定カラムを読み取れる）
+# Read Parquet (can read specific columns without loading all data)
 table_back = pq.read_table("measurements.parquet", columns=["sensor_id", "value"])
 df_subset = table_back.to_pandas()
 ```

@@ -101,27 +101,29 @@ Aufloesung basierend auf Ausgabemedium konfigurieren:
 from PIL import Image
 
 def set_dpi_pillow(image_path, output_path, target_dpi=300):
-    """DPI-Metadaten fuer PNG/TIFF setzen."""
+    """Set DPI metadata for PNG/TIFF."""
     img = Image.open(image_path)
+
+    # Save with DPI metadata
     img.save(output_path, dpi=(target_dpi, target_dpi))
-    print(f"Gespeichert mit {target_dpi} DPI: {output_path}")
+    print(f"Saved with {target_dpi} DPI: {output_path}")
 
 def calculate_dimensions(width_mm, height_mm, dpi=300):
-    """Pixelabmessungen aus physischer Groesse berechnen."""
-    # mm in Zoll umrechnen
+    """Calculate pixel dimensions from physical size."""
+    # Convert mm to inches
     width_inches = width_mm / 25.4
     height_inches = height_mm / 25.4
 
-    # Pixel berechnen
+    # Calculate pixels
     width_px = int(width_inches * dpi)
     height_px = int(height_inches * dpi)
 
     return width_px, height_px
 
-# Beispiel: 180mm breite Abbildung bei 300 DPI
+# Example: 180mm wide figure at 300 DPI
 width, height = calculate_dimensions(180, 120, dpi=300)
-print(f"Erforderliche Aufloesung: {width}x{height} Pixel")
-# Ausgabe: Erforderliche Aufloesung: 2126x1417 Pixel
+print(f"Required resolution: {width}x{height} pixels")
+# Output: Required resolution: 2126x1417 pixels
 ```
 
 ```r
@@ -165,22 +167,32 @@ Geeignetes Farbprofil festlegen:
 from PIL import Image, ImageCms
 
 def convert_to_cmyk(rgb_image_path, cmyk_output_path):
-    """RGB zu CMYK fuer Druck konvertieren."""
+    """Convert RGB to CMYK for print."""
     img = Image.open(rgb_image_path)
+
     if img.mode != 'RGB':
         img = img.convert('RGB')
+
+    # Convert to CMYK
     cmyk_img = img.convert('CMYK')
     cmyk_img.save(cmyk_output_path, format='TIFF', compression='tiff_lzw')
-    print(f"Zu CMYK konvertiert: {cmyk_output_path}")
+    print(f"Converted to CMYK: {cmyk_output_path}")
 
 def apply_srgb_profile(image_path, output_path):
-    """sRGB-Profil fuer Web anwenden."""
+    """Apply sRGB profile for web."""
     img = Image.open(image_path)
+
+    # sRGB profile (embedded in Pillow)
     srgb_profile = ImageCms.createProfile('sRGB')
+
+    # Convert to sRGB
     img_srgb = ImageCms.profileToProfile(
-        img, srgb_profile, srgb_profile,
+        img,
+        srgb_profile,
+        srgb_profile,
         renderingIntent=ImageCms.Intent.PERCEPTUAL
     )
+
     img_srgb.save(output_path)
 ```
 
@@ -204,34 +216,45 @@ Sicherstellen dass Text lesbar und korrekt formatiert ist:
 from PIL import ImageFont
 
 def get_publication_fonts():
-    """Fuer Publikation geeignete Schriften laden."""
+    """Load fonts appropriate for publication."""
+    # Common publication-safe fonts
     fonts = {
         'serif': 'Times New Roman',
         'sans': 'Arial',
         'mono': 'Courier New'
     }
+
     try:
-        # Mit korrekter Groesse fuer DPI laden
-        # Bei 300 DPI: 12pt = 12 * 300/72 = 50 Pixel
+        # Load with proper size for DPI
+        # At 300 DPI, 12pt = 12 * 300/72 = 50 pixels
         base_size_300dpi = 50
+
         font_regular = ImageFont.truetype(f"{fonts['sans']}.ttf", base_size_300dpi)
         font_bold = ImageFont.truetype(f"{fonts['sans']} Bold.ttf", base_size_300dpi)
+
         return {'regular': font_regular, 'bold': font_bold}
     except:
         return {'regular': ImageFont.load_default(), 'bold': ImageFont.load_default()}
 
-# Typografie-Richtlinien
+# Typography guidelines
 typography_specs = {
-    'minimum_font_size': '8pt',  # Lesbar beim Drucken
-    'line_width_min': 0.5,  # Punkte, fuer Druckklarheit
+    'minimum_font_size': '8pt',  # Readable when printed
+    'line_width_min': 0.5,  # Points, for print clarity
     'panel_labels': {
         'font': 'Arial Bold',
         'size': '12pt',
-        'position': 'oben-links',
-        'style': 'A, B, C'  # Oder (a), (b), (c)
+        'position': 'top-left',
+        'style': 'A, B, C'  # Or (a), (b), (c)
     },
-    'axis_labels': {'font': 'Arial', 'size': '10pt'},
-    'legend': {'font': 'Arial', 'size': '9pt', 'position': 'ausserhalb Plotbereich'}
+    'axis_labels': {
+        'font': 'Arial',
+        'size': '10pt'
+    },
+    'legend': {
+        'font': 'Arial',
+        'size': '9pt',
+        'position': 'outside plot area'
+    }
 }
 ```
 
@@ -267,7 +290,7 @@ Format basierend auf Anwendungsfall waehlen:
 
 ```python
 def export_multi_format(source_path, output_base, formats=['png', 'pdf', 'tiff']):
-    """Grafik in mehreren Formaten exportieren."""
+    """Export graphic in multiple formats."""
     from PIL import Image
     import cairosvg
     import os
@@ -275,31 +298,72 @@ def export_multi_format(source_path, output_base, formats=['png', 'pdf', 'tiff']
     base, ext = os.path.splitext(output_base)
 
     if ext.lower() in ['.svg']:
+        # SVG source - convert to rasters
         for fmt in formats:
             output = f"{base}.{fmt}"
+
             if fmt == 'png':
-                cairosvg.svg2png(url=source_path, write_to=output,
-                    output_width=2126, output_height=1417)
+                cairosvg.svg2png(
+                    url=source_path,
+                    write_to=output,
+                    output_width=2126,  # 180mm @ 300 DPI
+                    output_height=1417   # 120mm @ 300 DPI
+                )
             elif fmt == 'pdf':
                 cairosvg.svg2pdf(url=source_path, write_to=output)
             elif fmt == 'tiff':
+                # Convert via PNG intermediate
                 temp_png = f"{base}_temp.png"
                 cairosvg.svg2png(url=source_path, write_to=temp_png)
                 img = Image.open(temp_png)
                 img.save(output, format='TIFF', compression='tiff_lzw')
                 os.remove(temp_png)
+
     else:
+        # Raster source
         img = Image.open(source_path)
+
         for fmt in formats:
             output = f"{base}.{fmt}"
+
             if fmt == 'png':
                 img.save(output, format='PNG', dpi=(300, 300), optimize=True)
             elif fmt == 'tiff':
                 img.save(output, format='TIFF', compression='tiff_lzw', dpi=(300, 300))
             elif fmt == 'pdf':
+                # Use img2pdf or similar for raster-to-PDF
                 img.save(output, format='PDF', resolution=300.0)
 
-    print(f"In Formaten exportiert: {', '.join(formats)}")
+    print(f"Exported in formats: {', '.join(formats)}")
+
+# Format selection guide
+format_guide = {
+    'TIFF': {
+        'use_for': 'Journal submission, archival',
+        'benefits': 'Lossless, supports CMYK, high quality',
+        'compression': 'LZW or ZIP (lossless)'
+    },
+    'PDF': {
+        'use_for': 'Submission, print, archival',
+        'benefits': 'Vector or raster, text searchable, widely accepted',
+        'variants': 'PDF/A (archival), PDF/X (print)'
+    },
+    'PNG': {
+        'use_for': 'Web, presentations, digital',
+        'benefits': 'Lossless, transparency, good compression',
+        'limitation': 'RGB only, larger than JPEG'
+    },
+    'SVG': {
+        'use_for': 'Web, further editing, scalable graphics',
+        'benefits': 'Vector, infinitely scalable, small file size',
+        'limitation': 'Not always accepted by journals'
+    },
+    'EPS': {
+        'use_for': 'Legacy journal requirements',
+        'benefits': 'Vector format accepted by older systems',
+        'limitation': 'Being phased out, use PDF instead'
+    }
+}
 ```
 
 **Erwartet:** Geeignetes Format fuer Publikationskanal
@@ -311,18 +375,18 @@ Web-optimierte Versionen erstellen:
 
 ```python
 def optimize_for_web(input_path, output_path, max_width=1200, quality=85):
-    """Bild fuer Web-Veroeffentlichung optimieren."""
+    """Optimize image for web publication."""
     from PIL import Image
 
     img = Image.open(input_path)
 
-    # Bei Uebergroesse verkleinern
+    # Resize if too large
     if img.width > max_width:
         ratio = max_width / img.width
         new_height = int(img.height * ratio)
         img = img.resize((max_width, new_height), Image.LANCZOS)
 
-    # Bei Bedarf zu RGB konvertieren
+    # Convert to RGB if needed
     if img.mode in ('RGBA', 'LA', 'P'):
         background = Image.new('RGB', img.size, (255, 255, 255))
         if img.mode == 'P':
@@ -330,12 +394,33 @@ def optimize_for_web(input_path, output_path, max_width=1200, quality=85):
         background.paste(img, mask=img.split()[-1] if 'A' in img.mode else None)
         img = background
 
-    # Optimiert speichern
+    # Save optimized
     img.save(output_path, format='JPEG', quality=quality, optimize=True, progressive=True)
 
+    # Check file size
     import os
     file_size_kb = os.path.getsize(output_path) / 1024
-    print(f"Optimiert: {file_size_kb:.1f} KB")
+    print(f"Optimized: {file_size_kb:.1f} KB")
+
+def create_responsive_set(input_path, output_base):
+    """Create multiple resolutions for responsive web."""
+    from PIL import Image
+
+    img = Image.open(input_path)
+    sizes = [
+        (640, '640w'),
+        (1024, '1024w'),
+        (1920, '1920w')
+    ]
+
+    for width, suffix in sizes:
+        if img.width >= width:
+            ratio = width / img.width
+            height = int(img.height * ratio)
+            resized = img.resize((width, height), Image.LANCZOS)
+
+            output = f"{output_base}_{suffix}.jpg"
+            resized.save(output, format='JPEG', quality=85, optimize=True)
 ```
 
 **Erwartet:** Web-optimierte Bilder unter 500KB, responsive Groessen erzeugt
@@ -350,22 +435,26 @@ from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
 def embed_metadata(image_path, output_path, metadata):
-    """Metadaten in PNG einbetten."""
+    """Embed metadata in PNG."""
     img = Image.open(image_path)
+
+    # Create metadata
     png_info = PngInfo()
     for key, value in metadata.items():
         png_info.add_text(key, str(value))
+
+    # Save with metadata
     img.save(output_path, format='PNG', pnginfo=png_info)
 
-# Beispiel-Metadaten
+# Example metadata
 metadata = {
-    'Title': 'Abbildung 1: Zusammenhang zwischen Gewicht und Kraftstoffeffizienz',
+    'Title': 'Figure 1: Relationship between weight and fuel efficiency',
     'Author': 'Jane Doe',
-    'Description': 'Streudiagramm zeigt negative Korrelation',
+    'Description': 'Scatter plot showing negative correlation',
     'Copyright': 'CC-BY 4.0',
     'Software': 'R 4.3.0, ggplot2 3.4.0',
     'Creation Date': '2026-02-16',
-    'Source': 'mtcars-Datensatz'
+    'Source': 'mtcars dataset'
 }
 
 embed_metadata('figure1.png', 'figure1_with_metadata.png', metadata)
