@@ -47,7 +47,7 @@ metadata:
 ```r
 library(jigsawR)
 result <- validate_piles_syntax("1-2-3,4-5")
-# 有効な場合はTRUEを返し、無効な場合はエラーメッセージを返す
+# Returns TRUE if valid, error message if invalid
 ```
 
 一般的な構文エラーを確認する:
@@ -63,13 +63,13 @@ result <- validate_piles_syntax("1-2-3,4-5")
 
 ```r
 groups <- parse_piles("1-2-3,4-5")
-# 返却値: list(c(1, 2, 3), c(4, 5))
+# Returns: list(c(1, 2, 3), c(4, 5))
 ```
 
 範囲を含む文字列の場合:
 ```r
 groups <- parse_piles("1:6,7-8")
-# 返却値: list(c(1, 2, 3, 4, 5, 6), c(7, 8))
+# Returns: list(c(1, 2, 3, 4, 5, 6), c(7, 8))
 ```
 
 **期待結果:** 整数ベクトルのリスト（フュージョングループごとに1つ）。正しいピースIDとグループ境界を持つ。
@@ -93,10 +93,10 @@ groups <- parse_piles("1:6,7-8")
 パズル結果オブジェクトが利用可能な場合、以下を確認する:
 
 ```r
-# まずパズルを生成
+# Generate the puzzle first
 puzzle <- generate_puzzle(type = "hexagonal", grid = c(3), size = c(200))
 
-# パズルコンテキストで解析（キーワードを解決）
+# Parse with puzzle context (resolves keywords)
 groups <- parse_fusion("center,ring1", puzzle)
 ```
 
@@ -117,10 +117,10 @@ groups <- parse_fusion("center,ring1", puzzle)
 original <- "1-2-3,4-5"
 groups <- parse_piles(original)
 roundtrip <- to_piles(groups)
-# roundtripはoriginalと等しい（または正規化された等価物）はず
+# roundtrip should equal original (or canonical equivalent)
 
 groups2 <- parse_piles(roundtrip)
-identical(groups, groups2)  # TRUEでなければならない
+identical(groups, groups2)  # Must be TRUE
 ```
 
 **期待結果:** ラウンドトリップが同一のグループリストを生成し、`parse_piles()`と`to_piles()`が逆関数であることを確認する。

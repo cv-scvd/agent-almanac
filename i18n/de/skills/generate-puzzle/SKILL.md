@@ -94,9 +94,9 @@ result <- generate_puzzle(
   layout = "grid"
 )
 
-cat("Teile:", length(result$pieces), "\n")
-cat("SVG-Laenge:", nchar(result$svg_content), "\n")
-cat("Dateien:", paste(result$files, collapse = ", "), "\n")
+cat("Pieces:", length(result$pieces), "\n")
+cat("SVG length:", nchar(result$svg_content), "\n")
+cat("Files:", paste(result$files, collapse = ", "), "\n")
 ```
 
 In einer temporaeren Skriptdatei speichern.

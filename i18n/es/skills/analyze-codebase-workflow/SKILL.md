@@ -53,11 +53,11 @@ Identifica los archivos fuente y sus lenguajes para entender qué puede analizar
 ```r
 library(putior)
 
-# Listar todos los lenguajes soportados y sus extensiones
+# List all supported languages and their extensions
 list_supported_languages()
-list_supported_languages(detection_only = TRUE)  # Solo lenguajes con auto-detección
+list_supported_languages(detection_only = TRUE)  # Only languages with auto-detection
 
-# Obtener extensiones soportadas
+# Get supported extensions
 exts <- get_supported_extensions()
 ```
 
@@ -77,12 +77,12 @@ find /path/to/repo -type f | sed 's/.*\.//' | sort | uniq -c | sort -rn | head -
 Para cada lenguaje detectado, verifica la disponibilidad de patrones de auto-detección.
 
 ```r
-# Verificar qué lenguajes tienen patrones de auto-detección (18 lenguajes, 902 patrones)
+# Check which languages have auto-detection patterns (18 languages, 902 patterns)
 detection_langs <- list_supported_languages(detection_only = TRUE)
 cat("Languages with auto-detection:\n")
 print(detection_langs)
 
-# Obtener conteos de patrones para lenguajes específicos encontrados en el repositorio
+# Get pattern counts for specific languages found in the repo
 for (lang in c("r", "python", "javascript", "sql", "dockerfile", "makefile")) {
   patterns <- get_detection_patterns(lang)
   cat(sprintf("%s: %d input, %d output, %d dependency patterns\n",
@@ -103,14 +103,14 @@ for (lang in c("r", "python", "javascript", "sql", "dockerfile", "makefile")) {
 Ejecuta `put_auto()` en el directorio objetivo para descubrir elementos del flujo de trabajo.
 
 ```r
-# Auto-detección completa
+# Full auto-detection
 workflow <- put_auto("./src/",
   detect_inputs = TRUE,
   detect_outputs = TRUE,
   detect_dependencies = TRUE
 )
 
-# Excluir scripts de compilación y ayudantes de prueba del escaneo
+# Exclude build scripts and test helpers from scanning
 workflow <- put_auto("./src/",
   detect_inputs = TRUE,
   detect_outputs = TRUE,
@@ -118,17 +118,17 @@ workflow <- put_auto("./src/",
   exclude = c("build-", "test_helper")
 )
 
-# Ver los nodos del flujo de trabajo detectados
+# View detected workflow nodes
 print(workflow)
 
-# Verificar el conteo de nodos
+# Check node count
 cat(sprintf("Detected %d workflow nodes\n", nrow(workflow)))
 ```
 
 Para repositorios grandes, analiza subdirectorios de forma incremental:
 
 ```r
-# Analizar subdirectorios específicos
+# Analyze specific subdirectories
 etl_workflow <- put_auto("./src/etl/")
 api_workflow <- put_auto("./src/api/")
 ```
@@ -142,13 +142,13 @@ api_workflow <- put_auto("./src/api/")
 Visualiza el flujo de trabajo auto-detectado para evaluar la cobertura e identificar brechas.
 
 ```r
-# Generar diagrama del flujo de trabajo auto-detectado
+# Generate diagram from auto-detected workflow
 cat(put_diagram(workflow, theme = "github"))
 
-# Con información del archivo fuente para trazabilidad
+# With source file info for traceability
 cat(put_diagram(workflow, show_source_info = TRUE))
 
-# Guardar en archivo para revisión
+# Save to file for review
 writeLines(put_diagram(workflow, theme = "github"), "workflow-auto.md")
 ```
 
@@ -161,13 +161,13 @@ writeLines(put_diagram(workflow, theme = "github"), "workflow-auto.md")
 Genera un plan estructurado que documente qué se encontró y qué necesita anotación manual.
 
 ```r
-# Generar sugerencias de anotación
+# Generate annotation suggestions
 put_generate("./src/", style = "single")
 
-# Para estilo multilínea (más legible para flujos de trabajo complejos)
+# For multiline style (more readable for complex workflows)
 put_generate("./src/", style = "multiline")
 
-# Copiar sugerencias al portapapeles para fácil pegado
+# Copy suggestions to clipboard for easy pasting
 put_generate("./src/", output = "clipboard")
 ```
 

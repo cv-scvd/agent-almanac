@@ -144,10 +144,10 @@ Para actualizaciones, incluir:
 ### Paso 8: Verificación Final Previa al Envío
 
 ```r
-# Una última verificación
+# One last check
 devtools::check()
 
-# Verificar el tarball compilado
+# Verify the built tarball
 devtools::build()
 ```
 
@@ -174,10 +174,10 @@ Alternativamente, enviar manualmente en https://cran.r-project.org/submit.html s
 Tras la aceptación:
 
 ```r
-# Etiquetar la versión
+# Tag the release
 usethis::use_github_release()
 
-# Incrementar a versión de desarrollo
+# Bump to development version
 usethis::use_dev_version()
 ```
 
@@ -209,13 +209,13 @@ usethis::use_dev_version()
 ## Ejemplos
 
 ```r
-# Flujo completo previo al envío
+# Full pre-submission workflow
 devtools::spell_check()
 urlchecker::url_check()
 devtools::check()
 devtools::check_win_devel()
 rhub::rhub_check()
-# Esperar resultados...
+# Wait for results...
 devtools::release()
 ```
 

@@ -51,16 +51,16 @@ metadata:
 ```r
 library(putior)
 
-# 自手動註解
+# From manual annotations
 workflow <- put("./src/")
 
-# 自手動註解，排除特定檔
+# From manual annotations, excluding specific files
 workflow <- put("./src/", exclude = c("build-workflow\\.R$", "test_"))
 
-# 僅自動偵測
+# From auto-detection only
 workflow <- put_auto("./src/")
 
-# 合併（手動 + 自動）
+# From merged (manual + auto)
 workflow <- put_merge("./src/", merge_strategy = "supplement")
 ```
 
@@ -85,21 +85,21 @@ workflow <- put_merge("./src/", merge_strategy = "supplement")
 擇合目標讀者之主題。
 
 ```r
-# 列所有可用主題
+# List all available themes
 get_diagram_themes()
 
-# 標準主題
-# "light"   — 預設，明色
-# "dark"    — 暗模式環境
-# "auto"    — GitHub 自適應實色
-# "minimal" — 灰階，宜列印
-# "github"  — 為 GitHub README 優化
+# Standard themes
+# "light"   — Default, bright colors
+# "dark"    — For dark mode environments
+# "auto"    — GitHub-adaptive with solid colors
+# "minimal" — Grayscale, print-friendly
+# "github"  — Optimized for GitHub README files
 
-# 色盲安全主題（viridis 家族）
-# "viridis" — 紫→藍→綠→黃，通用可及性
-# "magma"   — 紫→紅→黃，列印高對比
-# "plasma"  — 紫→粉→橙→黃，簡報
-# "cividis" — 藍→灰→黃，最大可及性（無紅綠）
+# Colorblind-safe themes (viridis family)
+# "viridis" — Purple→Blue→Green→Yellow, general accessibility
+# "magma"   — Purple→Red→Yellow, high contrast for print
+# "plasma"  — Purple→Pink→Orange→Yellow, presentations
+# "cividis" — Blue→Gray→Yellow, maximum accessibility (no red-green)
 ```
 
 附加參數：
@@ -118,7 +118,7 @@ get_diagram_themes()
 若九內建主題不配專案調色盤，以 `put_theme()` 建自訂主題。
 
 ```r
-# 建自訂調色盤——未指定類型繼承自基主題
+# Create custom palette — unspecified types inherit from base theme
 cyberpunk <- put_theme(
   base = "dark",
   input    = c(fill = "#1a1a2e", stroke = "#00ff88", color = "#00ff88"),
@@ -127,7 +127,7 @@ cyberpunk <- put_theme(
   decision = c(fill = "#1a1a2e", stroke = "#ffaa33", color = "#ffaa33")
 )
 
-# 用 palette 參數（覆蓋 theme）
+# Use the palette parameter (overrides theme when provided)
 mermaid_content <- put_diagram(workflow, palette = cyberpunk, output = "raw")
 writeLines(mermaid_content, "workflow.mmd")
 ```
@@ -153,26 +153,26 @@ mermaid_content <- paste(c(lines, custom_defs), collapse = "\n")
 以所欲輸出模式產圖。
 
 ```r
-# 印至主控台（預設）
+# Print to console (default)
 cat(put_diagram(workflow, theme = "github"))
 
-# 存至檔
+# Save to file
 writeLines(put_diagram(workflow, theme = "github"), "docs/workflow.md")
 
-# 取原始字串以嵌入
+# Get raw string for embedding
 mermaid_code <- put_diagram(workflow, output = "raw", theme = "github")
 
-# 附源檔資訊（示每節點來自何檔）
+# With source file info (shows which file each node comes from)
 cat(put_diagram(workflow, theme = "github", show_source_info = TRUE))
 
-# 附可點節點（VS Code、RStudio 或 file:// 協定）
+# With clickable nodes (for VS Code, RStudio, or file:// protocol)
 cat(put_diagram(workflow,
   theme = "github",
   enable_clicks = TRUE,
-  click_protocol = "vscode"  # 或 "rstudio"、"file"
+  click_protocol = "vscode"  # or "rstudio", "file"
 ))
 
-# 全特徵
+# Full-featured
 cat(put_diagram(workflow,
   theme = "viridis",
   show_source_info = TRUE,
@@ -202,13 +202,13 @@ flowchart TD
 
 **Quarto 文件（經 knit_child 之原生 mermaid 段）：**
 ```r
-# 段一：生代碼（可見、可摺）
+# Chunk 1: Generate code (visible, foldable)
 workflow <- put("./src/")
 mermaid_code <- put_diagram(workflow, output = "raw", theme = "github")
 ```
 
 ```r
-# 段二：輸出為原生 mermaid 段（隱藏）
+# Chunk 2: Output as native mermaid chunk (hidden)
 #| output: asis
 #| echo: false
 mermaid_chunk <- paste0("```{mermaid}\n", mermaid_code, "\n```")

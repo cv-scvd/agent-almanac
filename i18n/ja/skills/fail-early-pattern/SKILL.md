@@ -157,9 +157,9 @@ cli::cli_abort(c(
 **悪いメッセージ:**
 
 ```r
-stop("Error")                    # 何が失敗した? わからない
-stop("Invalid input")           # どの入力? 何が問題?
-stop(paste("Error in step", i)) # 実行可能な情報なし
+stop("Error")                    # What failed? No idea
+stop("Invalid input")           # Which input? What's wrong with it?
+stop(paste("Error in step", i)) # No actionable information
 ```
 
 **期待結果：** エラーメッセージが自己文書化されている — エラーを初めて見た開発者がソースコードを読まずに診断して修正できる。

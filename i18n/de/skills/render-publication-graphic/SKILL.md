@@ -125,15 +125,15 @@ print(f"Erforderliche Aufloesung: {width}x{height} Pixel")
 ```
 
 ```r
-# R ggplot2-Export mit korrekter DPI
+# R ggplot2 export with proper DPI
 library(ggplot2)
 
-# Plot erstellen
+# Create plot
 p <- ggplot(mtcars, aes(x = wt, y = mpg)) +
   geom_point() +
   theme_minimal(base_size = 12)
 
-# Fuer Publikation speichern (300 DPI)
+# Save for publication (300 DPI)
 ggsave(
   filename = "figure1.png",
   plot = p,
@@ -143,14 +143,14 @@ ggsave(
   dpi = 300
 )
 
-# Als Vektorgrafik fuer Flexibilitaet speichern
+# Save as vector for flexibility
 ggsave(
   filename = "figure1.pdf",
   plot = p,
   width = 180,
   height = 120,
   units = "mm",
-  device = cairo_pdf  # Bessere Textdarstellung
+  device = cairo_pdf  # Better text rendering
 )
 ```
 
@@ -236,15 +236,15 @@ typography_specs = {
 ```
 
 ```r
-# R publikationsqualitaet Typografie
+# R publication-quality typography
 library(ggplot2)
 
 p <- ggplot(mtcars, aes(x = wt, y = mpg)) +
   geom_point(size = 2) +
   labs(
-    title = "Kraftstoffeffizienz vs. Gewicht",
-    x = "Gewicht (1000 lbs)",
-    y = "Meilen pro Gallone"
+    title = "Fuel Efficiency vs Weight",
+    x = "Weight (1000 lbs)",
+    y = "Miles per Gallon"
   ) +
   theme_bw(base_size = 12, base_family = "Arial") +
   theme(
@@ -253,7 +253,8 @@ p <- ggplot(mtcars, aes(x = wt, y = mpg)) +
     axis.text = element_text(size = 10),
     legend.text = element_text(size = 10),
     panel.grid.minor = element_blank(),
-    text = element_text(color = "black")  # Schwarz fuer Druck
+    # Ensure text is black for print
+    text = element_text(color = "black")
   )
 ```
 

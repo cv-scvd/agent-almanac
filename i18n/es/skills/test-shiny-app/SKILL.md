@@ -50,10 +50,10 @@ Configurar tests completos para aplicaciones Shiny usando shinytest2 (extremo a 
 ```r
 install.packages("shinytest2")
 
-# Para apps golem, añadir como dependencia de Suggests
+# For golem apps, add as a Suggests dependency
 usethis::use_package("shinytest2", type = "Suggests")
 
-# Configurar infraestructura testthat si no está presente
+# Set up testthat infrastructure if not present
 usethis::use_testthat(edition = 3)
 ```
 
@@ -71,12 +71,12 @@ test_that("dashboard module filters data correctly", {
     data = reactive(iris),
     columns = c("Species", "Sepal.Length")
   ), {
-    # Establecer entradas
+    # Set inputs
     session$setInputs(column = "Species")
     session$setInputs(value_select = "setosa")
     session$setInputs(apply = 1)
 
-    # Verificar salida
+    # Check output
     result <- filtered()
     expect_equal(nrow(result), 50)
     expect_true(all(result$Species == "setosa"))
@@ -88,7 +88,7 @@ test_that("dashboard module handles empty data", {
     data = reactive(iris[0, ]),
     columns = c("Species")
   ), {
-    # El módulo no debe dar error con datos vacíos
+    # Module should not error on empty data
     expect_no_error(session$setInputs(column = "Species"))
   })
 })
@@ -111,7 +111,7 @@ Crea `tests/testthat/test-app-e2e.R`:
 
 ```r
 test_that("app loads and displays initial state", {
-  # Para apps golem
+  # For golem apps
   app <- AppDriver$new(
     app_dir = system.file(package = "myapp"),
     name = "initial-load",
@@ -120,10 +120,10 @@ test_that("app loads and displays initial state", {
   )
   on.exit(app$stop(), add = TRUE)
 
-  # Esperar a que la app cargue
+  # Wait for app to load
   app$wait_for_idle(timeout = 10000)
 
-  # Verificar que los elementos clave existen
+  # Check that key elements exist
   app$expect_values()
 })
 
@@ -134,14 +134,14 @@ test_that("filter interaction updates the table", {
   )
   on.exit(app$stop(), add = TRUE)
 
-  # Interactuar con la app
+  # Interact with the app
   app$set_inputs(`filter1-column` = "cyl")
   app$wait_for_idle()
 
   app$set_inputs(`filter1-apply` = "click")
   app$wait_for_idle()
 
-  # Tomar snapshot de los valores de salida
+  # Snapshot the output values
   app$expect_values(output = "table")
 })
 ```
@@ -174,10 +174,10 @@ Esto abre la app en un navegador con un panel de grabación. Interactúa con la 
 Para tests basados en snapshots, gestiona los valores esperados:
 
 ```r
-# Aceptar snapshots nuevos/modificados después de revisión
+# Accept new/changed snapshots after review
 testthat::snapshot_accept("test-app-e2e")
 
-# Revisar diferencias en snapshots
+# Review snapshot differences
 testthat::snapshot_review("test-app-e2e")
 ```
 

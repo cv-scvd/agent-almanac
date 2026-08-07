@@ -101,8 +101,8 @@ safety check
 **R**：
 
 ```r
-# 检查包的已知漏洞
-# 无内置工具，但可验证包来源
+# Check for known vulnerabilities in packages
+# No built-in tool, but verify package sources
 renv::status()
 ```
 

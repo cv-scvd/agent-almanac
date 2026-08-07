@@ -51,11 +51,11 @@ jigsawRのすべてのパイプライン統合ポイントにまたがる新し�
 #' Generate <type> puzzle pieces (internal)
 #' @noRd
 generate_<type>_pieces_internal <- function(params, seed) {
-  # 1. RNG状態の初期化
-  # 2. ピースジオメトリの生成
-  # 3. エッジパスの構築（SVGパスデータ）
-  # 4. 隣接関係の計算
-  # 5. リストを返す: pieces, edges, adjacency, metadata
+  # 1. Initialize RNG state
+  # 2. Generate piece geometries
+  # 3. Build edge paths (SVG path data)
+  # 4. Compute adjacency
+  # 5. Return list: pieces, edges, adjacency, metadata
 }
 ```
 
@@ -75,7 +75,7 @@ generate_<type>_pieces_internal <- function(params, seed) {
 4. ファイル名プレフィックスマッピングを追加（例：`"<type>"` -> `"<type>_"`）
 
 ```r
-# valid_typesに追加
+# In valid_types
 valid_types <- c("rectangular", "hexagonal", "concentric", "voronoi", "snic", "<type>")
 ```
 
@@ -91,7 +91,7 @@ valid_types <- c("rectangular", "hexagonal", "concentric", "voronoi", "snic", "<
 2. タイプがPILES記法をサポートする場合、フュージョン処理を追加
 
 ```r
-# switch/dispatchに追加
+# In the switch/dispatch
 "<type>" = generate_<type>_pieces_internal(params, seed)
 ```
 

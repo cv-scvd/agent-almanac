@@ -142,10 +142,10 @@ There are currently no downstream dependencies for this package.
 ### 第 8 步：最终预检
 
 ```r
-# 最后一次检查
+# One last check
 devtools::check()
 
-# 验证构建的 tarball
+# Verify the built tarball
 devtools::build()
 ```
 
@@ -172,10 +172,10 @@ devtools::release()
 获得接受后：
 
 ```r
-# 打标签创建发布版本
+# Tag the release
 usethis::use_github_release()
 
-# 切换至开发版本
+# Bump to development version
 usethis::use_dev_version()
 ```
 
@@ -207,13 +207,13 @@ usethis::use_dev_version()
 ## 示例
 
 ```r
-# 完整的提交前工作流
+# Full pre-submission workflow
 devtools::spell_check()
 urlchecker::url_check()
 devtools::check()
 devtools::check_win_devel()
 rhub::rhub_check()
-# 等待结果...
+# Wait for results...
 devtools::release()
 ```
 

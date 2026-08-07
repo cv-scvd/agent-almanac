@@ -47,12 +47,12 @@ metadata:
 ### ステップ1: アプリケーションのプロファイリング
 
 ```r
-# profvisでプロファイル
+# Profile with profvis
 profvis::profvis({
   shiny::runApp("path/to/app", display.mode = "normal")
 })
 
-# または特定の操作をプロファイル
+# Or profile specific operations
 profvis::profvis({
   result <- expensive_computation(data)
 })
@@ -67,10 +67,10 @@ profvis::profvis({
 リアクティブグラフ分析にリアクティブログを使用します：
 
 ```r
-# リアクティブログを有効化
+# Enable reactive logging
 options(shiny.reactlog = TRUE)
 shiny::runApp("path/to/app")
-# ブラウザでCtrl+F3を押してリアクティブグラフを表示
+# Press Ctrl+F3 in the browser to view the reactive graph
 ```
 
 **期待結果：** 2〜3の最大のボトルネックが明確に特定されます。
@@ -82,17 +82,17 @@ shiny::runApp("path/to/app")
 不要なリアクティブの無効化を減らします：
 
 ```r
-# 悪い例: 任意の入力変更で再計算される
+# BAD: Recomputes on ANY input change
 output$plot <- renderPlot({
-  data <- load_data()  # 毎回実行される
+  data <- load_data()  # Runs every time
   filtered <- data[data$category == input$category, ]
   plot(filtered)
 })
 
-# 良い例: データ読み込みをフィルタリングから分離する
+# GOOD: Isolate data loading from filtering
 raw_data <- reactive({
   load_data()
-}) |> bindCache()  # 高価な部分をキャッシュ
+}) |> bindCache()  # Cache the expensive part
 
 filtered_data <- reactive({
   raw_data()[raw_data()$category == input$category, ]
@@ -106,9 +106,9 @@ output$plot <- renderPlot({
 不要な無効化を防ぐために`isolate()`を使用します：
 
 ```r
-# すべての入力変更ではなく、ボタンがクリックされたときのみ再計算
+# Only recompute when the button is clicked, not on every input change
 output$result <- renderText({
-  input$compute  # ボタンへの依存関係を取得
+  input$compute  # Take dependency on button
   isolate({
     paste("N =", input$n, "Mean =", mean(rnorm(input$n)))
   })
@@ -118,10 +118,10 @@ output$result <- renderText({
 高頻度の入力には`debounce()`と`throttle()`を使用します：
 
 ```r
-# テキスト入力をデバウンス — ユーザーが入力を止めてから500ms待つ
+# Debounce text input — wait 500ms after user stops typing
 search_text <- reactive(input$search) |> debounce(500)
 
-# スライダーをスロットル — 最大250msごとに更新
+# Throttle slider — update at most every 250ms
 slider_value <- reactive(input$slider) |> throttle(250)
 ```
 
@@ -148,7 +148,7 @@ output$table <- renderDT({
 #### 関数用のmemoise
 
 ```r
-# 高価な関数結果をキャッシュ
+# Cache expensive function results
 load_reference_data <- memoise::memoise(
   function(dataset_name) {
     readr::read_csv(paste0("data/", dataset_name, ".csv"))
@@ -160,13 +160,13 @@ load_reference_data <- memoise::memoise(
 #### アプリレベルのデータ事前計算
 
 ```r
-# global.Rまたはサーバー関数の外 — アプリ起動時に一度だけ計算される
+# In global.R or outside server function — computed once at app startup
 reference_data <- readr::read_csv("data/reference.csv")
 model <- readRDS("models/trained_model.rds")
 
 server <- function(input, output, session) {
-  # reference_dataとmodelはすべてのセッションで利用可能
-  # 再読み込みなし
+  # reference_data and model are available to all sessions
+  # without reloading
 }
 ```
 
@@ -180,20 +180,20 @@ server <- function(input, output, session) {
 
 ```r
 server <- function(input, output, session) {
-  # 拡張タスクを定義
+  # Define the extended task
   analysis_task <- ExtendedTask$new(function(data, params) {
     promises::future_promise({
-      # これはバックグラウンドプロセスで実行される
+      # This runs in a background process
       run_heavy_analysis(data, params)
     })
   }) |> bind_task_button("run_analysis")
 
-  # タスクをトリガー
+  # Trigger the task
   observeEvent(input$run_analysis, {
     analysis_task$invoke(dataset(), input$params)
   })
 
-  # 結果を使用
+  # Use the result
   output$result <- renderTable({
     analysis_task$result()
   })
@@ -210,7 +210,7 @@ plan(multisession, workers = 4)
 server <- function(input, output, session) {
   result <- eventReactive(input$compute, {
     future_promise({
-      Sys.sleep(5)  # 長時間計算をシミュレート
+      Sys.sleep(5)  # Simulate long computation
       expensive_analysis(isolate(input$params))
     })
   })
@@ -230,12 +230,12 @@ server <- function(input, output, session) {
 レンダリングのオーバーヘッドを削減します：
 
 ```r
-# 再レンダリングの代わりにplotlyをインタラクティブプロットに使用
+# Use plotly for interactive plots instead of re-rendering
 output$plot <- plotly::renderPlotly({
   plotly::plot_ly(filtered_data(), x = ~x, y = ~y, type = "scatter")
 })
 
-# 大きなテーブルにはサーバーサイドDTを使用
+# Use server-side DT for large tables
 output$table <- DT::renderDataTable({
   DT::datatable(large_data(), server = TRUE, options = list(
     pageLength = 25,
@@ -243,7 +243,7 @@ output$table <- DT::renderDataTable({
   ))
 })
 
-# 非表示要素のレンダリングを避けるための条件付きUI
+# Conditional UI to avoid rendering hidden elements
 output$details <- renderUI({
   req(input$show_details)
   expensive_details_ui()
@@ -257,7 +257,7 @@ output$details <- renderUI({
 ### ステップ6: パフォーマンス改善の検証
 
 ```r
-# ビフォー/アフターのベンチマーク
+# Before/after benchmarking
 system.time({
   shiny::testServer(myModuleServer, args = list(...), {
     session$setInputs(category = "A")
@@ -265,7 +265,7 @@ system.time({
   })
 })
 
-# shinyloadtestによる負荷テスト
+# Load testing with shinyloadtest
 shinyloadtest::record_session("http://localhost:3838")
 shinyloadtest::shinycannon(
   "recording.log",

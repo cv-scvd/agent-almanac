@@ -50,14 +50,14 @@ bslibのテーマ設定、モダンなレイアウトプリミティブ、カス
 bslibはいくつかのページコンストラクターを提供します：
 
 ```r
-# サイドバーレイアウト — データアプリに最も一般的
+# Sidebar layout — most common for data apps
 ui <- page_sidebar(
   title = "My App",
   sidebar = sidebar("Controls here"),
   "Main content here"
 )
 
-# Navbarレイアウト — 複数ページアプリに
+# Navbar layout — for multi-page apps
 ui <- page_navbar(
   title = "My App",
   nav_panel("Tab 1", "Content 1"),
@@ -66,7 +66,7 @@ ui <- page_navbar(
   nav_item(actionButton("help", "Help"))
 )
 
-# Fillableレイアウト — コンテンツが利用可能なスペースを埋める
+# Fillable layout — content fills available space
 ui <- page_fillable(
   card(
     full_screen = TRUE,
@@ -74,7 +74,7 @@ ui <- page_fillable(
   )
 )
 
-# ダッシュボードレイアウト — バリューボックスとカードのグリッド
+# Dashboard layout — grid of value boxes and cards
 ui <- page_sidebar(
   title = "Dashboard",
   sidebar = sidebar(open = "closed", "Filters"),
@@ -100,11 +100,11 @@ ui <- page_sidebar(
 ```r
 my_theme <- bslib::bs_theme(
   version = 5,                      # Bootstrap 5
-  bootswatch = "flatly",            # オプションのプリセットテーマ
-  bg = "#ffffff",                   # 背景色
-  fg = "#2c3e50",                   # 前景（テキスト）色
-  primary = "#2c3e50",              # プライマリブランドカラー
-  secondary = "#95a5a6",            # セカンダリカラー
+  bootswatch = "flatly",            # Optional preset theme
+  bg = "#ffffff",                   # Background color
+  fg = "#2c3e50",                   # Foreground (text) color
+  primary = "#2c3e50",              # Primary brand color
+  secondary = "#95a5a6",            # Secondary color
   success = "#18bc9c",
   info = "#3498db",
   warning = "#f39c12",
@@ -147,7 +147,7 @@ ui <- page_sidebar(
     actionButton("refresh", "Refresh", class = "btn-primary w-100")
   ),
 
-  # KPI行 — 非フィリング
+  # KPI row — non-filling
   layout_columns(
     fill = FALSE,
     col_widths = c(4, 4, 4),
@@ -171,7 +171,7 @@ ui <- page_sidebar(
     )
   ),
 
-  # メインコンテンツ行
+  # Main content row
   layout_columns(
     col_widths = c(8, 4),
     card(
@@ -221,8 +221,8 @@ server <- function(input, output, session) {
     )
   })
 
-  # 条件付きパネル（サーバーラウンドトリップなし）
-  # UI内：
+  # Conditional panels (no server round-trip)
+  # In UI:
   # conditionalPanel(
   #   condition = "input.show_advanced == true",
   #   numericInput("alpha", "Alpha", 0.05)
@@ -239,7 +239,7 @@ server <- function(input, output, session) {
 bslibのテーマ変数を超えたスタイルのために：
 
 ```r
-# インラインCSS
+# Inline CSS
 ui <- page_sidebar(
   theme = my_theme,
   tags$head(tags$style(HTML("
@@ -250,7 +250,7 @@ ui <- page_sidebar(
   # ...
 )
 
-# 外部CSSファイル（www/ディレクトリに配置）
+# External CSS file (place in www/ directory)
 ui <- page_sidebar(
   theme = my_theme,
   tags$head(tags$link(rel = "stylesheet", href = "custom.css")),
@@ -272,31 +272,31 @@ my_theme <- bslib::bs_theme(version = 5) |>
 ### ステップ6: アクセシビリティの確保
 
 ```r
-# 入力にARIAラベルを追加
+# Add ARIA labels to inputs
 selectInput("category", "Category",
   choices = c("A", "B", "C")
 ) |> tagAppendAttributes(`aria-describedby` = "category-help")
 
-# プロットにaltテキストを追加
+# Add alt text to plots
 output$plot <- renderPlot({
   plot(data(), main = "Distribution of Values")
 }, alt = "Histogram showing the distribution of selected values")
 
-# テーマで十分な色のコントラストを確保
+# Ensure sufficient color contrast in theme
 my_theme <- bslib::bs_theme(
   version = 5,
-  bg = "#ffffff",      # 白い背景
-  fg = "#212529"       # 暗いテキスト — 15.4:1のコントラスト比
+  bg = "#ffffff",      # White background
+  fg = "#212529"       # Dark text — 15.4:1 contrast ratio
 )
 
-# セマンティックHTMLを使用
+# Use semantic HTML
 tags$main(
   role = "main",
   tags$h1("Dashboard"),
   tags$section(
     `aria-label` = "Key Performance Indicators",
     layout_columns(
-      # バリューボックス...
+      # value boxes...
     )
   )
 )

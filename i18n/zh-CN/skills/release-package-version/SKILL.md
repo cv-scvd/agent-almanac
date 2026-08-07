@@ -56,7 +56,7 @@ metadata:
 ### 第 2 步：更新版本
 
 ```r
-usethis::use_version("minor")  # 或 "patch" 或 "major"
+usethis::use_version("minor")  # or "patch" or "major"
 ```
 
 此命令更新 DESCRIPTION 中的 `Version` 字段并在 NEWS.md 中添加标题。

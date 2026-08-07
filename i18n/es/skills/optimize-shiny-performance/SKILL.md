@@ -48,12 +48,12 @@ Perfilar, diagnosticar y optimizar el rendimiento de aplicaciones Shiny mediante
 ### Paso 1: Perfilar la Aplicación
 
 ```r
-# Perfilar con profvis
+# Profile with profvis
 profvis::profvis({
   shiny::runApp("path/to/app", display.mode = "normal")
 })
 
-# O perfilar operaciones específicas
+# Or profile specific operations
 profvis::profvis({
   result <- expensive_computation(data)
 })
@@ -68,10 +68,10 @@ Identifica los principales cuellos de botella:
 Usa el registro reactivo para análisis del grafo reactivo:
 
 ```r
-# Habilitar el registro reactivo
+# Enable reactive logging
 options(shiny.reactlog = TRUE)
 shiny::runApp("path/to/app")
-# Presiona Ctrl+F3 en el navegador para ver el grafo reactivo
+# Press Ctrl+F3 in the browser to view the reactive graph
 ```
 
 **Esperado:** Identificación clara de los 2-3 mayores cuellos de botella.
@@ -83,17 +83,17 @@ shiny::runApp("path/to/app")
 Reduce las invalidaciones reactivas innecesarias:
 
 ```r
-# MAL: Recalcula con CUALQUIER cambio de entrada
+# BAD: Recomputes on ANY input change
 output$plot <- renderPlot({
-  data <- load_data()  # Se ejecuta cada vez
+  data <- load_data()  # Runs every time
   filtered <- data[data$category == input$category, ]
   plot(filtered)
 })
 
-# BIEN: Aislar la carga de datos del filtrado
+# GOOD: Isolate data loading from filtering
 raw_data <- reactive({
   load_data()
-}) |> bindCache()  # Cachear la parte costosa
+}) |> bindCache()  # Cache the expensive part
 
 filtered_data <- reactive({
   raw_data()[raw_data()$category == input$category, ]
@@ -107,9 +107,9 @@ output$plot <- renderPlot({
 Usa `isolate()` para prevenir invalidaciones innecesarias:
 
 ```r
-# Solo recalcula cuando se hace clic en el botón, no con cada cambio de entrada
+# Only recompute when the button is clicked, not on every input change
 output$result <- renderText({
-  input$compute  # Tomar dependencia del botón
+  input$compute  # Take dependency on button
   isolate({
     paste("N =", input$n, "Mean =", mean(rnorm(input$n)))
   })
@@ -119,10 +119,10 @@ output$result <- renderText({
 Usa `debounce()` y `throttle()` para entradas de alta frecuencia:
 
 ```r
-# Debounce de entrada de texto — esperar 500ms después de que el usuario deje de escribir
+# Debounce text input — wait 500ms after user stops typing
 search_text <- reactive(input$search) |> debounce(500)
 
-# Throttle del slider — actualizar como máximo cada 250ms
+# Throttle slider — update at most every 250ms
 slider_value <- reactive(input$slider) |> throttle(250)
 ```
 
@@ -149,7 +149,7 @@ output$table <- renderDT({
 #### memoise para Funciones
 
 ```r
-# Cachear resultados de funciones costosas
+# Cache expensive function results
 load_reference_data <- memoise::memoise(
   function(dataset_name) {
     readr::read_csv(paste0("data/", dataset_name, ".csv"))
@@ -161,13 +161,13 @@ load_reference_data <- memoise::memoise(
 #### Pre-computación de Datos a Nivel de App
 
 ```r
-# En global.R o fuera de la función server — computado una vez al iniciar la app
+# In global.R or outside server function — computed once at app startup
 reference_data <- readr::read_csv("data/reference.csv")
 model <- readRDS("models/trained_model.rds")
 
 server <- function(input, output, session) {
-  # reference_data y model están disponibles para todas las sesiones
-  # sin volver a cargar
+  # reference_data and model are available to all sessions
+  # without reloading
 }
 ```
 
@@ -181,20 +181,20 @@ Usa `ExtendedTask` (Shiny >= 1.8.1) para computaciones de larga duración:
 
 ```r
 server <- function(input, output, session) {
-  # Definir la tarea extendida
+  # Define the extended task
   analysis_task <- ExtendedTask$new(function(data, params) {
     promises::future_promise({
-      # Esto se ejecuta en un proceso en segundo plano
+      # This runs in a background process
       run_heavy_analysis(data, params)
     })
   }) |> bind_task_button("run_analysis")
 
-  # Activar la tarea
+  # Trigger the task
   observeEvent(input$run_analysis, {
     analysis_task$invoke(dataset(), input$params)
   })
 
-  # Usar el resultado
+  # Use the result
   output$result <- renderTable({
     analysis_task$result()
   })
@@ -211,7 +211,7 @@ plan(multisession, workers = 4)
 server <- function(input, output, session) {
   result <- eventReactive(input$compute, {
     future_promise({
-      Sys.sleep(5)  # Simular computación larga
+      Sys.sleep(5)  # Simulate long computation
       expensive_analysis(isolate(input$params))
     })
   })
@@ -231,12 +231,12 @@ server <- function(input, output, session) {
 Reduce la sobrecarga de renderizado:
 
 ```r
-# Usar plotly para gráficos interactivos en lugar de volver a renderizar
+# Use plotly for interactive plots instead of re-rendering
 output$plot <- plotly::renderPlotly({
   plotly::plot_ly(filtered_data(), x = ~x, y = ~y, type = "scatter")
 })
 
-# Usar DT del lado del servidor para tablas grandes
+# Use server-side DT for large tables
 output$table <- DT::renderDataTable({
   DT::datatable(large_data(), server = TRUE, options = list(
     pageLength = 25,
@@ -244,7 +244,7 @@ output$table <- DT::renderDataTable({
   ))
 })
 
-# UI condicional para evitar renderizar elementos ocultos
+# Conditional UI to avoid rendering hidden elements
 output$details <- renderUI({
   req(input$show_details)
   expensive_details_ui()
@@ -258,7 +258,7 @@ output$details <- renderUI({
 ### Paso 6: Validar las Mejoras de Rendimiento
 
 ```r
-# Benchmarking antes/después
+# Before/after benchmarking
 system.time({
   shiny::testServer(myModuleServer, args = list(...), {
     session$setInputs(category = "A")
@@ -266,7 +266,7 @@ system.time({
   })
 })
 
-# Pruebas de carga con shinyloadtest
+# Load testing with shinyloadtest
 shinyloadtest::record_session("http://localhost:3838")
 shinyloadtest::shinycannon(
   "recording.log",

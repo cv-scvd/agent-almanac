@@ -88,13 +88,13 @@ renv::restore()
 ### 第 4 步：更新依赖
 
 ```r
-# 更新特定包
+# Update a specific package
 renv::update("dplyr")
 
-# 更新所有包
+# Update all packages
 renv::update()
 
-# 更新后创建快照
+# Snapshot after updates
 renv::snapshot()
 ```
 

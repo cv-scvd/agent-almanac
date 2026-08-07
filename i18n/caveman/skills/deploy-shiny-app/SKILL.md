@@ -55,7 +55,7 @@ rsconnect::appDependencies("path/to/app")
 # For golem apps, ensure DESCRIPTION lists all Imports
 devtools::check()
 
-# Verify app runs cleanly
+# Verify the app runs cleanly
 shiny::runApp("path/to/app")
 ```
 
@@ -189,7 +189,7 @@ docker run -p 3838:3838 myapp:latest
 ### Step 3: Verify Deployment
 
 ```r
-# Check deployed URL responds
+# Check the deployed URL responds
 response <- httr::GET("https://your-app-url/")
 httr::status_code(response)  # Should be 200
 

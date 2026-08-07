@@ -94,19 +94,19 @@ test_that("weighted_mean validates input", {
 
 ```r
 test_that("weighted_mean handles edge cases", {
-  # 空输入
+  # Empty input
   expect_error(weighted_mean(numeric(0), numeric(0)))
 
-  # 单一值
+  # Single value
   expect_equal(weighted_mean(5, 1), 5)
 
-  # 零权重
+  # Zero weights
   expect_true(is.nan(weighted_mean(1:3, c(0, 0, 0))))
 
-  # 极大值
+  # Very large values
   expect_equal(weighted_mean(c(1e15, 1e15), c(1, 1)), 1e15)
 
-  # 负权重
+  # Negative weights
   expect_error(weighted_mean(1:3, c(-1, 1, 1)))
 })
 ```
@@ -120,7 +120,7 @@ test_that("weighted_mean handles edge cases", {
 创建 `tests/testthat/fixtures/` 存放测试数据：
 
 ```r
-# tests/testthat/helper.R（自动加载）
+# tests/testthat/helper.R (loaded automatically)
 create_test_data <- function() {
   data.frame(
     x = c(1, 2, 3, NA, 5),
@@ -130,7 +130,7 @@ create_test_data <- function() {
 ```
 
 ```r
-# 在测试文件中
+# In test file
 test_that("process_data works with grouped data", {
   test_data <- create_test_data()
   result <- process_data(test_data)
@@ -212,14 +212,14 @@ test_that("parallel computation works", {
 ### 第 9 步：运行测试并检查覆盖率
 
 ```r
-# 运行所有测试
+# Run all tests
 devtools::test()
 
-# 运行特定测试文件
-devtools::test_active_file()  # 在 RStudio 中
+# Run specific test file
+devtools::test_active_file()  # in RStudio
 testthat::test_file("tests/testthat/test-function_name.R")
 
-# 检查覆盖率
+# Check coverage
 covr::package_coverage()
 covr::report()
 ```
@@ -249,16 +249,16 @@ covr::report()
 ## 示例
 
 ```r
-# 模式：测试文件与 R/ 文件对应
+# Pattern: test file mirrors R/ file
 # R/weighted_mean.R -> tests/testthat/test-weighted_mean.R
 
-# 模式：描述性测试名称
+# Pattern: descriptive test names
 test_that("weighted_mean returns NA when na.rm = FALSE and input contains NA", {
   result <- weighted_mean(c(1, NA), c(1, 1), na.rm = FALSE)
   expect_true(is.na(result))
 })
 
-# 模式：测试警告
+# Pattern: testing warnings
 test_that("deprecated_function emits deprecation warning", {
   expect_warning(deprecated_function(), "deprecated")
 })

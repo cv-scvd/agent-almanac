@@ -48,7 +48,7 @@ PILES-Notationszeichenketten fuer Puzzle-Teilefusionsgruppen parsen und validier
 ```r
 library(jigsawR)
 result <- validate_piles_syntax("1-2-3,4-5")
-# Gibt TRUE zurueck wenn gueltig, Fehlermeldung wenn ungueltig
+# Returns TRUE if valid, error message if invalid
 ```
 
 Auf haeufige Syntaxfehler pruefen:
@@ -64,13 +64,13 @@ Auf haeufige Syntaxfehler pruefen:
 
 ```r
 groups <- parse_piles("1-2-3,4-5")
-# Gibt zurueck: list(c(1, 2, 3), c(4, 5))
+# Returns: list(c(1, 2, 3), c(4, 5))
 ```
 
 Fuer Zeichenketten mit Bereichen:
 ```r
 groups <- parse_piles("1:6,7-8")
-# Gibt zurueck: list(c(1, 2, 3, 4, 5, 6), c(7, 8))
+# Returns: list(c(1, 2, 3, 4, 5, 6), c(7, 8))
 ```
 
 **Erwartet:** Liste von Integer-Vektoren, einer pro Fusionsgruppe, mit korrekten Teil-IDs und Gruppengrenzen.
@@ -94,10 +94,10 @@ Jede Gruppe fuer den Benutzer beschreiben:
 Wenn ein Puzzle-Ergebnisobjekt verfuegbar ist, verifizieren:
 
 ```r
-# Zuerst das Puzzle generieren
+# Generate the puzzle first
 puzzle <- generate_puzzle(type = "hexagonal", grid = c(3), size = c(200))
 
-# Mit Puzzle-Kontext parsen (loest Schluesselwoerter auf)
+# Parse with puzzle context (resolves keywords)
 groups <- parse_fusion("center,ring1", puzzle)
 ```
 
@@ -118,10 +118,10 @@ Parse/Serialize-Treue verifizieren:
 original <- "1-2-3,4-5"
 groups <- parse_piles(original)
 roundtrip <- to_piles(groups)
-# roundtrip sollte gleich original sein (oder kanonisch aequivalent)
+# roundtrip should equal original (or canonical equivalent)
 
 groups2 <- parse_piles(roundtrip)
-identical(groups, groups2)  # Muss TRUE sein
+identical(groups, groups2)  # Must be TRUE
 ```
 
 **Erwartet:** Der Round-Trip erzeugt identische Gruppenlisten, was bestaetigt dass `parse_piles()` und `to_piles()` zueinander invers sind.

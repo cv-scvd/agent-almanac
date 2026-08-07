@@ -59,7 +59,7 @@ Seguir el versionado semántico:
 ### Paso 2: Actualizar la Versión
 
 ```r
-usethis::use_version("minor")  # o "patch" o "major"
+usethis::use_version("minor")  # or "patch" or "major"
 ```
 
 Esto actualiza el campo `Version` en DESCRIPTION y añade un encabezado a NEWS.md.

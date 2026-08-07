@@ -67,21 +67,21 @@ metadata:
 
 ```r
 calculate_summary <- function(data, method = c("mean", "median", "trim"), trim_pct = 0.1) {
-  # 守卫：类型检查
+  # Guard: type check
   if (!is.data.frame(data)) {
     stop("'data' must be a data frame, not ", class(data)[[1]], call. = FALSE)
   }
-  # 守卫：非空
+  # Guard: non-empty
   if (nrow(data) == 0L) {
     stop("'data' must have at least one row", call. = FALSE)
   }
-  # 守卫：参数匹配
+  # Guard: argument matching
   method <- match.arg(method)
-  # 守卫：范围检查
+  # Guard: range check
   if (!is.numeric(trim_pct) || trim_pct < 0 || trim_pct > 0.5) {
     stop("'trim_pct' must be a number between 0 and 0.5, got: ", trim_pct, call. = FALSE)
   }
-  # --- 所有守卫通过，开始实际工作 ---
+  # --- All guards passed, begin real work ---
   # ...
 }
 ```
@@ -135,16 +135,16 @@ function calculateSummary(data: DataFrame, method: Method, trimPct: number): Sum
 **好的消息：**
 
 ```r
-# 什么 + 为什么（期望 vs. 实际）
+# What + Why (expected vs. actual)
 stop("'n' must be a positive integer, got: ", n, call. = FALSE)
 
-# 什么 + 为什么 + 如何修复
+# What + Why + How to fix
 cli::cli_abort(c(
   "{.arg config_path} does not exist: {.file {config_path}}",
   "i" = "Create it with {.run create_config({.file {config_path}})}."
 ))
 
-# 什么 + 上下文
+# What + context
 cli::cli_abort(c(
   "Column {.val {col_name}} not found in {.arg data}.",
   "i" = "Available columns: {.val {names(data)}}"
@@ -154,9 +154,9 @@ cli::cli_abort(c(
 **差的消息：**
 
 ```r
-stop("Error")                    # 什么失败了？完全不知道
-stop("Invalid input")           # 哪个输入？有什么问题？
-stop(paste("Error in step", i)) # 没有可操作的信息
+stop("Error")                    # What failed? No idea
+stop("Invalid input")           # Which input? What's wrong with it?
+stop(paste("Error in step", i)) # No actionable information
 ```
 
 **预期结果：** 错误消息是自文档化的——第一次看到错误的开发者无需阅读源代码就能诊断和修复。
@@ -170,7 +170,7 @@ stop(paste("Error in step", i)) # 没有可操作的信息
 **经验法则：** 若用户可能静默地得到错误答案，那就是 `stop()`，而非 `warning()`。
 
 ```r
-# 正确：结果会错时使用 stop
+# CORRECT: stop when result would be wrong
 read_config <- function(path) {
   if (!file.exists(path)) {
     stop("Config file not found: ", path, call. = FALSE)
@@ -178,13 +178,13 @@ read_config <- function(path) {
   yaml::read_yaml(path)
 }
 
-# 正确：结果仍可用时使用 warn
+# CORRECT: warn when result is still usable
 summarize_data <- function(data) {
   if (any(is.na(data$value))) {
     warning(sum(is.na(data$value)), " NA values dropped from 'value' column", call. = FALSE)
     data <- data[!is.na(data$value), ]
   }
-  # 继续处理有效数据
+  # proceed with valid data
 }
 ```
 
@@ -197,7 +197,7 @@ summarize_data <- function(data) {
 对于"正确代码中不应该发生"的条件，使用断言。这些可以在开发期间捕获程序员错误：
 
 ```r
-# R：使用 stopifnot 处理内部不变量
+# R: stopifnot for internal invariants
 process_chunk <- function(chunk, total_size) {
   stopifnot(
     is.list(chunk),
@@ -207,7 +207,7 @@ process_chunk <- function(chunk, total_size) {
   # ...
 }
 
-# R：带上下文的显式断言
+# R: explicit assertion with context
 merge_results <- function(left, right) {
   if (ncol(left) != ncol(right)) {
     stop("Internal error: column count mismatch (", ncol(left), " vs ", ncol(right),
@@ -228,13 +228,13 @@ merge_results <- function(left, right) {
 **反模式 1：空的 tryCatch（吞噬错误）**
 
 ```r
-# 之前：错误静默消失
+# BEFORE: Error silently disappears
 result <- tryCatch(
   parse_data(input),
   error = function(e) NULL
 )
 
-# 之后：记录日志、重新抛出或返回类型化错误
+# AFTER: Log, re-throw, or return a typed error
 result <- tryCatch(
   parse_data(input),
   error = function(e) {
@@ -246,13 +246,13 @@ result <- tryCatch(
 **反模式 2：用默认值掩盖错误输入**
 
 ```r
-# 之前：调用者永远不知道其输入被忽略了
+# BEFORE: Caller never knows their input was ignored
 process <- function(x = 10) {
-  if (!is.numeric(x)) x <- 10  # 静默替换错误输入
+  if (!is.numeric(x)) x <- 10  # silently replaces bad input
   x * 2
 }
 
-# 之后：告知调用者问题所在
+# AFTER: Tell the caller about the problem
 process <- function(x = 10) {
   if (!is.numeric(x)) {
     stop("'x' must be numeric, got ", class(x)[[1]], call. = FALSE)
@@ -264,10 +264,10 @@ process <- function(x = 10) {
 **反模式 3：将 suppressWarnings 当作修复方法**
 
 ```r
-# 之前：掩盖症状而不是修复原因
+# BEFORE: Hiding the symptom instead of fixing the cause
 result <- suppressWarnings(as.numeric(user_input))
 
-# 之后：显式验证，处理预期情况
+# AFTER: Validate explicitly, handle the expected case
 if (!grepl("^-?\\d+\\.?\\d*$", user_input)) {
   stop("Expected a number, got: '", user_input, "'", call. = FALSE)
 }
@@ -277,20 +277,20 @@ result <- as.numeric(user_input)
 **反模式 4：通用异常处理器**
 
 ```r
-# 之前：所有错误都一样处理
+# BEFORE: Every error treated the same
 tryCatch(
   complex_operation(),
   error = function(e) message("Something went wrong")
 )
 
-# 之后：处理特定条件，让意外的传播
+# AFTER: Handle specific conditions, let unexpected ones propagate
 tryCatch(
   complex_operation(),
   custom_validation_error = function(e) {
     cli::cli_warn("Validation issue: {e$message}")
     fallback_value
   }
-  # 意外错误自然传播
+  # Unexpected errors propagate naturally
 )
 ```
 
@@ -303,12 +303,12 @@ tryCatch(
 运行测试套件以确认错误路径正常工作：
 
 ```r
-# 验证错误消息被触发
+# Verify error messages are triggered
 testthat::expect_error(calculate_summary("not_a_df"), "must be a data frame")
 testthat::expect_error(calculate_summary(data.frame()), "at least one row")
 testthat::expect_error(calculate_summary(mtcars, trim_pct = 2), "between 0 and 0.5")
 
-# 验证有效输入仍然正常工作
+# Verify valid inputs still work
 testthat::expect_no_error(calculate_summary(mtcars, method = "mean"))
 ```
 

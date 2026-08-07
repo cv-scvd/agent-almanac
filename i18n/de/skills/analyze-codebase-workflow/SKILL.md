@@ -51,11 +51,11 @@ Quelldateien und ihre Sprachen identifizieren, um zu verstehen, was putior analy
 ```r
 library(putior)
 
-# Alle unterstützten Sprachen und ihre Erweiterungen auflisten
+# List all supported languages and their extensions
 list_supported_languages()
-list_supported_languages(detection_only = TRUE)  # Nur Sprachen mit Auto-Erkennung
+list_supported_languages(detection_only = TRUE)  # Only languages with auto-detection
 
-# Unterstützte Erweiterungen abrufen
+# Get supported extensions
 exts <- get_supported_extensions()
 ```
 
@@ -75,15 +75,15 @@ find /path/to/repo -type f | sed 's/.*\.//' | sort | uniq -c | sort -rn | head -
 Für jede erkannte Sprache die Verfügbarkeit von Auto-Erkennungsmustern verifizieren.
 
 ```r
-# Prüfen welche Sprachen Auto-Erkennungsmuster haben (18 Sprachen, 902 Muster)
+# Check which languages have auto-detection patterns (18 languages, 902 patterns)
 detection_langs <- list_supported_languages(detection_only = TRUE)
-cat("Sprachen mit Auto-Erkennung:\n")
+cat("Languages with auto-detection:\n")
 print(detection_langs)
 
-# Musterzahlen für spezifische im Repo gefundene Sprachen abrufen
+# Get pattern counts for specific languages found in the repo
 for (lang in c("r", "python", "javascript", "sql", "dockerfile", "makefile")) {
   patterns <- get_detection_patterns(lang)
-  cat(sprintf("%s: %d Input-, %d Output-, %d Abhängigkeitsmuster\n",
+  cat(sprintf("%s: %d input, %d output, %d dependency patterns\n",
     lang,
     length(patterns$input),
     length(patterns$output),
@@ -101,14 +101,14 @@ for (lang in c("r", "python", "javascript", "sql", "dockerfile", "makefile")) {
 `put_auto()` auf das Zielverzeichnis ausführen, um Workflow-Elemente zu entdecken.
 
 ```r
-# Vollständige Auto-Erkennung
+# Full auto-detection
 workflow <- put_auto("./src/",
   detect_inputs = TRUE,
   detect_outputs = TRUE,
   detect_dependencies = TRUE
 )
 
-# Build-Skripte und Test-Helfer vom Scan ausschließen
+# Exclude build scripts and test helpers from scanning
 workflow <- put_auto("./src/",
   detect_inputs = TRUE,
   detect_outputs = TRUE,
@@ -116,17 +116,17 @@ workflow <- put_auto("./src/",
   exclude = c("build-", "test_helper")
 )
 
-# Erkannte Workflow-Knoten anzeigen
+# View detected workflow nodes
 print(workflow)
 
-# Knotenanzahl prüfen
-cat(sprintf("Erkannte %d Workflow-Knoten\n", nrow(workflow)))
+# Check node count
+cat(sprintf("Detected %d workflow nodes\n", nrow(workflow)))
 ```
 
 Für große Repos, Unterverzeichnisse schrittweise analysieren:
 
 ```r
-# Spezifische Unterverzeichnisse analysieren
+# Analyze specific subdirectories
 etl_workflow <- put_auto("./src/etl/")
 api_workflow <- put_auto("./src/api/")
 ```
@@ -140,13 +140,13 @@ api_workflow <- put_auto("./src/api/")
 Den automatisch erkannten Workflow visualisieren, um Abdeckung zu beurteilen und Lücken zu identifizieren.
 
 ```r
-# Diagramm aus auto-erkanntem Workflow generieren
+# Generate diagram from auto-detected workflow
 cat(put_diagram(workflow, theme = "github"))
 
-# Mit Quelldatei-Info für Nachverfolgbarkeit
+# With source file info for traceability
 cat(put_diagram(workflow, show_source_info = TRUE))
 
-# Zur Überprüfung in Datei speichern
+# Save to file for review
 writeLines(put_diagram(workflow, theme = "github"), "workflow-auto.md")
 ```
 
@@ -159,13 +159,13 @@ writeLines(put_diagram(workflow, theme = "github"), "workflow-auto.md")
 Einen strukturierten Plan erstellen, der Gefundenes und manuell Anzunotierendes dokumentiert.
 
 ```r
-# Annotationsvorschläge generieren
+# Generate annotation suggestions
 put_generate("./src/", style = "single")
 
-# Mehrzeiliger Stil (lesbarer für komplexe Workflows)
+# For multiline style (more readable for complex workflows)
 put_generate("./src/", style = "multiline")
 
-# Vorschläge in die Zwischenablage kopieren
+# Copy suggestions to clipboard for easy pasting
 put_generate("./src/", output = "clipboard")
 ```
 

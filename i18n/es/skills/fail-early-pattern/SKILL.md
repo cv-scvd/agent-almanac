@@ -71,21 +71,21 @@ Validar las entradas al inicio de cada función pública, antes de que comience 
 
 ```r
 calculate_summary <- function(data, method = c("mean", "median", "trim"), trim_pct = 0.1) {
-  # Guarda: verificación de tipo
+  # Guard: type check
   if (!is.data.frame(data)) {
     stop("'data' must be a data frame, not ", class(data)[[1]], call. = FALSE)
   }
-  # Guarda: no vacío
+  # Guard: non-empty
   if (nrow(data) == 0L) {
     stop("'data' must have at least one row", call. = FALSE)
   }
-  # Guarda: coincidencia de argumentos
+  # Guard: argument matching
   method <- match.arg(method)
-  # Guarda: verificación de rango
+  # Guard: range check
   if (!is.numeric(trim_pct) || trim_pct < 0 || trim_pct > 0.5) {
     stop("'trim_pct' must be a number between 0 and 0.5, got: ", trim_pct, call. = FALSE)
   }
-  # --- Todas las guardas pasaron, comenzar trabajo real ---
+  # --- All guards passed, begin real work ---
   # ...
 }
 ```
@@ -139,16 +139,16 @@ Cada mensaje de error debe responder cuatro preguntas:
 **Buenos mensajes:**
 
 ```r
-# Qué + Por qué (esperado vs. real)
+# What + Why (expected vs. actual)
 stop("'n' must be a positive integer, got: ", n, call. = FALSE)
 
-# Qué + Por qué + Cómo solucionarlo
+# What + Why + How to fix
 cli::cli_abort(c(
   "{.arg config_path} does not exist: {.file {config_path}}",
   "i" = "Create it with {.run create_config({.file {config_path}})}."
 ))
 
-# Qué + contexto
+# What + context
 cli::cli_abort(c(
   "Column {.val {col_name}} not found in {.arg data}.",
   "i" = "Available columns: {.val {names(data)}}"
@@ -158,9 +158,9 @@ cli::cli_abort(c(
 **Malos mensajes:**
 
 ```r
-stop("Error")                    # ¿Qué falló? No hay idea
-stop("Invalid input")           # ¿Qué entrada? ¿Qué tiene de malo?
-stop(paste("Error in step", i)) # Sin información accionable
+stop("Error")                    # What failed? No idea
+stop("Invalid input")           # Which input? What's wrong with it?
+stop(paste("Error in step", i)) # No actionable information
 ```
 
 **Esperado:** Los mensajes de error se documentan por sí mismos — un desarrollador que ve el error por primera vez puede diagnosticarlo y solucionarlo sin leer el código fuente.
@@ -174,7 +174,7 @@ Usar `stop()` (o `cli::cli_abort()`) cuando la función no puede producir un res
 **Regla general:** Si un usuario pudiera obtener silenciosamente una respuesta incorrecta, eso es un `stop()`, no un `warning()`.
 
 ```r
-# CORRECTO: stop cuando el resultado sería incorrecto
+# CORRECT: stop when result would be wrong
 read_config <- function(path) {
   if (!file.exists(path)) {
     stop("Config file not found: ", path, call. = FALSE)
@@ -182,13 +182,13 @@ read_config <- function(path) {
   yaml::read_yaml(path)
 }
 
-# CORRECTO: advertir cuando el resultado aún es utilizable
+# CORRECT: warn when result is still usable
 summarize_data <- function(data) {
   if (any(is.na(data$value))) {
     warning(sum(is.na(data$value)), " NA values dropped from 'value' column", call. = FALSE)
     data <- data[!is.na(data$value), ]
   }
-  # continuar con datos válidos
+  # proceed with valid data
 }
 ```
 
@@ -201,7 +201,7 @@ summarize_data <- function(data) {
 Para condiciones que "nunca deben suceder" en código correcto, usar aserciones. Estas detectan errores del programador durante el desarrollo:
 
 ```r
-# R: stopifnot para invariantes internos
+# R: stopifnot for internal invariants
 process_chunk <- function(chunk, total_size) {
   stopifnot(
     is.list(chunk),
@@ -211,7 +211,7 @@ process_chunk <- function(chunk, total_size) {
   # ...
 }
 
-# R: aserción explícita con contexto
+# R: explicit assertion with context
 merge_results <- function(left, right) {
   if (ncol(left) != ncol(right)) {
     stop("Internal error: column count mismatch (", ncol(left), " vs ", ncol(right),
@@ -232,13 +232,13 @@ Identificar y corregir estos anti-patrones comunes:
 **Anti-patrón 1: tryCatch vacío (consumir errores silenciosamente)**
 
 ```r
-# ANTES: El error desaparece silenciosamente
+# BEFORE: Error silently disappears
 result <- tryCatch(
   parse_data(input),
   error = function(e) NULL
 )
 
-# DESPUÉS: Registrar, relanzar o devolver un error tipado
+# AFTER: Log, re-throw, or return a typed error
 result <- tryCatch(
   parse_data(input),
   error = function(e) {
@@ -250,13 +250,13 @@ result <- tryCatch(
 **Anti-patrón 2: Valores por defecto enmascarando entradas incorrectas**
 
 ```r
-# ANTES: El llamador nunca sabe que su entrada fue ignorada
+# BEFORE: Caller never knows their input was ignored
 process <- function(x = 10) {
-  if (!is.numeric(x)) x <- 10  # reemplaza silenciosamente la entrada incorrecta
+  if (!is.numeric(x)) x <- 10  # silently replaces bad input
   x * 2
 }
 
-# DESPUÉS: Informar al llamador sobre el problema
+# AFTER: Tell the caller about the problem
 process <- function(x = 10) {
   if (!is.numeric(x)) {
     stop("'x' must be numeric, got ", class(x)[[1]], call. = FALSE)
@@ -268,10 +268,10 @@ process <- function(x = 10) {
 **Anti-patrón 3: suppressWarnings como solución**
 
 ```r
-# ANTES: Ocultar el síntoma en lugar de corregir la causa
+# BEFORE: Hiding the symptom instead of fixing the cause
 result <- suppressWarnings(as.numeric(user_input))
 
-# DESPUÉS: Validar explícitamente, manejar el caso esperado
+# AFTER: Validate explicitly, handle the expected case
 if (!grepl("^-?\\d+\\.?\\d*$", user_input)) {
   stop("Expected a number, got: '", user_input, "'", call. = FALSE)
 }
@@ -281,20 +281,20 @@ result <- as.numeric(user_input)
 **Anti-patrón 4: Manejadores de excepción que capturan todo**
 
 ```r
-# ANTES: Cada error tratado igual
+# BEFORE: Every error treated the same
 tryCatch(
   complex_operation(),
   error = function(e) message("Something went wrong")
 )
 
-# DESPUÉS: Manejar condiciones específicas, dejar que las inesperadas se propaguen
+# AFTER: Handle specific conditions, let unexpected ones propagate
 tryCatch(
   complex_operation(),
   custom_validation_error = function(e) {
     cli::cli_warn("Validation issue: {e$message}")
     fallback_value
   }
-  # Los errores inesperados se propagan naturalmente
+  # Unexpected errors propagate naturally
 )
 ```
 
@@ -307,12 +307,12 @@ tryCatch(
 Ejecutar el conjunto de pruebas para confirmar que las rutas de error funcionan correctamente:
 
 ```r
-# Verificar que se desencadenan los mensajes de error
+# Verify error messages are triggered
 testthat::expect_error(calculate_summary("not_a_df"), "must be a data frame")
 testthat::expect_error(calculate_summary(data.frame()), "at least one row")
 testthat::expect_error(calculate_summary(mtcars, trim_pct = 2), "between 0 and 0.5")
 
-# Verificar que las entradas válidas aún funcionan
+# Verify valid inputs still work
 testthat::expect_no_error(calculate_summary(mtcars, method = "mean"))
 ```
 

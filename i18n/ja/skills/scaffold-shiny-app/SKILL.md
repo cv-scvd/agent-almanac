@@ -155,16 +155,16 @@ shinyApp(ui, server)
 #### Golem/Vanilla
 
 ```r
-# renvの初期化
+# Initialize renv
 renv::init()
 
-# コア依存関係の追加
+# Add core dependencies
 usethis::use_package("shiny")
 usethis::use_package("bslib")
-usethis::use_package("DT")         # データテーブルを使用する場合
-usethis::use_package("plotly")     # インタラクティブプロットを使用する場合
+usethis::use_package("DT")         # if using data tables
+usethis::use_package("plotly")     # if using interactive plots
 
-# スナップショット
+# Snapshot
 renv::snapshot()
 ```
 

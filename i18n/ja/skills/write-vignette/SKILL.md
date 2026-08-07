@@ -150,10 +150,10 @@ optionalpkg::special_function()
 長時間実行される計算の場合、結果を事前計算して保存する：
 
 ```r
-# vignettes/に事前計算済みの結果を保存
+# Save pre-computed results to vignettes/
 saveRDS(expensive_result, "vignettes/precomputed.rds")
 
-# ビネット内で読み込む
+# Load in vignette
 {r load-precomputed}
 result <- readRDS("precomputed.rds")
 ```
@@ -165,10 +165,10 @@ result <- readRDS("precomputed.rds")
 ### ステップ5: ビネットのビルドとテスト
 
 ```r
-# 単一のビネットをビルド
+# Build single vignette
 devtools::build_vignettes()
 
-# ビルドとチェック（ビネットの問題を検出）
+# Build and check (catches vignette issues)
 devtools::check()
 ```
 

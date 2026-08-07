@@ -89,13 +89,13 @@ renv::restore()
 ### ステップ4: 依存関係の更新
 
 ```r
-# 特定のパッケージを更新
+# Update a specific package
 renv::update("dplyr")
 
-# すべてのパッケージを更新
+# Update all packages
 renv::update()
 
-# 更新後にスナップショットを作成
+# Snapshot after updates
 renv::snapshot()
 ```
 

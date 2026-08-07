@@ -50,7 +50,7 @@ Confirma que R está disponible y cumple el requisito de versión mínima.
 
 ```r
 R.Version()$version.string
-# Debe ser >= 4.1.0
+# Must be >= 4.1.0
 ```
 
 ```bash
@@ -67,10 +67,10 @@ R.Version()$version.string
 Instala desde CRAN (estable) o GitHub (desarrollo).
 
 ```r
-# CRAN (recomendado)
+# CRAN (recommended)
 install.packages("putior")
 
-# Versión de desarrollo de GitHub (si se necesitan las últimas funcionalidades)
+# GitHub dev version (if latest features needed)
 remotes::install_github("pjt222/putior")
 ```
 
@@ -83,18 +83,18 @@ remotes::install_github("pjt222/putior")
 Instala los paquetes opcionales según la funcionalidad requerida.
 
 ```r
-# Integración del servidor MCP (para acceso del asistente de IA)
+# MCP server integration (for AI assistant access)
 remotes::install_github("posit-dev/mcptools")
 install.packages("ellmer")
 
-# Sandbox interactivo
+# Interactive sandbox
 install.packages("shiny")
 install.packages("shinyAce")
 
-# Registro estructurado
+# Structured logging
 install.packages("logger")
 
-# Servidor ACP (comunicación agente a agente)
+# ACP server (agent-to-agent communication)
 install.packages("plumber2")
 ```
 
@@ -109,10 +109,10 @@ Ejecuta el pipeline básico para confirmar que todo funciona.
 ```r
 library(putior)
 
-# Verificar la versión del paquete
+# Check package version
 packageVersion("putior")
 
-# Verificar que las funciones principales están disponibles
+# Verify core functions are available
 stopifnot(
   is.function(put),
   is.function(put_auto),
@@ -122,7 +122,7 @@ stopifnot(
   is.function(put_theme)
 )
 
-# Probar el pipeline básico con un archivo temporal
+# Test basic pipeline with a temp file
 tmp <- tempfile(fileext = ".R")
 writeLines("# put id:'test', label:'Hello putior'", tmp)
 cat(put_diagram(put(tmp)))

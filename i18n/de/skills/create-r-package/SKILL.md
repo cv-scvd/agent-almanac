@@ -187,10 +187,10 @@ NULL
 ## Beispiele
 
 ```r
-# Minimale Erstellung
+# Minimal creation
 usethis::create_package("myanalysis")
 
-# Vollstaendiges Setup in einer Sitzung
+# Full setup in one session
 usethis::create_package("myanalysis")
 usethis::use_mit_license()
 usethis::use_testthat(edition = 3)

@@ -149,10 +149,10 @@ optionalpkg::special_function()
 对于耗时计算，预计算并保存结果：
 
 ```r
-# 将预计算结果保存至 vignettes/
+# Save pre-computed results to vignettes/
 saveRDS(expensive_result, "vignettes/precomputed.rds")
 
-# 在 vignette 中加载
+# Load in vignette
 {r load-precomputed}
 result <- readRDS("precomputed.rds")
 ```
@@ -164,10 +164,10 @@ result <- readRDS("precomputed.rds")
 ### 第 5 步：构建并测试 Vignette
 
 ```r
-# 构建单个 vignette
+# Build single vignette
 devtools::build_vignettes()
 
-# 构建并检查（可捕获 vignette 问题）
+# Build and check (catches vignette issues)
 devtools::check()
 ```
 

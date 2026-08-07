@@ -103,14 +103,14 @@ data = json.loads(json_str)
 ```
 
 ```r
-# R: jsonliteによるJSON
+# R: JSON with jsonlite
 library(jsonlite)
 
-# シリアライズ
+# Serialize
 df <- data.frame(sensor_id = "sensor-01", value = 23.5, unit = "celsius")
 json_str <- jsonlite::toJSON(df, auto_unbox = TRUE, pretty = TRUE)
 
-# デシリアライズ
+# Deserialize
 df_back <- jsonlite::fromJSON(json_str)
 ```
 
@@ -222,14 +222,14 @@ df_subset = table_back.to_pandas()
 ```
 
 ```r
-# R: arrowによるParquet
+# R: Parquet with arrow
 library(arrow)
 
-# 書き込み
+# Write
 df <- data.frame(sensor_id = rep("s-01", 1000), value = rnorm(1000))
 arrow::write_parquet(df, "measurements.parquet")
 
-# 読み込み（カラム選択付き — 選択されたカラムのみディスクから読み込む）
+# Read (with column selection — only reads selected columns from disk)
 df_back <- arrow::read_parquet("measurements.parquet", col_select = c("value"))
 ```
 

@@ -185,10 +185,10 @@ NULL
 ## 使用例
 
 ```r
-# 最小構成での作成
+# Minimal creation
 usethis::create_package("myanalysis")
 
-# 1セッションでのフルセットアップ
+# Full setup in one session
 usethis::create_package("myanalysis")
 usethis::use_mit_license()
 usethis::use_testthat(edition = 3)

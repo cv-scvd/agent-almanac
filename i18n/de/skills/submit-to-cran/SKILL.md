@@ -145,10 +145,10 @@ Fuer Aktualisierungen Folgendes einschliessen:
 ### Schritt 8: Letzte Vorabpruefung
 
 ```r
-# Eine letzte Pruefung
+# One last check
 devtools::check()
 
-# Das gebaute Tarball verifizieren
+# Verify the built tarball
 devtools::build()
 ```
 
@@ -175,10 +175,10 @@ Alternativ manuell unter https://cran.r-project.org/submit.html einreichen, inde
 Nach der Annahme:
 
 ```r
-# Release taggen
+# Tag the release
 usethis::use_github_release()
 
-# Auf Entwicklungsversion hochsetzen
+# Bump to development version
 usethis::use_dev_version()
 ```
 
@@ -210,13 +210,13 @@ usethis::use_dev_version()
 ## Beispiele
 
 ```r
-# Vollstaendiger Voreinreichungs-Workflow
+# Full pre-submission workflow
 devtools::spell_check()
 urlchecker::url_check()
 devtools::check()
 devtools::check_win_devel()
 rhub::rhub_check()
-# Auf Ergebnisse warten...
+# Wait for results...
 devtools::release()
 ```
 

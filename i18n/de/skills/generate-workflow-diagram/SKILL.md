@@ -52,16 +52,16 @@ Workflowdaten aus einer von drei Quellen beziehen.
 ```r
 library(putior)
 
-# Aus manuellen Annotationen
+# From manual annotations
 workflow <- put("./src/")
 
-# Aus manuellen Annotationen, bestimmte Dateien ausschliessend
+# From manual annotations, excluding specific files
 workflow <- put("./src/", exclude = c("build-workflow\\.R$", "test_"))
 
-# Nur aus Auto-Erkennung
+# From auto-detection only
 workflow <- put_auto("./src/")
 
-# Aus zusammengefuehrt (manuell + auto)
+# From merged (manual + auto)
 workflow <- put_merge("./src/", merge_strategy = "supplement")
 ```
 
@@ -86,21 +86,21 @@ Jeder `node_type` erhaelt auch eine entsprechende CSS-Klasse (z.B. `class nodeId
 Ein fuer die Zielgruppe geeignetes Thema auswaehlen.
 
 ```r
-# Alle verfuegbaren Themen auflisten
+# List all available themes
 get_diagram_themes()
 
-# Standardthemen
-# "light"   — Standard, helle Farben
-# "dark"    — Fuer Dunkelmodusumgebungen
-# "auto"    — GitHub-adaptiv mit Volltonfarben
-# "minimal" — Graustufen, druckfreundlich
-# "github"  — Optimiert fuer GitHub-README-Dateien
+# Standard themes
+# "light"   — Default, bright colors
+# "dark"    — For dark mode environments
+# "auto"    — GitHub-adaptive with solid colors
+# "minimal" — Grayscale, print-friendly
+# "github"  — Optimized for GitHub README files
 
-# Farbenblindensichere Themen (Viridis-Familie)
-# "viridis" — Lila→Blau→Gruen→Gelb, allgemeine Barrierefreiheit
-# "magma"   — Lila→Rot→Gelb, hoher Kontrast fuer Druck
-# "plasma"  — Lila→Pink→Orange→Gelb, Praesentationen
-# "cividis" — Blau→Grau→Gelb, maximale Barrierefreiheit (kein Rot-Gruen)
+# Colorblind-safe themes (viridis family)
+# "viridis" — Purple→Blue→Green→Yellow, general accessibility
+# "magma"   — Purple→Red→Yellow, high contrast for print
+# "plasma"  — Purple→Pink→Orange→Yellow, presentations
+# "cividis" — Blue→Gray→Yellow, maximum accessibility (no red-green)
 ```
 
 Zusaetzliche Parameter:
@@ -119,7 +119,7 @@ Zusaetzliche Parameter:
 Wenn die 9 eingebauten Themen nicht zur Projektpalette passen, ein benutzerdefiniertes Thema mit `put_theme()` erstellen.
 
 ```r
-# Benutzerdefinierte Palette erstellen — nicht angegebene Typen erben vom Basisthema
+# Create custom palette — unspecified types inherit from base theme
 cyberpunk <- put_theme(
   base = "dark",
   input    = c(fill = "#1a1a2e", stroke = "#00ff88", color = "#00ff88"),
@@ -128,7 +128,7 @@ cyberpunk <- put_theme(
   decision = c(fill = "#1a1a2e", stroke = "#ffaa33", color = "#ffaa33")
 )
 
-# Palette-Parameter verwenden (ueberschreibt Thema wenn angegeben)
+# Use the palette parameter (overrides theme when provided)
 mermaid_content <- put_diagram(workflow, palette = cyberpunk, output = "raw")
 writeLines(mermaid_content, "workflow.mmd")
 ```
@@ -154,26 +154,26 @@ mermaid_content <- paste(c(lines, custom_defs), collapse = "\n")
 Das Diagramm im gewuenschten Ausgabemodus erzeugen.
 
 ```r
-# Auf Konsole ausgeben (Standard)
+# Print to console (default)
 cat(put_diagram(workflow, theme = "github"))
 
-# In Datei speichern
+# Save to file
 writeLines(put_diagram(workflow, theme = "github"), "docs/workflow.md")
 
-# Rohtext fuer Einbettung erhalten
+# Get raw string for embedding
 mermaid_code <- put_diagram(workflow, output = "raw", theme = "github")
 
-# Mit Quelldateiinformation (zeigt woher jeder Knoten kommt)
+# With source file info (shows which file each node comes from)
 cat(put_diagram(workflow, theme = "github", show_source_info = TRUE))
 
-# Mit klickbaren Knoten (fuer VS Code, RStudio oder file://-Protokoll)
+# With clickable nodes (for VS Code, RStudio, or file:// protocol)
 cat(put_diagram(workflow,
   theme = "github",
   enable_clicks = TRUE,
-  click_protocol = "vscode"  # oder "rstudio", "file"
+  click_protocol = "vscode"  # or "rstudio", "file"
 ))
 
-# Voll ausgestattet
+# Full-featured
 cat(put_diagram(workflow,
   theme = "viridis",
   show_source_info = TRUE,
@@ -203,13 +203,13 @@ flowchart TD
 
 **Quarto-Dokument (nativer Mermaid-Chunk ueber knit_child):**
 ```r
-# Chunk 1: Code generieren (sichtbar, faltbar)
+# Chunk 1: Generate code (visible, foldable)
 workflow <- put("./src/")
 mermaid_code <- put_diagram(workflow, output = "raw", theme = "github")
 ```
 
 ```r
-# Chunk 2: Als nativen Mermaid-Chunk ausgeben (versteckt)
+# Chunk 2: Output as native mermaid chunk (hidden)
 #| output: asis
 #| echo: false
 mermaid_chunk <- paste0("```{mermaid}\n", mermaid_code, "\n```")

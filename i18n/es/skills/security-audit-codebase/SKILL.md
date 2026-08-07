@@ -104,8 +104,8 @@ safety check
 **R**:
 
 ```r
-# Verificar vulnerabilidades conocidas en paquetes
-# No hay herramienta integrada, pero verificar las fuentes de los paquetes
+# Check for known vulnerabilities in packages
+# No built-in tool, but verify package sources
 renv::status()
 ```
 
