@@ -152,7 +152,9 @@ npm run translate:scaffold -- <content-type> <id> <locale>
    Every fence whose tag is not `text`, `markdown` or `md` is frozen: its body must
    match the English source byte-for-byte, comments and string literals included.
    Repair with `npm run normalize:i18n-fences`, which previews; add `-- --write`
-   to apply once the preview looks right.
+   to apply once the preview looks right. `-- --tag yaml,json` scopes the run to
+   given fence tags, which is how the #477 backlog is cleared in reviewable
+   batches.
 
    **The normalizer only repairs `skills/`.** The checker covers all four trees,
    so an agent, team or guide translation can fail the gate and still produce

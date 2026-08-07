@@ -256,17 +256,30 @@ node scripts/check-i18n-fence-parity.js \
   --locale de --id create-r-package             # just the file you touched
 npm run normalize:i18n-fences                   # PREVIEW the English-body repair
 npm run normalize:i18n-fences -- --write        # apply it
+npm run normalize:i18n-fences -- --tag yaml     # one tag-scoped batch (#477)
 ```
 
 The normalizer previews by default and writes only with `--write`, and refuses
 to write into a dirty `i18n/` at all (#486) — a read-only probe agent once typed
 the bare command and silently rewrote 281 files, after which every measurement
-of the backlog was wrong and self-consistent. It repairs `skills/` only; the
-checker covers all four trees, so an agent, team or guide violation shows up as
-`files to change: 0` and needs repairing by hand (#477).
+of the backlog was wrong and self-consistent.
 
-Runs **warn-only** in CI until the 1,307-violation backlog clears (#477), then
-flips to blocking. Warn is a temporary state with a named exit, not the design.
+`--tag <list>` scopes a run to fences carrying those tags. That is how the #477
+backlog lands as reviewable, individually revertable batches rather than one
+300-file diff — half the affected files are mixed-tag, so an unscoped run cannot
+produce a single-tag slice. Scoping narrows what is repaired, never the
+fence-count and tag-sequence checks that decide whether ordinal mapping is
+trustworthy at all. A tag matching no divergent fence exits 2 rather than
+reporting a clean-looking zero.
+
+It repairs `skills/` only; the checker covers all four trees, so an agent, team
+or guide violation shows up as `files to change: 0` and needs repairing by hand
+(#477).
+
+Runs **warn-only** in CI until the backlog clears (#477), then flips to blocking.
+Warn is a temporary state with a named exit, not the design. Quote the current
+count from the checker rather than from here — it was 1,307 at introduction and
+drops with each batch.
 
 ### Translation Workflow
 
