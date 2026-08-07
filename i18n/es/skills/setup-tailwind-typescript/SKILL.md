@@ -194,8 +194,8 @@ Actualiza `tailwind.config.ts`:
 
 ```typescript
 const config: Config = {
-  darkMode: "class", // o "media" para la preferencia del sistema
-  // ... resto de la configuración
+  darkMode: "class", // or "media" for system preference
+  // ... rest of config
 };
 ```
 

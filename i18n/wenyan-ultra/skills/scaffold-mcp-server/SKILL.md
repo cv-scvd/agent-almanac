@@ -154,6 +154,7 @@ export function registerTools(server: McpServer): void {
     },
     async ({ param1, param2 }) => {
       try {
+        // TODO: Implement tool logic
         const result = await performAction(param1, param2);
         return {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
@@ -273,9 +274,11 @@ async function runTests(): Promise<void> {
   const client = new Client({ name: "test-client", version: "1.0.0" });
   await client.connect(clientTransport);
 
+  // Test: tools/list returns all expected tools
   const tools = await client.listTools();
   console.assert(tools.tools.length === EXPECTED_TOOL_COUNT);
 
+  // Test: each tool with valid input
   for (const tool of tools.tools) {
     const result = await client.callTool({
       name: tool.name,
@@ -284,6 +287,7 @@ async function runTests(): Promise<void> {
     console.assert(!result.isError, `${tool.name} failed`);
   }
 
+  // Test: each tool with invalid input returns isError
   for (const tool of tools.tools) {
     const result = await client.callTool({
       name: tool.name,

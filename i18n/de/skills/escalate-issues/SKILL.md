@@ -207,16 +207,15 @@ to_agent: security-analyst
 blocking: false
 ---
 
-# Sicherheitsbedenken: Hartcodierter API-Schluessel in Konfiguration
+# Security Concern: Hardcoded API Key in Config
 
-**Datei**: config/production.yml:45
-**Muster**: API_KEY="sk_live_abc123..."
+**File**: config/production.yml:45
+**Pattern**: API_KEY="sk_live_abc123..."
 
-**Anfrage**: Bitte pruefen ob dies ein gueltiges Geheimnis oder ein
-Platzhalter ist. Wenn gueltig, sichere Credential-Management-Strategie
-empfehlen.
+**Request**: Please review if this is a valid secret or a placeholder.
+If valid, recommend secure credential management strategy.
 
-**Kontext**: Waehrend Konfigurations-Bereinigungsdurchlauf entdeckt.
+**Context**: Discovered during config cleanup sweep.
 ```
 
 **Fuer menschliche Pruefer** (ausfuehrliches Markdown):
