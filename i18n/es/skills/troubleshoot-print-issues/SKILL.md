@@ -196,7 +196,7 @@ Implementar soluciones inmediatas para problemas comunes:
 ```
 
 **Ajuste de retracción**:
-```yaml
+```text
 # Direct drive extruder:
 retraction_distance: 1.0-2.0mm
 retraction_speed: 40-50mm/s
@@ -249,7 +249,7 @@ jerk: 8mm/s (from 15)
 ### Deformación (Warping)
 
 **Gestión térmica**:
-```yaml
+```text
 # Increase bed temperature:
 PLA: 60°C → 65°C
 PETG: 80°C → 85°C
@@ -309,7 +309,7 @@ regular_fan: 25% max (ABS), 50% (PETG), 100% (PLA)
 ### Sobre-Extrusión
 
 **Reducción de tasa de flujo**:
-```yaml
+```text
 # Reduce flow in 2% increments:
 extrusion_multiplier: 0.98 → 0.96 → 0.94
 

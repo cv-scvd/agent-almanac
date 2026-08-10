@@ -194,15 +194,20 @@ def route_issue(severity, issue_type):
 生成适合目标受众（代理或人工）的格式化报告。
 
 **面向专家代理**（MCP 工具的结构化格式）：
+Emit one document: the routing header delimited by `---` fences, then the report
+body beneath it. The receiving tool parses the header keys, so those and the
+agent ids stay in English.
+
 ```yaml
----
 type: escalation
 severity: high
 from_agent: janitor
 to_agent: security-analyst
 blocking: false
----
+```
 
+
+```text
 # Security Concern: Hardcoded API Key in Config
 
 **File**: config/production.yml:45

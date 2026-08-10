@@ -340,10 +340,12 @@ resources:
 ingress:
   hosts: [my-app-dev.example.com]
 
+---
 # values-prod.yaml (excerpt)
 replicaCount: 5
 autoscaling: {enabled: true, minReplicas: 3, maxReplicas: 10}
-# ... (see EXAMPLES.md for complete env-specific values)
+ingress:
+  hosts: [my-app.example.com]
   tls:
   - secretName: my-app-tls
     hosts:
