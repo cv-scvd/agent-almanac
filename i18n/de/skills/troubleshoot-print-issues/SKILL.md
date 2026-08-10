@@ -292,7 +292,7 @@ regular_fan: 25% max (ABS), 50% (PETG), 100% (PLA)
 2. 100mm extrudieren: G1 E100 F100
 3. Verbleibende Distanz zur Markierung messen
 4. Berechnen: neue_steps = aktuelle_steps × (100 / tatsaechlich_extrudiert)
-5. Setzen: M92 E<neue_steps>; M500 (im EEPROM speichern)
+5. Setzen: `M92 E<neue_steps>`; M500 (im EEPROM speichern)
 
 **Erwartet:** Konsistente Extrusion ohne Luecken in Perimetern oder Fuellung.
 

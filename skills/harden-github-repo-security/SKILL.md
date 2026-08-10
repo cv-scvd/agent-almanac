@@ -181,6 +181,8 @@ GitHub Apps), permission Repository > Contents: Read and write; install it
 on THIS repo. Store the App id as a repo variable and the private key as an
 Actions secret. In the workflow, mint a token and pass it to checkout + the
 commit action:
+
+```yaml
   - uses: actions/create-github-app-token@<sha>   # v2
     id: app-token
     with: { app-id: ${{ vars.APP_ID }}, private-key: ${{ secrets.APP_KEY }} }
@@ -188,9 +190,10 @@ commit action:
     with: { token: ${{ steps.app-token.outputs.token }} }
   - uses: stefanzweifel/git-auto-commit-action@<sha>
     with: { ... }   # inherits the app token via the checkout credentials
+```
 
 The numeric App id used in Step 3b is shown on the App's own page:
-Settings > Developer settings > GitHub Apps > <your app> > About ("App ID").
+Settings > Developer settings > GitHub Apps > `<your app>` > About ("App ID").
 It is unrelated to the repository id and cannot be derived from /repos/$R.
 
 **Deploy-key alternative (no App to maintain).** Register a write deploy key and

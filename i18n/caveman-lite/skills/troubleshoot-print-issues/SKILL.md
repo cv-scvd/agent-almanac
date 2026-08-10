@@ -292,7 +292,7 @@ regular_fan: 25% max (ABS), 50% (PETG), 100% (PLA)
 2. Extrude 100mm: G1 E100 F100
 3. Measure remaining distance to mark
 4. Calculate: new_steps = current_steps × (100 / actual_extruded)
-5. Set: M92 E<new_steps>; M500 (save to EEPROM)
+5. Set: `M92 E<new_steps>`; M500 (save to EEPROM)
 
 **Got:** Consistent extrusion with no gaps in perimeters or infill.
 

@@ -296,7 +296,7 @@ BIC difference interpretation (Kass & Raftery, 1995):
 - 0-2:   Not worth mentioning
 - 2-6:   Positive evidence
 - 6-10:  Strong evidence
-- >10:   Very strong evidence
+- `>10`:   Very strong evidence
 
 4. 於 Bayesian 模型，用 DIC 或 WAIC：
 
