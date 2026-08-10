@@ -36,16 +36,23 @@
  * deleted the target class and the resulting zero read as success.
  *
  * The predicate here is structural instead. A **substitution pair**: within a
- * frozen fence, an old and a new line are identical except for exactly one
- * token, and the removed form is still cited in a localisable register — prose
- * inline-code, or the body of an exempt `text`/`markdown`/`md` fence.
+ * frozen fence, an old and a new line differ by exactly ONE DISTINCT
+ * substitution, and the removed form is still cited in a localisable register —
+ * prose inline-code, or the body of an exempt `text`/`markdown`/`md` fence.
  *
- * "Exactly one token" is what carries it. The same commit rewrote
+ * That narrowness is what carries it. The same commit rewrote
  * `git commit -m "Entwicklung fuer naechste Version beginnen"` to
- * `git commit -m "Begin development for next version"` — five tokens changed,
- * an ordinary translation restore, and not a placeholder rename. Requiring a
- * single differing token separates a rename from a retranslation without
+ * `git commit -m "Begin development for next version"` — five distinct
+ * substitutions, an ordinary translation restore, not a placeholder rename.
+ * One-distinct-substitution separates a rename from a retranslation without
  * knowing anything about what the token looks like.
+ *
+ * Distinct substitutions, NOT differing positions. Counting positions inverted
+ * the detector on the commonest shape a placeholder takes: a rename applied
+ * completely to a line was invisible and only a rename occurring exactly once
+ * per line could be seen. `docker tag X:latest ghcr.io/USERNAME/X:latest` is two
+ * positions carrying one rename, and 5,783 gated-fence lines across 1,571 files
+ * in this corpus repeat a token.
  *
  * ## It stays advisory
  *
@@ -55,11 +62,36 @@
  * it and dismiss it. A gate that must be overridden routinely trains the reflex
  * #472 exists to prevent, so this reports and exits 0 on findings.
  *
- * ## Scope limit
+ * ## What it cannot see
  *
  * It compares two revisions, so it sees only drift a change INTRODUCES.
  * Pre-existing drift in the corpus is invisible to it and needs a separate
  * one-shot scan.
+ *
+ * Within a compared line, three shapes are out of reach, all measured rather
+ * than assumed:
+ *
+ * - **Two different placeholders renamed on one line** — two distinct
+ *   substitutions, rejected with the retranslations. `cp datei.txt ziel/` ->
+ *   `cp file.txt target/` is invisible.
+ * - **A rename that changes the token COUNT.** `-`, `_` and `.` are inside the
+ *   token class, so `paket-name` -> `package-name` is 1 -> 1 and is caught; but
+ *   `paket-name` -> `package name` is 1 -> 2 and is dropped by the length guard.
+ *   This needs the English form to contain a space, which a code identifier in a
+ *   frozen fence generally cannot, so it is largely theoretical for de/es.
+ * - **CJK.** `\p{L}` covers Han and kana, and those scripts do not delimit words
+ *   with spaces, so a whole phrase collapses to one token and a Latin run
+ *   adjacent to kana MERGES with it. `# 標準的な評価チャンク` is one token against
+ *   three for `# Standard evaluation chunk`. Latent rather than live: no
+ *   instance of a placeholder riding such a line inside a gated fence was found.
+ *
+ * Coverage is reported, not assumed. Every unexamined path increments a counter
+ * — `skippedFiles` for a fence-count change, a tag-sequence divergence, or a
+ * file added/deleted/renamed in the range, and `unalignedFences` for an
+ * oversized LCS table — and a run that compared nothing says so instead of
+ * printing a clean line. Across the seven merged batches plus the #476
+ * re-mirror the tool made 976 fence comparisons and skipped 44 files, all of
+ * them in the re-mirror, whose fence structure changed wholesale.
  *
  * Usage:
  *   node scripts/check-placeholder-drift.js                      # HEAD~1..HEAD
@@ -145,26 +177,37 @@ const CODE_SHAPED = /^(?:[a-z0-9]+_[a-z0-9_]+|[A-Z0-9]+_[A-Z0-9_]+|[a-z0-9]+-[a-
  * Every token cited in a register a translation is ALLOWED to localise, in one
  * revision of one file: prose inline-code spans, and exempt fence bodies.
  *
- * Bare prose is deliberately excluded — admitting it is one of the predicates
- * #497 rejected, and `--compare` still measures it: 223 hits over #496's 3,242
- * removed tokens, almost all ordinary German words that happen to sit in an
- * exempt block somewhere. (#497 quotes 143 for that predicate and 0 for the
- * code-shape one; the prototype behind those figures no longer exists, so the
- * exact definitions are unrecoverable and the numbers here are this file's own.
- * What reproduces is the shape of the comparison, not the digits.)
+ * Bare prose — a token appearing in un-backticked prose — is deliberately
+ * excluded, and NOTHING here measures it; `--compare` reports two other
+ * predicates, `codeShaped` and `anyExemptFence`. Over #496's 3,242 removed
+ * tokens those read 15 and 223 against this predicate's 4. (#497 quotes 0 and
+ * 143 for its own versions; the prototype behind those figures no longer
+ * exists, so the definitions are unrecoverable and the numbers here are this
+ * file's own. What reproduces is the shape of the comparison, not the digits.)
  *
- * The register is recorded rather than filtered on, and it turns out to separate
- * the classes by itself. Across all seven merged batches plus the #476 re-mirror
- * — 992 frozen fences — the two registers split 4 / 5:
+ * The register is recorded rather than filtered on. Across the seven merged
+ * batches plus the #476 re-mirror the two registers split 4 / 5 — inline-code
+ * 4, all in #496, two of them the real `paketname` defect; exempt-fence 5,
+ * every one an ordinary German word (`von` ×4, `Datei`).
  *
- *   inline-code   4, all in #496, two of them the real `paketname` defect
- *   exempt-fence  5, every one an ordinary German word (`von` ×4, `Datei`)
+ * **That split is not evidence the register discriminates, and the sort is a
+ * hunch rather than a finding.** The one confirmed true positive is cited in
+ * BOTH registers — `paketname` appears in prose inline-code at lines 69 and 167
+ * of the #496 revision AND in the exempt ```markdown example at line 75 — so it
+ * lands in the strong bucket by the tie-break in `note()`, not by
+ * discrimination. Had that batch repaired the backticks and left only the
+ * markdown example stale, the identical defect would have sorted last. Register
+ * is also perfectly confounded with batch here: all four inline-code hits are in
+ * #496 and all five exempt-fence hits are elsewhere, so "register predicts
+ * truth" is not separable from "#496 was the batch with the bug", and n = one
+ * independent rename.
  *
- * Someone who writes a placeholder in backticks is NAMING it. A token that
- * merely occurs as a word inside an exempt block usually is not. Sorting on that
- * puts the target class first and makes the rest a one-glance dismissal, without
- * deleting anything — with a single confirmed true positive on record, filtering
- * on it is exactly the move that tuned the previous detector to zero.
+ * It is kept because it costs nothing and the mechanism is plausible — someone
+ * who writes a placeholder in backticks is naming it — and because filtering on
+ * it, on this evidence, is exactly the move that tuned the previous detector to
+ * zero. It would be falsified by a real defect whose only citation is in an
+ * exempt fence, or by a backticked ordinary locale word producing an
+ * inline-code false positive.
  */
 function localisableCitations(text) {
   const lines = toLines(text);
@@ -260,13 +303,33 @@ function substitution(beforeLine, afterLine) {
   const from = tokensOf(beforeLine);
   const to = tokensOf(afterLine);
   if (from.length !== to.length) return null;
-  let at = -1;
+
+  // One distinct SUBSTITUTION, not one differing position. The first version
+  // counted positions, which inverted the detector on the commonest shape a
+  // placeholder takes: a rename applied COMPLETELY to a line was invisible,
+  // and only a rename occurring exactly once per line could be seen.
+  //
+  //   docker tag meineapp:latest ghcr.io/USERNAME/meineapp:latest
+  //   docker tag myapp:latest    ghcr.io/USERNAME/myapp:latest
+  //
+  // is two differing positions carrying one rename, and it was dropped. 5,783
+  // gated-fence lines across 1,571 files in this corpus repeat a token, so the
+  // shape is pervasive rather than incidental.
+  //
+  // Collapsing to distinct pairs keeps the property that does the work. The
+  // retranslation this predicate exists to reject —
+  // `"Entwicklung fuer naechste Version beginnen"` ->
+  // `"Begin development for next version"` — is five DISTINCT pairs and is
+  // still rejected. Two different placeholders renamed on one line is two
+  // distinct pairs and is still rejected too: that is one line carrying two
+  // renames, which this predicate does not claim to read.
+  const seen = new Map();
   for (let k = 0; k < to.length; k++) {
     if (from[k] === to[k]) continue;
-    if (at >= 0) return null;
-    at = k;
+    seen.set(`${from[k]} ${to[k]}`, { removed: from[k], added: to[k] });
+    if (seen.size > 1) return null;
   }
-  return at < 0 ? null : { removed: from[at], added: to[at] };
+  return seen.size === 1 ? [...seen.values()][0] : null;
 }
 
 /** Every token appearing in ANY exempt fence — the other rejected predicate. */
@@ -300,12 +363,34 @@ const skippedFiles = [];
 for (const path of changed) {
   const baseText = git(['show', `${BASE}:${path}`]);
   const headText = git(['show', `${HEAD}:${path}`]);
-  if (baseText === null || headText === null) continue; // added or deleted
+  if (baseText === null || headText === null) {
+    // Counted, not dropped. `git diff --name-only` reports a RENAME as its
+    // destination path alone, so a batch that moved a skill while restoring a
+    // fence inside it resolved no base blob and vanished here with no counter —
+    // the one unexamined path of three that left no trace.
+    skippedFiles.push({ path, reason: 'added, deleted or renamed in this range' });
+    continue;
+  }
 
   const baseFences = extractFences(baseText);
   const headFences = extractFences(headText);
   if (baseFences.length !== headFences.length) {
     skippedFiles.push({ path, reason: `fence count ${baseFences.length} -> ${headFences.length}` });
+    continue;
+  }
+
+  // Equal fence counts do not make ordinal mapping trustworthy on their own —
+  // a `text` -> `yaml` retag keeps the count and makes a translated table the
+  // "before body" of a frozen fence. The sibling normalizer validates the tag
+  // sequence before trusting the ordinal; so does this.
+  const alignmentTag = (f) => (f.lang === '' ? 'text' : f.lang);
+  const misaligned = headFences.findIndex((f, i) => alignmentTag(f) !== alignmentTag(baseFences[i]));
+  if (misaligned >= 0) {
+    skippedFiles.push({
+      path,
+      reason: `tag sequence diverges at fence ${misaligned + 1} `
+        + `(${baseFences[misaligned].lang || 'untagged'} -> ${headFences[misaligned].lang || 'untagged'})`,
+    });
     continue;
   }
 
@@ -402,7 +487,13 @@ if (skippedFiles.length) console.log(`  ${skippedFiles.length} file(s) skipped (
 console.log('');
 
 if (findings.length === 0) {
-  console.log('No substitution pair leaves a translated placeholder cited in prose.');
+  // Qualified by what was actually examined. An unqualified "no findings" over
+  // zero comparisons is the clean-looking zero this file's other guards exist
+  // to reject, and every drop path above now carries a counter so the two
+  // numbers can be reconciled.
+  console.log(fencesCompared === 0
+    ? 'NOTHING WAS EXAMINED — no frozen fence in this range could be compared.'
+    : `No substitution pair leaves a translated placeholder cited nearby (${fencesCompared} fence(s) examined).`);
 } else {
   // Strongest register first. An author who writes a placeholder in backticks
   // is NAMING it; a token that merely occurs as a word inside an exempt block is

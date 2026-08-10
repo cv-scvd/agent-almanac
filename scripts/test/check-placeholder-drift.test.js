@@ -297,3 +297,134 @@ test('change blocks are scoped by matching context, so distant lines are not pai
   assert.equal(r.findings[0].removed, 'alpha');
   assert.equal(r.findings[0].added, 'gamma', 'a distant line was paired as a counterpart');
 });
+
+// ── gaps an adversarial review found: mutants that survived the suite ────────
+
+test('one rename applied TWICE on a line is one substitution, and is reported', async (t) => {
+  // The commonest shape a placeholder takes in a fence, and the first version
+  // inverted on it: counting differing POSITIONS meant a rename applied
+  // completely to a line was invisible, and only a rename occurring exactly
+  // once per line could be seen. 5,783 gated-fence lines across 1,571 corpus
+  // files repeat a token.
+  const before = [
+    '---', 'name: demo', 'locale: de', '---', '',
+    'Siehe `meineapp`.', '',
+    '```bash', 'docker tag meineapp:latest ghcr.io/USERNAME/meineapp:latest', '```', '',
+  ].join('\n');
+  const after = before.replace(
+    'docker tag meineapp:latest ghcr.io/USERNAME/meineapp:latest',
+    'docker tag myapp:latest ghcr.io/USERNAME/myapp:latest',
+  );
+  const dir = makeFixture(t, before, after);
+
+  const r = json(dir);
+
+  assert.equal(r.findings.length, 1, JSON.stringify(r.findings));
+  assert.equal(r.findings[0].removed, 'meineapp');
+  assert.equal(r.findings[0].added, 'myapp');
+});
+
+test('TWO different renames on one line are still rejected', async (t) => {
+  // The distinct-pair rule must not become "any number of renames". One line
+  // carrying two renames is not what this predicate claims to read, and
+  // admitting it reopens the retranslation class.
+  const before = [
+    '---', 'name: demo', 'locale: de', '---', '',
+    'Siehe `datei.txt` und `ziel`.', '',
+    '```bash', 'cp datei.txt ziel/', '```', '',
+  ].join('\n');
+  const after = before.replace('cp datei.txt ziel/', 'cp file.txt target/');
+  const dir = makeFixture(t, before, after);
+
+  assert.equal(json(dir).findings.length, 0);
+});
+
+test('--compare actually counts the code-shape predicate it reports', async (t) => {
+  // Positive control. The existing test asserts `codeShaped === 0`, which also
+  // passes when the counter never increments — the file's own diagnosed failure
+  // mode ("tuned to 0 with no true positive to test against") reproduced inside
+  // the suite built to prevent it.
+  const before = [
+    '---', 'name: demo', 'locale: de', '---', '',
+    'Siehe `paket_name`.', '',
+    '```bash', 'echo "$paket_name"', '```', '',
+  ].join('\n');
+  const after = before.replace('echo "$paket_name"', 'echo "$package_name"');
+  const dir = makeFixture(t, before, after);
+
+  const r = json(dir, ['--compare']);
+
+  assert.equal(r.alternatives.codeShaped, 1, 'the code-shape counter never fired');
+  assert.ok(r.alternatives.candidates > 0, 'the candidate universe is empty');
+});
+
+test('a gated fence body is never itself a citation register', async (t) => {
+  // Two frozen fences both naming the placeholder; the batch restores one. If
+  // gated bodies counted as citations, the restored fence would be "still
+  // cited" by its own untouched sibling — a pure false positive. The guard
+  // exists; nothing held it to that answer.
+  const before = [
+    '---', 'name: demo', 'locale: de', '---', '',
+    'Keine Zitate in Prosa.', '',
+    '```bash', 'echo "paketname"', '```', '',
+    '```bash', 'build paketname', '```', '',
+  ].join('\n');
+  const after = before.replace('echo "paketname"', 'echo "packagename"');
+  const dir = makeFixture(t, before, after);
+
+  assert.equal(json(dir).findings.length, 0, 'a frozen fence cited the placeholder');
+});
+
+test('a line that lost a token is not read as a substitution', async (t) => {
+  // Without the length guard the comparison loop runs only to the shorter
+  // length, so a truncated line reads as a clean rename.
+  const before = [
+    '---', 'name: demo', 'locale: de', '---', '',
+    'Siehe `alpha`.', '',
+    '```bash', 'echo alpha extra', '```', '',
+  ].join('\n');
+  const after = before.replace('echo alpha extra', 'echo gamma');
+  const dir = makeFixture(t, before, after);
+
+  assert.equal(json(dir).findings.length, 0);
+});
+
+test('the reported line number is the changed line, not the first body line', async (t) => {
+  // The existing line-number test uses a one-line fence body, where index 0
+  // makes `after.line + 1 + index` and `after.line + 1` identical.
+  const before = [
+    '---', 'name: demo', 'locale: de', '---', '',
+    'Siehe `paketname`.', '',
+    '```bash', 'git add DESCRIPTION', 'git commit -m "Release paketname"', '```', '',
+  ].join('\n');
+  const after = before.replace('Release paketname', 'Release packagename');
+  const dir = makeFixture(t, before, after);
+
+  const r = json(dir);
+  const line = after.split('\n')[r.findings[0].line - 1];
+
+  assert.match(line, /packagename/, `line ${r.findings[0].line} is ${JSON.stringify(line)}`);
+});
+
+test('a retagged fence is skipped, not trusted by ordinal', async (t) => {
+  // Equal fence counts do not make ordinal mapping sound: a text -> yaml retag
+  // keeps the count and makes a translated table the "before body" of a frozen
+  // fence.
+  const before = [
+    '---', 'name: demo', 'locale: de', '---', '',
+    'Siehe `offen`.', '',
+    '```text', 'Status: offen', '```', '',
+  ].join('\n');
+  const after = [
+    '---', 'name: demo', 'locale: de', '---', '',
+    'Siehe `offen`.', '',
+    '```yaml', 'Status: open', '```', '',
+  ].join('\n');
+  const dir = makeFixture(t, before, after);
+
+  const r = json(dir);
+
+  assert.equal(r.findings.length, 0);
+  assert.equal(r.skippedFiles.length, 1);
+  assert.match(r.skippedFiles[0].reason, /tag sequence diverges/);
+});
