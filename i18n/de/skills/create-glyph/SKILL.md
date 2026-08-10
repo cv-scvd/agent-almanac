@@ -334,7 +334,7 @@ get_palette_colors("cyberpunk")$teams[["tending"]]     # team
 Beim Hinzufuegen einer neuen Domaene an drei Stellen in `palettes.R` eintragen:
 1. `PALETTE_DOMAIN_ORDER` (alphabetisch)
 2. `get_cyberpunk_colors()` Domaenenliste
-3. `Rscript generate-palette-colors.R` ausfuehren, um JSON + JS zu regenerieren
+3. `bash viz/build.sh` ausfuehren, um Paletten, Daten und Manifeste zu regenerieren
 
 ### Glyphen-Funktionskatalog
 

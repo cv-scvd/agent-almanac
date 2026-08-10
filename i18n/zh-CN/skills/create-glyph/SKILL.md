@@ -330,7 +330,7 @@ get_palette_colors("cyberpunk")$teams[["tending"]]     # team
 添加新领域时，需在 `palettes.R` 的三个位置添加：
 1. `PALETTE_DOMAIN_ORDER`（按字母排序）
 2. `get_cyberpunk_colors()` 领域列表
-3. 运行 `Rscript generate-palette-colors.R` 重新生成 JSON + JS
+3. 运行 `bash viz/build.sh` 重新生成调色板、数据和清单
 
 ### 符号函数目录
 
