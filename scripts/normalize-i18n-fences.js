@@ -619,10 +619,16 @@ if (unmeasured.length) {
   // refused file is not restored at all, and a fence outside `--tag` scope was
   // never a candidate. A report that overstates what was written is the same
   // class of defect as the empty-token pass it sits next to.
+  //
+  // Both counts are FENCES, and the first version labelled them "in file(s)",
+  // which reads as a file count. It also said "restored" unconditionally, four
+  // lines under `PREVIEW — nothing written` — the same overstatement in a
+  // narrower spelling, and the test asserted the wrong wording so it held.
   const forkedFiles = new Set(forks.map((f) => f.file));
   const inRefused = unmeasured.filter((u) => forkedFiles.has(u.file)).length;
   const inRepaired = unmeasured.length - inRefused;
-  console.log(`  ${inRepaired} in file(s) this run repairs — unchecked for the #498 shape, and restored`);
-  console.log(`  ${inRefused} in file(s) refused above — unchecked, and NOT restored`);
+  const restored = PREVIEW ? 'would be restored' : 'restored';
+  console.log(`  ${inRepaired} fence(s) in file(s) this run repairs — unchecked for the #498 shape, and ${restored}`);
+  console.log(`  ${inRefused} fence(s) in file(s) refused above — unchecked, and not restored`);
   console.log('  (a fence outside --tag scope is counted here but was never a restore candidate)');
 }

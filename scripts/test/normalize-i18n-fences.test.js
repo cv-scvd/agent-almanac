@@ -717,8 +717,35 @@ test('the unmeasured report distinguishes repaired files from refused ones', asy
 
   const r = run(dir);
 
-  assert.match(r.stdout, /1 in file\(s\) this run repairs — unchecked for the #498 shape, and restored/);
-  assert.match(r.stdout, /0 in file\(s\) refused above — unchecked, and NOT restored/);
+  assert.match(r.stdout, /1 fence\(s\) in file\(s\) this run repairs/);
+  assert.match(r.stdout, /0 fence\(s\) in file\(s\) refused above — unchecked, and not restored/);
+});
+
+test('the unmeasured report does not claim a restore a preview did not make', async (t) => {
+  // The first wording said "restored" four lines under `PREVIEW — nothing
+  // written`, and the test asserted that wording, so the contradiction held.
+  // Asserting BOTH modes is what makes the tense load-bearing.
+  const { dir } = makeFixture(t);
+  addUnmeasurableSkill(dir);
+
+  const preview = run(dir);
+  assert.match(preview.stdout, /unchecked for the #498 shape, and would be restored/);
+
+  const written = run(dir, ['--write']);
+  assert.match(written.stdout, /unchecked for the #498 shape, and restored/);
+  assert.doesNotMatch(written.stdout, /would be restored/);
+});
+
+test('the unmeasured counts are labelled as fences, which is what they count', async (t) => {
+  // They were labelled "in file(s)", which reads as a file count.
+  const { dir } = makeFixture(t);
+  addUnmeasurableSkill(dir);
+
+  const r = run(dir);
+
+  const line = r.stdout.split('\n').find((l) => l.includes('this run repairs'));
+  assert.ok(line, `no unmeasured disposition line:\n${r.stdout}`);
+  assert.match(line, /^\s*\d+ fence\(s\)/, `count is not labelled as fences: ${line}`);
 });
 
 // ── the threshold is disclosed on every run ─────────────────────────────────
