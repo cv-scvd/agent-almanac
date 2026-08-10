@@ -116,14 +116,12 @@ Use this decision matrix to determine whether to refine in-place or create a var
 
 Edit the existing SKILL.md directly:
 
-```bash
-# Open for editing
-# Add/revise procedure steps
-# Strengthen Expected/On failure pairs
-# Add tables or examples
-# Update When to Use triggers
-# Revise Inputs if scope changed
-```
+- Open for editing
+- Add/revise procedure steps
+- Strengthen Expected/On failure pairs
+- Add tables or examples
+- Update When to Use triggers
+- Revise Inputs if scope changed
 
 Follow these editing rules:
 - Preserve all existing sections — add content, don't remove sections

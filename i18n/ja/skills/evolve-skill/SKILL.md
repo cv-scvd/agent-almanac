@@ -122,14 +122,12 @@ grep -oP '`[\w-]+`' skills/<skill-name>/SKILL.md | sort -u
 
 既存のSKILL.mdを直接編集する:
 
-```bash
-# Open for editing
-# Add/revise procedure steps
-# Strengthen Expected/On failure pairs
-# Add tables or examples
-# Update When to Use triggers
-# Revise Inputs if scope changed
-```
+- 編集のために開く
+- 手順ステップを追加/改訂する
+- Expected/On failureペアを強化する
+- テーブルや例を追加する
+- 使用タイミングのトリガーを更新する
+- スコープが変わった場合、入力を改訂する
 
 これらの編集ルールに従う:
 - 既存のすべてのセクションを保持する — コンテンツを追加し、セクションを削除しない

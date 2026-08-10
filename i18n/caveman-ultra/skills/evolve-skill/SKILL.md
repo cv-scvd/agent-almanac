@@ -121,14 +121,12 @@ If err: unsure → default refinement. Extract variant later easier than merge b
 
 Edit existing SKILL.md directly:
 
-```bash
-# Open for editing
-# Add/revise procedure steps
-# Strengthen Expected/On failure pairs
-# Add tables or examples
-# Update When to Use triggers
-# Revise Inputs if scope changed
-```
+- Open for editing
+- Add/revise procedure steps
+- Strengthen Expected/On failure pairs
+- Add tables or examples
+- Update When to Use triggers
+- Revise Inputs if scope changed
 
 Editing rules:
 - Preserve all sections — add not remove

@@ -124,14 +124,12 @@ Usar esta matriz de decisión para determinar si refinar en el lugar o crear una
 
 Editar el SKILL.md existente directamente:
 
-```bash
-# Open for editing
-# Add/revise procedure steps
-# Strengthen Expected/On failure pairs
-# Add tables or examples
-# Update When to Use triggers
-# Revise Inputs if scope changed
-```
+- Abrir para edición
+- Añadir/revisar pasos del procedimiento
+- Fortalecer pares Expected/On failure
+- Añadir tablas o ejemplos
+- Actualizar los disparadores de When to Use
+- Revisar Inputs si el alcance cambió
 
 Seguir estas reglas de edición:
 - Preservar todas las secciones existentes — añadir contenido, no eliminar secciones

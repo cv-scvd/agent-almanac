@@ -123,14 +123,12 @@ Diese Entscheidungsmatrix verwenden, um zu bestimmen, ob direkt verfeinert oder 
 
 Die bestehende SKILL.md direkt bearbeiten:
 
-```bash
-# Open for editing
-# Add/revise procedure steps
-# Strengthen Expected/On failure pairs
-# Add tables or examples
-# Update When to Use triggers
-# Revise Inputs if scope changed
-```
+- Zur Bearbeitung oeffnen
+- Verfahrensschritte hinzufuegen/ueberarbeiten
+- Expected/On-failure-Paare staerken
+- Tabellen oder Beispiele hinzufuegen
+- Ausloser fuer "When to Use" aktualisieren
+- Inputs ueberarbeiten, falls sich Umfang geaendert hat
 
 Diese Bearbeitungsregeln befolgen:
 - Alle bestehenden Abschnitte erhalten — Inhalte hinzufuegen, keine Abschnitte entfernen
