@@ -685,7 +685,7 @@ Escalate **proactively** if:
 
 ### Internal Communication Templates (All Variants)
 
-```markdown
+````markdown
 ## Communication Templates
 
 ### Initial Incident Declaration
@@ -705,7 +705,7 @@ Escalate **proactively** if:
 Quick Summary: [1-2 sentences on what's wrong and initial assessment]
 
 Next update in 15 minutes.
-```text
+```
 
 ### Progress Update (Every 15-30 minutes)
 
@@ -725,7 +725,7 @@ Next update in 15 minutes.
 **Impact Update**: [Any change in scope/severity]
 
 Next update in 15 minutes or upon significant change.
-```text
+```
 
 ### Mitigation Announcement
 
@@ -743,7 +743,7 @@ Next update in 15 minutes or upon significant change.
 
 Continuing to monitor for 30 minutes before declaring resolved.
 Next update in 15 minutes.
-```text
+```
 
 ### Incident Resolution
 
@@ -765,7 +765,7 @@ Next update in 15 minutes.
 **Dashboard**: [Link to incident metrics]
 
 Thank you to everyone who helped resolve this incident.
-```text
+```
 
 ### False Alarm / Resolved Without Action
 
@@ -779,7 +779,7 @@ Thank you to everyone who helped resolve this incident.
 
 No customer impact.
 No follow-up needed.
-```text
+```
 
 ### External Status Page Updates
 
@@ -796,7 +796,7 @@ Our engineering team has been notified and is actively investigating.
 **Next Update**: [HH:MM UTC] (15 minutes)
 
 We apologize for any inconvenience.
-```text
+```
 
 **Progress Update**:
 ```
@@ -809,7 +809,7 @@ Our team is implementing a fix.
 **Impact**: [Percentage or description of affected users]
 **Estimated Resolution**: [Timeframe if known, or "working on it" if not]
 **Next Update**: [HH:MM UTC]
-```text
+```
 
 **Resolution Post**:
 ```
@@ -826,7 +826,7 @@ All services are operating normally.
 We have implemented measures to prevent this from happening again and will continue monitoring closely.
 
 We apologize for any inconvenience this may have caused.
-```text
+```
 
 ### Customer Support Email Template
 
@@ -863,8 +863,8 @@ If you have any questions, please contact our support team at [email/phone].
 Best regards,
 [Name]
 [Title]
-```text
 ```
+````
 
 ## Step 6: Alert Integration Examples
 
