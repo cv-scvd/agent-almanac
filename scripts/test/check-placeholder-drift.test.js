@@ -269,3 +269,31 @@ test('findings do not fail the run — it is advisory by design', async (t) => {
   assert.equal(r.status, 0);
   assert.match(r.stdout, /ADVISORY/);
 });
+
+test('change blocks are scoped by matching context, so distant lines are not paired', async (t) => {
+  // The cross product inside a block is safe only because a block is bounded by
+  // lines that match. Merge adjacent blocks and it spans the whole fence, and
+  // the FIRST changed line starts pairing against the LAST one.
+  //
+  // Here `alpha` is cited and `beta` is not, so the correct scoping yields
+  // exactly one finding, `alpha -> gamma`. Merged blocks would additionally
+  // pair `run alpha` against `run delta` and report `alpha -> delta`, a
+  // substitution between two lines that were never each other's counterpart.
+  const before = [
+    '---', 'name: demo', 'locale: de', '---', '',
+    'Siehe `alpha`.', '',
+    '```bash', 'run alpha', 'same1', 'same2', 'run beta', '```', '',
+  ].join('\n');
+  const after = [
+    '---', 'name: demo', 'locale: de', '---', '',
+    'Siehe `alpha`.', '',
+    '```bash', 'run gamma', 'same1', 'same2', 'run delta', '```', '',
+  ].join('\n');
+  const dir = makeFixture(t, before, after);
+
+  const r = json(dir);
+
+  assert.equal(r.findings.length, 1, JSON.stringify(r.findings));
+  assert.equal(r.findings[0].removed, 'alpha');
+  assert.equal(r.findings[0].added, 'gamma', 'a distant line was paired as a counterpart');
+});
