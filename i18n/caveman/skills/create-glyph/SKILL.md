@@ -310,7 +310,7 @@ Adjust and re-render.
 
 ### Domain and Entity Color Palettes
 
-All 58 domain colors (for skills) in `viz/R/palettes.R` (single source of truth). Agent and team colors also in `palettes.R`. Cyberpunk palette (hand-tuned neon colors) in `get_cyberpunk_colors()`. Viridis-family palettes auto-generated via `viridisLite`.
+All domain colors (for skills) in `viz/R/palettes.R` (single source of truth). Agent and team colors also in `palettes.R`. Cyberpunk palette (hand-tuned neon colors) in `get_cyberpunk_colors()`. Viridis-family palettes auto-generated via `viridisLite`.
 
 Look up color:
 ```r

@@ -302,7 +302,7 @@ Out:
 
 ### Domain + Entity Palettes
 
-All 58 domain colors (skills) in `viz/R/palettes.R` (single truth). Agent/team colors same. Cyberpunk (hand-tuned neon) in `get_cyberpunk_colors()`. Viridis auto via `viridisLite`.
+All domain colors (skills) in `viz/R/palettes.R` (single truth). Agent/team colors same. Cyberpunk (hand-tuned neon) in `get_cyberpunk_colors()`. Viridis auto via `viridisLite`.
 
 Lookup:
 ```r

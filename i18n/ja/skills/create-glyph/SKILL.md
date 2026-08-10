@@ -320,7 +320,7 @@ cd viz && Rscript build-team-icons.R --only <team-id>
 
 ### ドメインとエンティティのカラーパレット
 
-全58ドメインのカラー（スキル用）は `viz/R/palettes.R` で定義されている（唯一の信頼できるソース）。エージェントとチームのカラーも `palettes.R` で管理されている。cyberpunkパレット（手動調整されたネオンカラー）は `get_cyberpunk_colors()` に格納されている。viridisファミリーのパレットは `viridisLite` で自動生成される。
+全ドメインのカラー（スキル用）は `viz/R/palettes.R` で定義されている（唯一の信頼できるソース）。エージェントとチームのカラーも `palettes.R` で管理されている。cyberpunkパレット（手動調整されたネオンカラー）は `get_cyberpunk_colors()` に格納されている。viridisファミリーのパレットは `viridisLite` で自動生成される。
 
 カラーを参照するには:
 ```r
@@ -333,7 +333,7 @@ get_palette_colors("cyberpunk")$teams[["tending"]]     # team
 新しいドメインを追加する場合は、`palettes.R` の3箇所に追加する:
 1. `PALETTE_DOMAIN_ORDER`（アルファベット順）
 2. `get_cyberpunk_colors()` のドメインリスト
-3. `Rscript generate-palette-colors.R` を実行してJSON + JSを再生成する
+3. `bash viz/build.sh` を実行してパレット、データ、マニフェストを再生成する
 
 ### グリフ関数カタログ
 

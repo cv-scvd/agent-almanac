@@ -317,7 +317,7 @@ cd viz && Rscript build-team-icons.R --only <team-id>
 
 ### 领域与实体调色板
 
-所有 58 个领域颜色（技能用）定义在 `viz/R/palettes.R` 中（唯一的真实数据来源）。代理和团队颜色也在 `palettes.R` 中管理。cyberpunk 调色板（手动调整的霓虹色）在 `get_cyberpunk_colors()` 中。Viridis 系列调色板通过 `viridisLite` 自动生成。
+所有领域颜色（技能用）定义在 `viz/R/palettes.R` 中（唯一的真实数据来源）。代理和团队颜色也在 `palettes.R` 中管理。cyberpunk 调色板（手动调整的霓虹色）在 `get_cyberpunk_colors()` 中。Viridis 系列调色板通过 `viridisLite` 自动生成。
 
 查找颜色：
 ```r
@@ -330,7 +330,7 @@ get_palette_colors("cyberpunk")$teams[["tending"]]     # team
 添加新领域时，需在 `palettes.R` 的三个位置添加：
 1. `PALETTE_DOMAIN_ORDER`（按字母排序）
 2. `get_cyberpunk_colors()` 领域列表
-3. 运行 `Rscript generate-palette-colors.R` 重新生成 JSON + JS
+3. 运行 `bash viz/build.sh` 重新生成调色板、数据和清单
 
 ### 符号函数目录
 
