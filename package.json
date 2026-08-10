@@ -51,6 +51,7 @@
     "validate:translations": "node scripts/check-translation-freshness.js",
     "validate:i18n-parity": "node scripts/check-i18n-frontmatter-parity.js",
     "validate:i18n-fences": "node scripts/check-i18n-fence-parity.js",
+    "validate:yaml-fences": "node scripts/check-yaml-fences.js",
     "check:placeholder-drift": "node scripts/check-placeholder-drift.js",
     "normalize:i18n-fences": "node scripts/normalize-i18n-fences.js",
     "validate:content-style": "node scripts/check-content-style.js --all",

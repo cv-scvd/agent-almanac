@@ -3,9 +3,21 @@ name: Validate Content Style
 on:
   push:
     branches: [main]
-    paths: ['skills/**', 'agents/**', 'teams/**', 'guides/**', 'i18n/**']
+    paths:
+      - 'skills/**'
+      - 'agents/**'
+      - 'teams/**'
+      - 'guides/**'
+      - 'i18n/**'
+      - 'scripts/check-yaml-fences.js'
   pull_request:
-    paths: ['skills/**', 'agents/**', 'teams/**', 'guides/**', 'i18n/**']
+    paths:
+      - 'skills/**'
+      - 'agents/**'
+      - 'teams/**'
+      - 'guides/**'
+      - 'i18n/**'
+      - 'scripts/check-yaml-fences.js'
   workflow_dispatch:
 
 permissions:
@@ -36,3 +48,19 @@ jobs:
       - name: Repo-wide scan (informational)
         if: github.event_name != 'pull_request'
         run: node scripts/check-content-style.js --all
+
+  # Blocking, and repo-wide rather than added-lines-only: the corpus is at zero
+  # (#507), so there is no legacy backlog to grandfather, and a fence tagged
+  # `yaml` that is not YAML freezes content into ten locales that should have
+  # stayed translatable. Its own job because it needs `npm ci` for js-yaml,
+  # which the style job does not.
+  yaml-fences:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run validate:yaml-fences
