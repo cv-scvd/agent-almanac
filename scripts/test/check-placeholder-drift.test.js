@@ -111,9 +111,13 @@ test('a retranslation is not a rename — more than one token changed', async (t
   // The same #496 commit rewrote a whole commit message from German to English.
   // Requiring exactly one differing token separates that from a placeholder
   // rename without knowing what the token looks like.
+  // The prose cites BOTH the first and the last differing token. Without that,
+  // this test passes on a build with the exactly-one guard deleted: `at` would
+  // simply end on the last differing index, report `beginnen`, and find it
+  // uncited — so the assertion held for the wrong reason and the mutant lived.
   const before = [
     '---', 'name: demo', 'locale: de', '---', '',
-    'Siehe `Entwicklung`.', '',
+    'Siehe `Entwicklung` und `beginnen`.', '',
     '```bash', 'git commit -m "Entwicklung fuer naechste Version beginnen"', '```', '',
   ].join('\n');
   const after = before.replace(
@@ -171,12 +175,15 @@ test('the two registers are reported separately in the human output', async (t) 
 test('an exempt fence is never itself treated as a frozen fence', async (t) => {
   // Localisable fences are what a translation exists to change; reading a
   // substitution out of one would report every translated table.
+  // `offen` must be cited, or the exempt-fence check is untested: with the
+  // `isGated` guard removed this fence IS read as frozen, yielding the
+  // substitution `offen` -> `open`, and only a citation makes that observable.
   const before = [
     '---', 'name: demo', 'locale: de', '---', '',
-    'Siehe `Status`.', '',
+    'Siehe `Status`, derzeit `offen`.', '',
     '```text', 'Status: offen', '```', '',
   ].join('\n');
-  const after = before.replace('Status: offen', 'Status: open');
+  const after = before.replace('```text\nStatus: offen', '```text\nStatus: open');
   const dir = makeFixture(t, before, after);
 
   assert.equal(json(dir).findings.length, 0);
