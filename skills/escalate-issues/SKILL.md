@@ -192,8 +192,9 @@ Generate a formatted report suitable for the target audience (agent or human).
 
 **For Specialist Agents** (structured format for MCP tools).
 
-The routing header is machine-consumed — a tool parses these keys, and the agent
-ids are English identifiers:
+Emit one document: the routing header delimited by `---` fences, then the report
+body beneath it. The receiving tool parses the header keys, so those and the
+agent ids stay in English.
 
 ```yaml
 type: escalation
@@ -202,9 +203,6 @@ from_agent: janitor
 to_agent: security-analyst
 blocking: false
 ```
-
-The body beneath it is a report a human writes and another human reads, so it is
-localisable and a German reviewer should be able to emit a German one:
 
 ```text
 # Security Concern: Hardcoded API Key in Config

@@ -2,7 +2,7 @@
 /**
  * check-yaml-fences.js
  *
- * Every ```yaml fence in English content must parse as YAML (#507).
+ * Every ```yaml fence in the corpus must parse as YAML (#507).
  *
  * ## Why this is a gate and not a style preference
  *
@@ -34,30 +34,46 @@
  * distinguishable if something checks which fences are genuinely YAML, and this
  * is that something.
  *
- * ## Exemptions are by ERROR CLASS, not by location
+ * ## Exemptions are decided by the ERROR, never by the file or the body
  *
- * Two shapes legitimately do not parse, and both are named here with the reason:
+ * Three shapes legitimately do not parse, each named with its reason:
  *
  * - **Go templates.** `write-helm-chart` shows Helm chart sources, which are Go
  *   templates that happen to produce YAML. `{{- if .Values… }}` is not YAML and
- *   is not meant to be.
+ *   is not meant to be. Recognised by the error landing ON a `{{ … }}` line.
  * - **Duplicate-key illustrations.** A good-versus-bad pair in one fence is a
  *   documented idiom in this corpus's guides, and duplicate keys are exactly what
  *   makes the bad half bad.
+ * - **Tags this parser's schema lacks.** js-yaml 5's DEFAULT_SCHEMA implements no
+ *   custom tags, so CloudFormation shorthand (`!Ref`) and even core `!!binary`
+ *   are rejected. That is the parser, not the document.
  *
  * Pinning exemptions to `file:line` would rot on the first edit above them, and a
  * rotted exemption either fails a clean file or silently covers a new defect.
- * Keying on the error class costs some precision — an accidental duplicate key in
- * a real config example would pass — and buys an exemption list that cannot drift
- * out of date. Every exempted fence is REPORTED rather than skipped silently, so
- * the set stays visible and a reviewer can see it grow.
+ * Keying on the error costs some precision — an accidental duplicate key in a
+ * real config example would pass — and buys a list that cannot drift out of date.
+ * Every exempted fence is REPORTED rather than skipped silently, so the set stays
+ * visible and a reviewer can see it grow.
  *
- * Scope: English content only. English is canonical, and a translated `yaml`
- * fence that diverges from it is `check-i18n-fence-parity.js`'s business.
+ * The Go-template test is on the error's own LINE, and that distinction is the
+ * whole of it. Testing the body for `{{ }}` anywhere reads as "is this a
+ * template?" and means "does this fence contain two braces?" — it matched 24 of
+ * 331 English fences where only 4 are Helm sources, forgiving every parse error
+ * in twenty valid GitHub Actions and Prometheus documents. Those are the MOST
+ * machine-consumed fences in the corpus.
+ *
+ * ## Scope: English and its mirrors
+ *
+ * Scoping this to English was the first version, and the first run of this gate
+ * disproved it: a genuine fix to `write-helm-chart` was applied to English and to
+ * none of its ten mirrors, all of which still failed to parse. Nothing else could
+ * report them — `check-i18n-fence-parity.js` accepts a translated body matching
+ * ANY historical English revision, and a stale broken body is exactly that.
  *
  * Usage:
  *   node scripts/check-yaml-fences.js
  *   node scripts/check-yaml-fences.js --json
+ *   node scripts/check-yaml-fences.js --root <dir>   # for tests
  */
 
 import { readFileSync, readdirSync, existsSync, statSync } from 'fs';
@@ -100,18 +116,47 @@ if (!existsSync(ROOT) || !statSync(ROOT).isDirectory()) {
   process.exit(2);
 }
 
-/** Every English content file the checker also covers. */
-function englishFiles() {
+/**
+ * Every content file under one root: the four trees, `_`-prefixed ids skipped
+ * the way `buildEnglishFenceHistory` skips them.
+ */
+function contentFiles(base, prefix = '') {
   const out = [];
   for (const tree of TREES) {
-    const base = join(ROOT, tree);
-    if (!existsSync(base)) continue;
-    for (const entry of readdirSync(base)) {
+    const dir = join(base, tree);
+    if (!existsSync(dir) || !statSync(dir).isDirectory()) continue;
+    for (const entry of readdirSync(dir)) {
+      if (entry.startsWith('_')) continue;
       const rel = tree === 'skills' ? `${tree}/${entry}/SKILL.md` : `${tree}/${entry}`;
       if (contentKey(rel) === null) continue;
-      const abs = join(ROOT, rel);
+      const abs = join(base, rel);
       if (!existsSync(abs) || !statSync(abs).isFile()) continue;
-      out.push(rel);
+      out.push(prefix + rel);
+    }
+  }
+  return out;
+}
+
+/**
+ * English AND its locale mirrors.
+ *
+ * Scoping this to English was wrong, and the first run of this very gate proved
+ * it: the orphaned-`tls:` fix in `write-helm-chart` was applied to English and
+ * to none of its ten mirrors, which all still failed to parse. Nothing else
+ * could report them — `check-i18n-fence-parity.js` accepts a translated body
+ * matching ANY historical English revision, and a stale broken body is exactly
+ * that, so it is excused forever.
+ *
+ * A frozen fence is a copy of English, so this costs nothing while the copy is
+ * faithful, and names the file when it is not.
+ */
+function allFiles() {
+  const out = contentFiles(ROOT);
+  const i18n = join(ROOT, 'i18n');
+  if (existsSync(i18n) && statSync(i18n).isDirectory()) {
+    for (const loc of readdirSync(i18n)) {
+      if (!statSync(join(i18n, loc)).isDirectory()) continue;
+      out.push(...contentFiles(join(i18n, loc), `i18n/${loc}/`));
     }
   }
   return out.sort();
@@ -119,11 +164,31 @@ function englishFiles() {
 
 /**
  * Why a fence that does not parse is allowed to. Returns null when it is not.
- * Order matters only for reporting; the two classes do not overlap in practice.
+ *
+ * Every test here is on the ERROR, never on the body. The first version tested
+ * `/\{\{.*\}\}/s` against the whole body, which reads as "is this a template?"
+ * and actually means "does this fence contain two braces anywhere?" — matching
+ * 24 of 331 English fences, of which only 4 are Helm sources. The other 20 are
+ * valid GitHub Actions (`${{ matrix.config.os }}`) and Prometheus YAML, i.e.
+ * precisely the fences that ARE machine-consumed, and for all 24 any parse error
+ * whatsoever was forgiven. Two fences differing only by a `${{ }}` expression,
+ * both carrying the orphaned-`tls:` defect this gate was built to catch, were
+ * reported `exempted` and `failing` respectively.
+ *
+ * Keying on the reported line fixes it without losing the real templates: all
+ * four genuine Helm errors land ON a `{{ … }}` line, and a broken workflow's
+ * error does not.
  */
-function exemption(body, message) {
-  if (/\{\{.*\}\}/s.test(body)) return 'go-template';
+function exemption(bodyLines, message, mark) {
+  const errorLine = mark && Number.isInteger(mark.line) ? bodyLines[mark.line] : undefined;
+  if (errorLine !== undefined && /\{\{|\}\}/.test(errorLine)) return 'go-template';
   if (/duplicated mapping key/i.test(message)) return 'duplicate-key-illustration';
+  // js-yaml 5's DEFAULT_SCHEMA implements no custom tags, so CloudFormation
+  // shorthand (`!Ref`) and even core `!!binary` are rejected. That is the
+  // parser's schema, not the document being un-YAML, and the remedy this gate
+  // prints — retag to `text` — would be exactly the freeze-scope edit CLAUDE.md
+  // warns about if applied to one of those.
+  if (/unknown .*tag/i.test(message)) return 'unsupported-tag-schema';
   return null;
 }
 
@@ -131,7 +196,17 @@ const failures = [];
 const exempted = [];
 let checked = 0;
 
-for (const rel of englishFiles()) {
+const files = allFiles();
+// A root with no content trees checks nothing and would print a clean line.
+// `existsSync` + `isDirectory` is a proxy for the question; membership in the
+// scan's own output is the question.
+if (files.length === 0) {
+  console.error(`ERROR: no content trees (${TREES.join(', ')}) under '${ROOT}'`);
+  console.error('Nothing would be checked, and the run would report a clean-looking zero.');
+  process.exit(2);
+}
+
+for (const rel of files) {
   const text = readFileSync(join(ROOT, rel), 'utf8');
   for (const f of extractFences(text)) {
     if (f.lang !== 'yaml' && f.lang !== 'yml') continue;
@@ -142,7 +217,7 @@ for (const rel of englishFiles()) {
       yaml.loadAll(f.body);
     } catch (e) {
       const message = String(e.message).split('\n')[0];
-      const why = exemption(f.body, message);
+      const why = exemption(f.body.split('\n'), message, e.mark);
       const hit = { file: rel, line: f.line, message: message.slice(0, 120) };
       if (why) exempted.push({ ...hit, exemption: why });
       else failures.push(hit);
@@ -177,7 +252,10 @@ for (const f of failures) {
 }
 console.log('');
 console.log('A fence tagged `yaml` is frozen to English by #472, so a mislabelled one');
-console.log('freezes content that should have been translatable. Either fix the YAML, or');
-console.log('— if it is a reference table a human reads rather than a machine — retag it');
-console.log('`text` and let translators localise it.');
+console.log('freezes content that should have been translatable.');
+console.log('');
+console.log('If the fence IS machine-consumed, fix the YAML. That is the default, and');
+console.log('retagging it `text` would be the freeze-scope edit CLAUDE.md warns against.');
+console.log('Retag only when the body is a reference table a human reads rather than a');
+console.log('machine: prose values, ranges, or bullet lists where a parser expects data.');
 process.exit(1);

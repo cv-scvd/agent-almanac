@@ -196,6 +196,10 @@ def route_issue(severity, issue_type):
 Make report matched to target (agent or human).
 
 **For Specialist Agents** (structured format for MCP tools):
+Emit one document: the routing header delimited by `---` fences, then the report
+body beneath it. The receiving tool parses the header keys, so those and the
+agent ids stay in English.
+
 ```yaml
 type: escalation
 severity: high
@@ -204,8 +208,6 @@ to_agent: security-analyst
 blocking: false
 ```
 
-The body beneath it is a report a human writes and another human reads, so it is
-localisable and a German reviewer should be able to emit a German one:
 
 ```text
 # Security Concern: Hardcoded API Key in Config

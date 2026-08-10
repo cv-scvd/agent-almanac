@@ -74,7 +74,7 @@ test('prose in a yaml fence FAILS — the defect this gate exists for', async (t
 
   assert.equal(r.status, 1, r.stdout);
   assert.match(r.stdout, /1 yaml-tagged fence\(s\) do not parse/);
-  assert.match(r.stdout, /retag it/);
+  assert.match(r.stdout, /Retag only when/);
 });
 
 test('a human reference table in a yaml fence FAILS', async (t) => {
@@ -232,4 +232,108 @@ test('--root pointing at nothing is an error, not an empty clean run', async (t)
 
   assert.equal(r.status, 2);
   assert.match(r.stderr, /not a directory/);
+});
+
+// ── the exemption's SCOPE, which is the design's headline invariant ─────────
+
+test('a template expression elsewhere in the body does NOT exempt a broken fence', async (t) => {
+  // The defect this replaces: testing the BODY for `{{ }}` anywhere matched 24
+  // of 331 English fences where only 4 were Helm sources, and forgave every
+  // parse error in twenty valid GitHub Actions and Prometheus documents — the
+  // most machine-consumed fences in the corpus.
+  //
+  // This is a real workflow carrying the exact orphaned-`tls:` defect the gate
+  // was built to catch. The error lands on `  tls:`, not on the `${{ }}` line.
+  const dir = corpus(t, [
+    '```yaml',
+    'jobs:',
+    '  build:',
+    '    runs-on: ${{ matrix.config.os }}',
+    '    steps:',
+    '      - uses: actions/checkout@v4',
+    '     - run: npm ci',
+    '```',
+  ].join('\n'));
+
+  const r = run(dir);
+
+  assert.equal(r.status, 1, `a fence with {{ }} anywhere was exempted:\n${r.stdout}`);
+  assert.equal(json(dir).exempted.length, 0);
+});
+
+test('exemptions are decided by the error, not by the file path', async (t) => {
+  // A location-keyed exemption would cover every exemption this corpus actually
+  // has, and would be the thing the header says it refuses to do. Naming a file
+  // `write-helm-chart` must not buy anything.
+  const dir = mkdtempSync(join(tmpdir(), 'yamlfence-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  mkdirSync(join(dir, 'skills', 'write-helm-chart'), { recursive: true });
+  writeFileSync(join(dir, 'skills', 'write-helm-chart', 'SKILL.md'),
+    ['---', 'name: write-helm-chart', '---', '', '```yaml', 'a:', '  b: 1', ' c: 2', '```', ''].join('\n'), 'utf8');
+
+  const r = run(dir);
+
+  assert.equal(r.status, 1, 'the path bought an exemption');
+});
+
+test('a tag js-yaml 5 does not implement is exempted, not called broken', async (t) => {
+  // CloudFormation shorthand is genuinely machine-consumed YAML. Telling its
+  // author to retag it `text` would be the freeze-scope edit CLAUDE.md warns
+  // about, which is why the failure message no longer offers that first.
+  const dir = corpus(t, ['```yaml', 'BucketName: !Ref MyBucket', '```'].join('\n'));
+
+  const r = run(dir);
+
+  assert.equal(r.status, 0, r.stdout);
+  assert.equal(json(dir).exempted[0].exemption, 'unsupported-tag-schema');
+});
+
+test('the failure message leads with fixing the YAML, not with retagging', async (t) => {
+  const dir = corpus(t, ['```yaml', 'a:', '  b: 1', ' c: 2', '```'].join('\n'));
+
+  const r = run(dir);
+
+  assert.match(r.stdout, /If the fence IS machine-consumed, fix the YAML/);
+  assert.match(r.stdout, /freeze-scope edit CLAUDE\.md warns against/);
+});
+
+// ── scope and the no-op guard ───────────────────────────────────────────────
+
+test('locale mirrors are checked, not only English', async (t) => {
+  // The first version was English-only, and the first corpus run proved that
+  // wrong: a real fix reached English and none of its ten mirrors, and no other
+  // gate could ever report them.
+  const dir = corpus(t, ['```yaml', 'a: 1', '```'].join('\n'));
+  mkdirSync(join(dir, 'i18n', 'de', 'skills', 'demo'), { recursive: true });
+  writeFileSync(join(dir, 'i18n', 'de', 'skills', 'demo', 'SKILL.md'),
+    ['---', 'name: demo', 'locale: de', '---', '', '```yaml', 'a:', '  b: 1', ' c: 2', '```', ''].join('\n'), 'utf8');
+
+  const r = run(dir);
+
+  assert.equal(r.status, 1, r.stdout);
+  assert.match(r.stdout, /i18n\/de\/skills\/demo\/SKILL\.md/);
+  assert.match(r.stdout, /yaml fences checked: 2/);
+});
+
+test('a root with no content trees is an error, not an empty clean run', async (t) => {
+  // `existsSync` + `isDirectory` answers a different question from "would this
+  // scan anything" — the proxy-predicate shape CLAUDE.md documents twice.
+  const dir = mkdtempSync(join(tmpdir(), 'yamlfence-empty-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+
+  const r = run(dir);
+
+  assert.equal(r.status, 2, r.stdout);
+  assert.match(r.stderr, /no content trees/);
+});
+
+test('--json reports the failure in its exit code too', async (t) => {
+  // Four tests read --json output and none asserted its status, so a fail-open
+  // JSON mode was invisible.
+  const dir = corpus(t, ['```yaml', 'a:', '  b: 1', ' c: 2', '```'].join('\n'));
+
+  const r = run(dir, ['--json']);
+
+  assert.equal(r.status, 1);
+  assert.equal(JSON.parse(r.stdout).failures.length, 1);
 });

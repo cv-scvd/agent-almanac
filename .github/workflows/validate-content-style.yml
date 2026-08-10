@@ -10,6 +10,7 @@ on:
       - 'guides/**'
       - 'i18n/**'
       - 'scripts/check-yaml-fences.js'
+      - '.github/workflows/validate-content-style.yml'
   pull_request:
     paths:
       - 'skills/**'
@@ -18,6 +19,7 @@ on:
       - 'guides/**'
       - 'i18n/**'
       - 'scripts/check-yaml-fences.js'
+      - '.github/workflows/validate-content-style.yml'
   workflow_dispatch:
 
 permissions:
