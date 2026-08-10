@@ -45,8 +45,18 @@
  * positional rule can safely reconstruct. Those 46 carry 206 fences and are
  * tracked as content forks in #478.
  *
- * Scope: skills only. The checker also covers the agents/teams/guides mirrors,
- * whose 87 gated violations this tool does not yet repair (#477).
+ * Scope: all four content trees — `skills`, `agents`, `teams`, `guides` — so it
+ * covers exactly what `check-i18n-fence-parity.js` flags. It was skills-only
+ * until the mirrors became the last mechanically-repairable slice of #477: 87 of
+ * the 335 gated violations, 76 of them in `guides/quick-reference.md` across
+ * four locales, and every one a translated comment inside a `bash`, `r` or
+ * `yaml` fence.
+ *
+ * `--tree` scopes a run the way `--tag` scopes one, so the mirrors land as their
+ * own reviewable batch. Paths differ by tree — `skills/<id>/SKILL.md` against
+ * `<tree>/<id>.md` — and which names count as content at all is decided by
+ * `contentKey` from `lib/fences.js`, the same function the history index is
+ * built with, rather than by a second list here that could drift from it.
  *
  * ## Why preview is the default (#486)
  *
@@ -75,19 +85,21 @@
  *   node scripts/normalize-i18n-fences.js --basis head
  *   node scripts/normalize-i18n-fences.js --locale de    # restrict to one locale
  *   node scripts/normalize-i18n-fences.js --tag yaml,json  # restrict to tags (#477 batches)
+ *   node scripts/normalize-i18n-fences.js --tree guides,agents  # restrict to trees
  */
 
 import { readFileSync, writeFileSync, readdirSync, existsSync, statSync } from 'fs';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { spawnSync } from 'child_process';
-import { extractFences, toLines, isGated, buildEnglishFenceHistory } from './lib/fences.js';
+import {
+  extractFences, toLines, isGated, buildEnglishFenceHistory, TREES, contentKey,
+} from './lib/fences.js';
 import { assertNotShallow } from './lib/git-freshness.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 const I18N_DIR = resolve(ROOT, 'i18n');
-const SKILLS_DIR = resolve(ROOT, 'skills');
 
 const argv = process.argv.slice(2);
 
@@ -112,7 +124,7 @@ const argv = process.argv.slice(2);
  * `"--dry"` as the locale value.
  */
 const BOOL_FLAGS = new Set(['--write', '--dry']);
-const VALUE_FLAGS = new Set(['--basis', '--locale', '--tag']);
+const VALUE_FLAGS = new Set(['--basis', '--locale', '--tag', '--tree']);
 
 function usageError(message) {
   console.error(`ERROR: ${message}`);
@@ -120,7 +132,7 @@ function usageError(message) {
   process.exit(2);
 }
 
-const opts = { write: false, dry: false, basis: 'source-commit', locale: null, tag: null };
+const opts = { write: false, dry: false, basis: 'source-commit', locale: null, tag: null, tree: null };
 for (let i = 0; i < argv.length; i++) {
   const arg = argv[i];
   const eq = arg.indexOf('=');
@@ -195,10 +207,44 @@ const tagOf = (fence) => (fence.lang === '' ? 'untagged' : fence.lang);
  * Membership in the scan's own list is the only formulation that cannot drift
  * from the scan.
  */
-const SCANNABLE_LOCALES = readdirSync(I18N_DIR).filter((entry) => {
-  const localeSkills = join(I18N_DIR, entry, 'skills');
-  return existsSync(localeSkills) && statSync(localeSkills).isDirectory();
-});
+const hasTree = (locale, tree) => {
+  const p = join(I18N_DIR, locale, tree);
+  return existsSync(p) && statSync(p).isDirectory();
+};
+
+/**
+ * Scoped to content trees, so the mirrors can be repaired as their own batch —
+ * 87 of the 335 gated violations live in `agents`/`teams`/`guides`, and 76 of
+ * those in one guide across four locales.
+ *
+ * Validated against the trees this repository actually carries rather than
+ * against `TREES`, for the same reason `--locale` is validated against the
+ * scan's own list: a value that names a real tree the corpus has no
+ * translations for would otherwise report the clean-looking zero both guards
+ * exist to reject.
+ */
+const PRESENT_TREES = TREES.filter((tree) =>
+  readdirSync(I18N_DIR).some((locale) => hasTree(locale, tree)));
+
+const ONLY_TREES = opts.tree === null ? null : new Set(
+  opts.tree.split(',').map((t) => t.trim().toLowerCase()).filter((t) => t !== ''),
+);
+if (ONLY_TREES !== null) {
+  if (ONLY_TREES.size === 0) {
+    console.error(`ERROR: --tree was given no usable value (got '${opts.tree}').`);
+    process.exit(2);
+  }
+  const unknown = [...ONLY_TREES].filter((t) => !PRESENT_TREES.includes(t));
+  if (unknown.length) {
+    console.error(`ERROR: --tree names no translated content tree: ${unknown.join(', ')}`);
+    console.error('Nothing would be scanned, and the run would report a clean-looking zero.');
+    console.error(`Available: ${PRESENT_TREES.join(', ') || '(none)'}`);
+    process.exit(2);
+  }
+}
+
+const SCANNABLE_LOCALES = readdirSync(I18N_DIR).filter((entry) =>
+  PRESENT_TREES.some((tree) => hasTree(entry, tree)));
 
 if (ONLY_LOCALE && !SCANNABLE_LOCALES.includes(ONLY_LOCALE)) {
   console.error(`ERROR: --locale '${ONLY_LOCALE}' is not a translated locale under i18n/.`);
@@ -321,25 +367,35 @@ const history = buildEnglishFenceHistory();
 const targets = [];
 for (const locale of SCANNABLE_LOCALES) {
   if (ONLY_LOCALE && locale !== ONLY_LOCALE) continue;
-  const localeSkills = join(I18N_DIR, locale, 'skills');
-  for (const skill of readdirSync(localeSkills)) {
-    const translated = join(localeSkills, skill, 'SKILL.md');
-    const english = join(SKILLS_DIR, skill, 'SKILL.md');
-    if (!existsSync(translated) || !existsSync(english)) continue;
-    const text = readFileSync(translated, 'utf8');
-    targets.push({
-      locale, skill, path: translated, english,
-      relPath: `i18n/${locale}/skills/${skill}/SKILL.md`,
-      text,
-      sourceCommit: frontmatterField(text, 'source_commit'),
-    });
+  for (const tree of PRESENT_TREES) {
+    if (ONLY_TREES && !ONLY_TREES.has(tree)) continue;
+    if (!hasTree(locale, tree)) continue;
+    for (const entry of readdirSync(join(I18N_DIR, locale, tree))) {
+      // `skills/<id>/SKILL.md` for skills, `<tree>/<id>.md` for the mirrors.
+      // `contentKey` decides which names are content at all, so `_template.md`,
+      // `README.md` and `_registry.yml` fall out here rather than needing a
+      // second list that could drift from the checker's.
+      const englishRel = tree === 'skills' ? `${tree}/${entry}/SKILL.md` : `${tree}/${entry}`;
+      const key = contentKey(englishRel);
+      if (key === null) continue;
+      const translated = join(I18N_DIR, locale, englishRel);
+      const english = join(ROOT, englishRel);
+      if (!existsSync(translated) || !existsSync(english)) continue;
+      const text = readFileSync(translated, 'utf8');
+      targets.push({
+        locale, tree, key, path: translated, english, englishRel,
+        relPath: `i18n/${locale}/${englishRel}`,
+        text,
+        sourceCommit: frontmatterField(text, 'source_commit'),
+      });
+    }
   }
 }
 
 // ---- resolve each target's English basis ----
 const specs = BASIS === 'source-commit'
   ? [...new Set(targets.filter((t) => t.sourceCommit)
-      .map((t) => `${t.sourceCommit}:skills/${t.skill}/SKILL.md`))]
+      .map((t) => `${t.sourceCommit}:${t.englishRel}`))]
   : [];
 const blobs = readBlobs(specs);
 
@@ -360,17 +416,18 @@ for (const t of targets) {
   // `head` made the report claim a provenance the bytes did not have.
   let basisLabel = 'worktree';
   if (BASIS === 'source-commit' && t.sourceCommit) {
-    basisText = blobs.get(`${t.sourceCommit}:skills/${t.skill}/SKILL.md`) ?? null;
+    basisText = blobs.get(`${t.sourceCommit}:${t.englishRel}`) ?? null;
     basisLabel = t.sourceCommit;
   }
   if (basisText === null) { basisText = readFileSync(t.english, 'utf8'); basisLabel = 'worktree'; }
 
   const translatedFences = extractFences(t.text);
   const basisFences = extractFences(basisText);
-  // Keys are `<tree>/<id>` (see lib/fences.js contentKey). A bare `t.skill`
-  // lookup returns undefined for every file, which the `everEnglish &&` guard
-  // below silently turns into "nothing to repair" — a clean-looking zero.
-  const everEnglish = history.get(`skills/${t.skill}`);
+  // Keys are `<tree>/<id>`, produced by the same `contentKey` the history is
+  // built with, so the two cannot disagree about what an id is. A bare `t.skill`
+  // lookup returned undefined for every file, which the `everEnglish &&` guard
+  // below silently turned into "nothing to repair" — a clean-looking zero.
+  const everEnglish = history.get(t.key);
   if (!everEnglish) {
     skipped.push({ file: t.relPath, reason: 'no English history for this id', n: 0 });
     continue;
