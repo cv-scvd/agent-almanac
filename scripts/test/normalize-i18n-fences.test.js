@@ -436,3 +436,112 @@ test('--locale scopes the dirty check to that locale', async (t) => {
   assert.equal(r.status, 0, r.stderr);
   assert.doesNotMatch(readFileSync(translated, 'utf8'), /hallo/);
 });
+
+// ── the fork refusal (#498) ─────────────────────────────────────────────────
+
+/**
+ * A translation whose steps do not correspond to English, carrying the SAME
+ * fence count in the SAME tag sequence — so both structural guards pass and the
+ * tool would rewrite every fence with the body of a different step.
+ *
+ * This is `de/design-shiny-ui` in miniature: there, German Schritt 5 is English
+ * Step 6, and `check-i18n-fence-parity.js` reports the corrupted result `OK`,
+ * because a scrambled file is a permutation of legitimate English bodies and
+ * every fence individually matches some English revision.
+ */
+function addForkedSkill(dir) {
+  const english = [
+    '---', 'name: forked-skill', 'description: Two steps.', '---', '',
+    '# Forked', '', '## Procedure', '',
+    '### Step 1: Launch the app', '',
+    '```r', 'library(shiny)', 'runApp("app")', '```', '',
+    '### Step 2: Install the theme package', '',
+    '```r', 'install.packages("bslib")', 'library(bslib)', '```', '',
+  ].join('\n');
+  mkdirSync(join(dir, 'skills', 'forked-skill'), { recursive: true });
+  writeFileSync(join(dir, 'skills', 'forked-skill', 'SKILL.md'), english, 'utf8');
+  git(dir, ['add', '-A']);
+  git(dir, ['commit', '-m', 'english forked-skill source']);
+  const sc = git(dir, ['rev-parse', 'HEAD']);
+
+  const translatedPath = join(dir, 'i18n', 'de', 'skills', 'forked-skill', 'SKILL.md');
+  mkdirSync(dirname(translatedPath), { recursive: true });
+  writeFileSync(translatedPath, [
+    '---', 'name: forked-skill', 'description: Zwei Schritte.',
+    'locale: de', 'source_locale: en', `source_commit: ${sc}`, '---', '',
+    '# Verzweigt', '', '## Ablauf', '',
+    // The steps are in the opposite order, so fence 1 faces fence 2's basis.
+    '### Schritt 1: Theme-Paket installieren', '',
+    '```r', '# Paket installieren', 'install.packages("bslib")', 'library(bslib)', '```', '',
+    '### Schritt 2: App starten', '',
+    '```r', '# App starten', 'library(shiny)', 'runApp("app")', '```', '',
+  ].join('\n'), 'utf8');
+  git(dir, ['add', '-A']);
+  git(dir, ['commit', '-m', 'de translation whose steps are permuted']);
+  return translatedPath;
+}
+
+test('a forked translation is refused, and its bytes are left alone', async (t) => {
+  const { dir } = makeFixture(t);
+  const forked = addForkedSkill(dir);
+  const before = readFileSync(forked, 'utf8');
+
+  const r = run(dir, ['--write']);
+
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /file\(s\) refused — the steps may not correspond/);
+  assert.match(r.stdout, /i18n\/de\/skills\/forked-skill\/SKILL\.md/);
+  assert.equal(readFileSync(forked, 'utf8'), before, 'a refused file was rewritten anyway');
+});
+
+test('--fork-threshold 0 restores the very file the guard refused', async (t) => {
+  // Without this the test above is vacuous: it would pass on a fixture the tool
+  // had no reason to touch, and on a build where the fork check did nothing but
+  // print. The difference between the two runs IS the guard.
+  const { dir } = makeFixture(t);
+  const forked = addForkedSkill(dir);
+
+  const r = run(dir, ['--write', '--fork-threshold', '0']);
+
+  assert.equal(r.status, 0, r.stderr);
+  assert.doesNotMatch(r.stdout, /refused — the steps may not correspond/);
+  const after = readFileSync(forked, 'utf8');
+  assert.ok(after.includes('runApp("app")'), 'nothing was restored, so the refusal proves nothing');
+  assert.ok(!after.includes('# Paket installieren'), 'the translated body survived');
+});
+
+test('the refusal quotes the fence carrying the most disagreeing tokens', async (t) => {
+  // The lowest-scoring fence is often a 3-token one a reviewer would dismiss as
+  // noise. Reporting `(1 - containment) * tokens` puts the argument next to the
+  // verdict.
+  const { dir } = makeFixture(t);
+  addForkedSkill(dir);
+
+  const r = run(dir);
+
+  assert.match(r.stdout, /measured gated fence\(s\) below threshold/);
+  assert.match(r.stdout, /worst evidence fence \d+ \[r\] at containment 0\.\d+ over \d+ code token\(s\)/);
+});
+
+test('the fork guard does not refuse an ordinary faithful translation', async (t) => {
+  // The class the prototype got wrong: a comment-only restore, which it scored
+  // 0.00 — the maximum fork signal — on four real files. A guard that refuses
+  // these is worse than no guard, because it stops the repair it exists to make
+  // safe.
+  const { dir, translated } = makeFixture(t);
+
+  const r = run(dir, ['--write']);
+
+  assert.equal(r.status, 0, r.stderr);
+  assert.doesNotMatch(r.stdout, /refused — the steps may not correspond/);
+  assert.ok(readFileSync(translated, 'utf8').includes(ENGLISH_FENCE));
+});
+
+test('--fork-threshold rejects a value outside [0, 1]', async (t) => {
+  const { dir } = makeFixture(t);
+
+  for (const value of ['2', '-1', 'half', '']) {
+    const r = run(dir, ['--fork-threshold', value]);
+    assert.equal(r.status, 2, `'${value}' was accepted`);
+  }
+});
