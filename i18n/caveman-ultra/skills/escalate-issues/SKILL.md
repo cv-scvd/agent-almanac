@@ -197,14 +197,17 @@ Formatted for target audience.
 
 **Specialist Agents** (structured for MCP):
 ```yaml
----
 type: escalation
 severity: high
 from_agent: janitor
 to_agent: security-analyst
 blocking: false
----
+```
 
+The body beneath it is a report a human writes and another human reads, so it is
+localisable and a German reviewer should be able to emit a German one:
+
+```text
 # Security Concern: Hardcoded API Key in Config
 
 **File**: config/production.yml:45
