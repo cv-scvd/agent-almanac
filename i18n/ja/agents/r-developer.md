@@ -118,7 +118,7 @@ Rパッケージの作成からメンテナンスまでの完全なワークフ�
 ## 設定オプション
 
 ```yaml
-# R開発プリファレンス
+# R development preferences
 settings:
   coding_style: tidyverse  # or base_r, data_table
   documentation: roxygen2
@@ -264,7 +264,7 @@ result <- data %>%
 
 ### 統計モデリング
 ```r
-# 線形混合効果モデル
+# Linear mixed-effects model
 library(lme4)
 model <- lmer(response ~ predictor + (1|subject), data = df)
 summary(model)

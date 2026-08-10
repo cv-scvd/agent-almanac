@@ -23,13 +23,13 @@ translation_date: "2026-03-13"
 技能在符号链接到 `.claude/skills/` 后可作为 Claude Code 的斜杠命令使用：
 
 ```bash
-# 将技能设为斜杠命令
+# Make a skill available as a slash command
 ln -s ../../skills/submit-to-cran .claude/skills/submit-to-cran
 
-# 在 Claude Code 中调用：
+# In Claude Code, invoke with:
 /submit-to-cran
 
-# 其他示例
+# Other examples
 /commit-changes
 /security-audit-codebase
 /review-skill-format
@@ -64,28 +64,28 @@ ln -s ../../skills/submit-to-cran .claude/skills/submit-to-cran
 ### 注册表查询
 
 ```bash
-# 统计技能、智能体、团队数量
+# Count skills, agents, teams
 grep "total_skills" skills/_registry.yml
 grep "total_agents" agents/_registry.yml
 grep "total_teams" teams/_registry.yml
 
-# 列出所有领域
+# List all domains
 grep "^  [a-z]" skills/_registry.yml | head -50
 
-# 列出所有智能体
+# List all agents
 grep "^  - id:" agents/_registry.yml
 
-# 列出所有团队
+# List all teams
 grep "^  - id:" teams/_registry.yml
 ```
 
 ### README 自动化
 
 ```bash
-# 从注册表重新生成所有 README
+# Regenerate all READMEs from registries
 npm run update-readmes
 
-# 检查 README 是否最新（CI 预检）
+# Check if READMEs are up to date (CI dry-run)
 npm run check-readmes
 ```
 
@@ -94,15 +94,15 @@ npm run check-readmes
 ### 路径转换
 
 ```bash
-# Windows 到 WSL
+# Windows to WSL
 C:\Users\Name\Documents  ->  /mnt/c/Users/Name/Documents
 D:\dev\projects          ->  /mnt/d/dev/projects
 
-# 从 WSL 访问 Windows R（调整版本号）
+# Access Windows R from WSL (adjust version)
 "/mnt/c/Program Files/R/R-4.5.0/bin/R.exe"
 "/mnt/c/Program Files/R/R-4.5.0/bin/Rscript.exe"
 
-# 在 Windows 资源管理器中打开当前目录
+# Open current directory in Windows Explorer
 explorer.exe .
 ```
 
@@ -111,11 +111,11 @@ explorer.exe .
 ### 开发循环
 
 ```r
-devtools::load_all()        # 加载包用于开发
-devtools::document()        # 更新文档
-devtools::test()            # 运行测试
-devtools::check()           # 完整包检查
-devtools::install()         # 安装包
+devtools::load_all()        # Load package for development
+devtools::document()        # Update documentation
+devtools::test()            # Run tests
+devtools::check()           # Full package check
+devtools::install()         # Install package
 ```
 
 ### 快速检查
@@ -130,19 +130,19 @@ urlchecker::url_check()
 ### CRAN 提交
 
 ```r
-devtools::check_win_devel()     # Windows 构建器
-devtools::check_win_release()   # Windows 构建器
-rhub::rhub_check()              # R-hub 多平台
-devtools::release()             # 交互式 CRAN 提交
+devtools::check_win_devel()     # Windows builder
+devtools::check_win_release()   # Windows builder
+rhub::rhub_check()              # R-hub multi-platform
+devtools::release()             # Interactive CRAN submission
 ```
 
 ### 脚手架
 
 ```r
-usethis::use_r("function_name")           # 新 R 文件
-usethis::use_test("function_name")        # 新测试文件
-usethis::use_vignette("guide_name")       # 新 vignette
-usethis::use_mit_license()                # 添加 MIT 许可证
+usethis::use_r("function_name")           # New R file
+usethis::use_test("function_name")        # New test file
+usethis::use_vignette("guide_name")       # New vignette
+usethis::use_mit_license()                # Add MIT license
 usethis::use_github_action_check_standard() # CI/CD
 ```
 
@@ -151,27 +151,27 @@ usethis::use_github_action_check_standard() # CI/CD
 ### 日常操作
 
 ```bash
-git status                 # 显示工作树状态
-git diff                   # 显示未暂存的变更
-git diff --staged          # 显示已暂存的变更
-git log --oneline -10      # 最近的提交
+git status                 # Show working tree status
+git diff                   # Show unstaged changes
+git diff --staged          # Show staged changes
+git log --oneline -10      # Recent commits
 
-git add filename           # 暂存特定文件
-git commit -m "message"    # 带消息提交
-git commit --amend         # 修改上一次提交
+git add filename           # Stage specific file
+git commit -m "message"    # Commit with message
+git commit --amend         # Amend last commit
 
-git checkout -b new-branch # 创建并切换到分支
-git merge feature-branch   # 合并分支
+git checkout -b new-branch # Create and switch to branch
+git merge feature-branch   # Merge branch
 ```
 
 ### 远程操作
 
 ```bash
-git remote -v              # 列出远程仓库
-git fetch origin           # 获取变更
-git pull origin main       # 拉取并合并
-git push origin main       # 推送到远程
-git push -u origin branch  # 推送新分支
+git remote -v              # List remotes
+git fetch origin           # Fetch changes
+git pull origin main       # Pull and merge
+git push origin main       # Push to remote
+git push -u origin branch  # Push new branch
 ```
 
 ### 常用别名
@@ -189,9 +189,9 @@ git config --global alias.last 'log -1 HEAD'
 ### 会话管理
 
 ```bash
-claude                     # 启动 Claude Code
-claude mcp list            # 列出已配置的 MCP 服务器
-claude mcp get r-mcptools  # 获取服务器详情
+claude                     # Start Claude Code
+claude mcp list            # List configured MCP servers
+claude mcp get r-mcptools  # Get server details
 ```
 
 ### 配置文件
@@ -204,7 +204,7 @@ Claude Desktop (GUI/Win):   %APPDATA%\Claude\claude_desktop_config.json
 ### MCP 服务器
 
 ```bash
-# R 集成
+# R integration
 claude mcp add r-mcptools stdio \
   "/mnt/c/Program Files/R/R-4.5.0/bin/Rscript.exe" \
   -e "mcptools::mcp_server()"
@@ -220,34 +220,34 @@ claude mcp add hf-mcp-server \
 ### 导航和搜索
 
 ```bash
-pwd                        # 显示当前工作目录
-ls -la                     # 列出文件详情
-tree                       # 显示目录树
-z project-name             # 跳转到常用目录
+pwd                        # Print working directory
+ls -la                     # List files with details
+tree                       # Show directory tree
+z project-name             # Jump to frequent directory
 
-rg "pattern"               # Ripgrep 搜索
-rg -t r "pattern"          # 仅搜索 R 文件
-fd "pattern"               # 友好的 find 替代
-fd -e R                    # 按扩展名查找
+rg "pattern"               # Ripgrep search
+rg -t r "pattern"          # Search only R files
+fd "pattern"               # User-friendly find
+fd -e R                    # Find by extension
 ```
 
 ### 文件操作
 
 ```bash
-mkdir -p path/to/dir       # 创建嵌套目录
-cp -r source/ dest/        # 递归复制目录
-tar -czf archive.tar.gz dir/  # 创建压缩包
-tar -xzf archive.tar.gz      # 解压压缩包
-du -sh directory           # 目录大小
-df -h                      # 磁盘使用情况
+mkdir -p path/to/dir       # Create nested directories
+cp -r source/ dest/        # Copy directory recursively
+tar -czf archive.tar.gz dir/  # Create compressed tar
+tar -xzf archive.tar.gz      # Extract tar.gz
+du -sh directory           # Directory size
+df -h                      # Disk space usage
 ```
 
 ### 进程管理
 
 ```bash
-htop                       # 交互式进程查看器
-ps aux | grep process      # 查找特定进程
-kill PID                   # 按 ID 终止进程
+htop                       # Interactive process viewer
+ps aux | grep process      # Find specific process
+kill PID                   # Kill process by ID
 ```
 
 ## 键盘快捷键
@@ -278,11 +278,11 @@ Ctrl+Shift+P   命令面板          F1            命令面板
 ## 环境变量
 
 ```bash
-printenv              # 所有环境变量
-echo $PATH            # PATH 变量
-export VAR=value      # 设置当前会话变量
+printenv              # All environment variables
+echo $PATH            # PATH variable
+export VAR=value      # Set for current session
 
-# 永久设置
+# Set permanently
 echo 'export VAR=value' >> ~/.bashrc
 source ~/.bashrc
 ```
@@ -294,14 +294,14 @@ source ~/.bashrc
 sudo apt update && sudo apt install package
 
 # npm
-npm install -g package       # 全局安装
-npm list -g --depth=0        # 列出全局包
+npm install -g package       # Install globally
+npm list -g --depth=0        # List global packages
 
 # R (renv)
-renv::init()                 # 初始化 renv
-renv::install("package")     # 安装包
-renv::snapshot()             # 保存锁文件
-renv::restore()              # 从锁文件恢复
+renv::init()                 # Initialize renv
+renv::install("package")     # Install package
+renv::snapshot()             # Save lockfile
+renv::restore()              # Restore from lockfile
 ```
 
 ## 故障排除
@@ -309,26 +309,26 @@ renv::restore()              # 从锁文件恢复
 ### R 包问题
 
 ```bash
-which R                               # R 所在位置
-R --version                           # R 版本
-Rscript -e ".libPaths()"             # 库路径
-echo $RSTUDIO_PANDOC                  # 检查 pandoc 路径
+which R                               # R location
+R --version                           # R version
+Rscript -e ".libPaths()"             # Library paths
+echo $RSTUDIO_PANDOC                  # Check pandoc path
 ```
 
 ### WSL 问题
 
 ```bash
-wsl --list --verbose   # 列出 WSL 发行版
-wsl --status           # WSL 状态
-ip addr                # IP 地址
+wsl --list --verbose   # List WSL distributions
+wsl --status           # WSL status
+ip addr                # IP addresses
 ```
 
 ### Git 问题
 
 ```bash
-git config --list          # 显示所有配置
-git remote show origin     # 显示远程详情
-git status --porcelain     # 机器可读状态
+git config --list          # Show all config
+git remote show origin     # Show remote details
+git status --porcelain     # Machine-readable status
 ```
 
 ## 相关资源

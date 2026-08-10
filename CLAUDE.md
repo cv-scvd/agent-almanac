@@ -272,9 +272,17 @@ fence-count and tag-sequence checks that decide whether ordinal mapping is
 trustworthy at all. A tag matching no divergent fence exits 2 rather than
 reporting a clean-looking zero.
 
-It repairs `skills/` only; the checker covers all four trees, so an agent, team
-or guide violation shows up as `files to change: 0` and needs repairing by hand
-(#477).
+`--tree <list>` scopes the same way across content trees, and the normalizer now
+covers all four — `skills`, `agents`, `teams`, `guides` — so it repairs exactly
+what the checker flags. It was skills-only until the mirrors became the last
+mechanically-repairable slice of #477 (87 fences / 11 files, cleared in #518).
+
+Both scoping flags are validated against what the run actually reached, never
+against a static list: a `--tag` matching no divergent fence exits 2, and so does
+a `--tree` naming a tree the selected `--locale` carries no translations for.
+Validating `--tree` corpus-wide instead let `--locale wenyan --tree guides` clear
+both guards independently and report `files to change: 0` — six of the ten
+locales carry `skills/` alone.
 
 Runs **warn-only** in CI until the backlog clears (#477), then flips to blocking.
 Warn is a temporary state with a named exit, not the design. Quote the current

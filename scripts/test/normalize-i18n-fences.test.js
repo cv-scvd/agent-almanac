@@ -436,3 +436,174 @@ test('--locale scopes the dirty check to that locale', async (t) => {
   assert.equal(r.status, 0, r.stderr);
   assert.doesNotMatch(readFileSync(translated, 'utf8'), /hallo/);
 });
+
+// ── the mirrors: agents / teams / guides (#477) ─────────────────────────────
+
+/**
+ * A translated GUIDE, which lives at `<tree>/<id>.md` rather than
+ * `skills/<id>/SKILL.md`. The tool was skills-only until the mirrors became the
+ * last mechanically-repairable slice of #477 — 87 of 335 gated violations, 76 of
+ * them in one guide across four locales.
+ */
+function addGuideMirror(dir) {
+  mkdirSync(join(dir, 'guides'), { recursive: true });
+  writeFileSync(join(dir, 'guides', 'quick-ref.md'), [
+    '---', 'title: Quick Reference', 'description: Commands.', '---', '',
+    '# Quick Reference', '',
+    '```bash', '# Count the skills', 'ls skills | wc -l', '```', '',
+  ].join('\n'), 'utf8');
+  git(dir, ['add', '-A']);
+  git(dir, ['commit', '-m', 'english guide']);
+  const sc = git(dir, ['rev-parse', 'HEAD']);
+
+  const translated = join(dir, 'i18n', 'de', 'guides', 'quick-ref.md');
+  mkdirSync(dirname(translated), { recursive: true });
+  writeFileSync(translated, [
+    '---', 'title: Kurzreferenz', 'description: Befehle.',
+    'locale: de', 'source_locale: en', `source_commit: ${sc}`, '---', '',
+    '# Kurzreferenz', '',
+    '```bash', '# Die Skills zaehlen', 'ls skills | wc -l', '```', '',
+  ].join('\n'), 'utf8');
+  git(dir, ['add', '-A']);
+  git(dir, ['commit', '-m', 'de guide with a translated comment in a frozen fence']);
+  return translated;
+}
+
+test('a translated GUIDE mirror is repaired, not just skills', async (t) => {
+  const { dir } = makeFixture(t);
+  const guide = addGuideMirror(dir);
+
+  const r = run(dir, ['--write']);
+
+  assert.equal(r.status, 0, r.stderr);
+  const after = readFileSync(guide, 'utf8');
+  assert.ok(after.includes('# Count the skills'), 'the English comment was not restored');
+  assert.ok(!after.includes('# Die Skills zaehlen'), 'the translated comment survived');
+  // The guide's prose must be untouched — only the frozen fence is restored.
+  assert.ok(after.includes('# Kurzreferenz'), 'translated prose was overwritten');
+  assert.ok(after.includes('title: Kurzreferenz'), 'translated frontmatter was overwritten');
+});
+
+test('--tree scopes a run the way --tag does', async (t) => {
+  const { dir, translated } = makeFixture(t);
+  const guide = addGuideMirror(dir);
+
+  const r = run(dir, ['--tree', 'guides', '--write']);
+
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /files changed: 1/);
+  assert.ok(readFileSync(guide, 'utf8').includes('# Count the skills'), 'the guide was not repaired');
+  assert.ok(readFileSync(translated, 'utf8').includes(TRANSLATED_FENCE), 'the skill was repaired despite --tree guides');
+});
+
+test('--tree naming no translated tree is an error, not a clean-looking zero', async (t) => {
+  const { dir } = makeFixture(t);
+
+  const r = run(dir, ['--tree', 'teams', '--write']);
+
+  assert.equal(r.status, 2, r.stdout);
+  assert.match(r.stderr, /matched no translated content/);
+  assert.match(r.stderr, /Reachable here: skills/);
+});
+
+/**
+ * A locale carrying `skills/` and nothing else — the dominant shape of the real
+ * corpus, where six of the ten locales are skills-only, and a shape no fixture
+ * had. Its absence hid two things at once: the per-locale `hasTree` guard was
+ * uncovered, and the `--locale`/`--tree` composition below was unreachable.
+ */
+function addSkillsOnlyLocale(dir) {
+  const p = join(dir, 'i18n', 'caveman', 'skills', 'demo-skill', 'SKILL.md');
+  mkdirSync(dirname(p), { recursive: true });
+  const sc = git(dir, ['rev-parse', 'HEAD']);
+  writeFileSync(p, [
+    '---', 'name: demo-skill', 'description: Demo.',
+    'locale: caveman', 'source_locale: en', `source_commit: ${sc}`, '---', '',
+    '# DEMO', '', '## STEPS', '',
+    '```bash', 'echo "UGG"', '```', '',
+  ].join('\n'), 'utf8');
+  git(dir, ['add', '-A']);
+  git(dir, ['commit', '-m', 'a skills-only locale']);
+  return p;
+}
+
+test('a locale missing a tree is skipped, not scanned into a crash', async (t) => {
+  const { dir } = makeFixture(t);
+  addGuideMirror(dir);
+  addSkillsOnlyLocale(dir);
+
+  const r = run(dir);
+
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /i18n\/de\/guides\/quick-ref\.md/);
+  assert.match(r.stdout, /i18n\/caveman\/skills\/demo-skill\/SKILL\.md/);
+});
+
+test('--tree is validated against the SCOPED scan, not a corpus-wide union', async (t) => {
+  // `--locale caveman --tree guides` satisfied each guard on its own while
+  // neither saw the composition, and reported `files to change: 0` — the exact
+  // clean-looking zero the guard family exists to reject.
+  const { dir } = makeFixture(t);
+  addGuideMirror(dir);
+  addSkillsOnlyLocale(dir);
+
+  const r = run(dir, ['--locale', 'caveman', '--tree', 'guides', '--write']);
+
+  assert.equal(r.status, 2, r.stdout);
+  assert.match(r.stderr, /matched no translated content in locale 'caveman'/);
+  assert.match(r.stderr, /Reachable here: skills/);
+});
+
+test('the same --tree value still works for a locale that does carry it', async (t) => {
+  // The paired positive: without it the test above passes on a build that
+  // rejects every --tree value.
+  const { dir } = makeFixture(t);
+  const guide = addGuideMirror(dir);
+  addSkillsOnlyLocale(dir);
+
+  const r = run(dir, ['--locale', 'de', '--tree', 'guides', '--write']);
+
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(readFileSync(guide, 'utf8').includes('# Count the skills'));
+});
+
+test('--tree with no usable value is an error', async (t) => {
+  const { dir } = makeFixture(t);
+
+  for (const value of [',', ' , ']) {
+    const r = run(dir, ['--tree', value]);
+    assert.equal(r.status, 2, `'${value}' was accepted`);
+    assert.match(r.stderr, /no usable value/);
+  }
+});
+
+test('a template or README inside a tree is not a target', async (t) => {
+  // Which names count as content is decided by `contentKey` in lib/fences.js —
+  // the same function the English history index is built with — so this cannot
+  // drift from what the checker considers a file.
+  const { dir } = makeFixture(t);
+  addGuideMirror(dir);
+  for (const name of ['_template.md', 'README.md']) {
+    writeFileSync(join(dir, 'guides', name), '# Not content\n\n```bash\necho english\n```\n', 'utf8');
+    const p = join(dir, 'i18n', 'de', 'guides', name);
+    writeFileSync(p, '# Kein Inhalt\n\n```bash\necho uebersetzt\n```\n', 'utf8');
+  }
+  git(dir, ['add', '-A']);
+  git(dir, ['commit', '-m', 'add a template and a README to the guides tree']);
+
+  const r = run(dir, ['--tree', 'guides', '--write']);
+
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /files changed: 1/);
+  for (const name of ['_template.md', 'README.md']) {
+    const after = readFileSync(join(dir, 'i18n', 'de', 'guides', name), 'utf8');
+    assert.ok(after.includes('echo uebersetzt'), `${name} was treated as content`);
+  }
+  // Not merely unwritten — not a TARGET. Deleting the `contentKey` null-guard
+  // leaves the bytes untouched too, because the history lookup then misses and
+  // the file falls through to the unsound-mapping path. That mutant kept the
+  // whole suite green while sending a reviewer to hand-repair a template, so
+  // the report is what has to be asserted.
+  assert.doesNotMatch(r.stdout, /_template\.md/, 'a template reached the skipped list');
+  assert.doesNotMatch(r.stdout, /README\.md/, 'a README reached the skipped list');
+});

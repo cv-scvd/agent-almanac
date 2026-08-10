@@ -118,9 +118,9 @@ Agent: [Erstellt modulare Funktionen, behandelt fehlende Daten, generiert Berich
 ## Konfigurationsoptionen
 
 ```yaml
-# R-Entwicklungspraeferenzen
+# R development preferences
 settings:
-  coding_style: tidyverse  # oder base_r, data_table
+  coding_style: tidyverse  # or base_r, data_table
   documentation: roxygen2
   testing_framework: testthat
   version_control: git
@@ -264,11 +264,11 @@ result <- data %>%
 
 ### Statistische Modellierung
 ```r
-# Lineares gemischtes Modell
+# Linear mixed-effects model
 library(lme4)
 model <- lmer(response ~ predictor + (1|subject), data = df)
 summary(model)
-plot(model)  # Diagnostikdiagramme
+plot(model)  # Diagnostic plots
 ```
 
 ### Paketfunktions-Vorlage

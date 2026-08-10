@@ -74,9 +74,11 @@ uncommitted work with it (#486).
 tag matching no divergent fence exits 2 rather than reporting zero, so a typo
 cannot read as "this batch is already done".
 
-It repairs `skills/` only; agent, team and guide violations are reported by the
-checker but show up here as `files to change: 0`, and need repairing by hand
-(#477).
+`--tree <list>` scopes the same way across content trees. The normalizer covers
+all four — `skills`, `agents`, `teams`, `guides` — so it repairs exactly what the
+checker flags; it was skills-only until the mirror slice was cleared in #518. A
+`--tree` naming a tree the selected `--locale` carries no translations for exits
+2, for the same reason a `--tag` matching nothing does.
 
 Runs **warn-only** in CI until the backlog clears (#477), then flips to blocking.
 

@@ -118,9 +118,9 @@ Agente: [Crea funciones modulares, maneja datos faltantes, genera informes]
 ## Opciones de Configuración
 
 ```yaml
-# Preferencias de desarrollo R
+# R development preferences
 settings:
-  coding_style: tidyverse  # o base_r, data_table
+  coding_style: tidyverse  # or base_r, data_table
   documentation: roxygen2
   testing_framework: testthat
   version_control: git
@@ -264,11 +264,11 @@ result <- data %>%
 
 ### Modelado Estadístico
 ```r
-# Modelo lineal de efectos mixtos
+# Linear mixed-effects model
 library(lme4)
 model <- lmer(response ~ predictor + (1|subject), data = df)
 summary(model)
-plot(model)  # Gráficos de diagnóstico
+plot(model)  # Diagnostic plots
 ```
 
 ### Plantilla de Función de Paquete
