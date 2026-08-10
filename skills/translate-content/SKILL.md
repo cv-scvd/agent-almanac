@@ -156,10 +156,12 @@ npm run translate:scaffold -- <content-type> <id> <locale>
    given fence tags, which is how the #477 backlog is cleared in reviewable
    batches.
 
-   **The normalizer only repairs `skills/`.** The checker covers all four trees,
-   so an agent, team or guide translation can fail the gate and still produce
-   `files to change: 0` here — a clean-looking zero that is not a clean bill of
-   health. Repair those by hand against the English source until #477 lands.
+   The normalizer covers all four content trees — `skills`, `agents`, `teams`,
+   `guides` — so it repairs exactly what the checker flags. `-- --tree
+   guides,agents` scopes a run by tree the way `--tag` scopes it by fence tag,
+   which is how the mirror slice was cleared as its own batch (#518). A `--tree`
+   naming a tree your `--locale` carries no translations for exits 2 rather than
+   reporting a clean-looking zero.
 
    This step said "diff the fenced blocks" from the day the i18n tree was created,
    and the corpus still accumulated 1,307 violations, because reading a fence and

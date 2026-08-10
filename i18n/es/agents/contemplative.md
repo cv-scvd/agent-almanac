@@ -134,10 +134,10 @@ Este agente usa un estilo de comunicación de **presencia serena**:
 ```yaml
 settings:
   depth: standard          # light, standard, deep
-  sequence: adaptive       # adaptive, fixed (meditate->heal->center->shine)
+  sequence: adaptive       # adaptive, fixed (meditate→heal→center→shine)
   expression: minimal      # minimal, moderate, full
   attunement: enabled      # enabled, disabled
-  memory_integration: true # escribir insights duraderos en MEMORY.md
+  memory_integration: true # write durable insights to MEMORY.md
 ```
 
 ## Requisitos de Herramientas

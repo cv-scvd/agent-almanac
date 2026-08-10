@@ -23,13 +23,13 @@ Claude Codeを通じたエージェント、スキル、チームの呼び出し
 スキルは `.claude/skills/` にシンボリックリンクを作成すると、Claude Codeのスラッシュコマンドとして利用できる:
 
 ```bash
-# スキルをスラッシュコマンドとして利用可能にする
+# Make a skill available as a slash command
 ln -s ../../skills/submit-to-cran .claude/skills/submit-to-cran
 
-# Claude Code内での呼び出し:
+# In Claude Code, invoke with:
 /submit-to-cran
 
-# その他の例
+# Other examples
 /commit-changes
 /security-audit-codebase
 /review-skill-format
@@ -64,28 +64,28 @@ ln -s ../../skills/submit-to-cran .claude/skills/submit-to-cran
 ### レジストリ検索
 
 ```bash
-# スキル、エージェント、チームの数を確認
+# Count skills, agents, teams
 grep "total_skills" skills/_registry.yml
 grep "total_agents" agents/_registry.yml
 grep "total_teams" teams/_registry.yml
 
-# 全ドメインを一覧表示
+# List all domains
 grep "^  [a-z]" skills/_registry.yml | head -50
 
-# 全エージェントを一覧表示
+# List all agents
 grep "^  - id:" agents/_registry.yml
 
-# 全チームを一覧表示
+# List all teams
 grep "^  - id:" teams/_registry.yml
 ```
 
 ### README自動生成
 
 ```bash
-# レジストリから全READMEを再生成
+# Regenerate all READMEs from registries
 npm run update-readmes
 
-# READMEが最新かチェック（CIドライラン）
+# Check if READMEs are up to date (CI dry-run)
 npm run check-readmes
 ```
 
@@ -94,15 +94,15 @@ npm run check-readmes
 ### パス変換
 
 ```bash
-# WindowsからWSL
+# Windows to WSL
 C:\Users\Name\Documents  ->  /mnt/c/Users/Name/Documents
 D:\dev\projects          ->  /mnt/d/dev/projects
 
-# WSLからWindows版Rにアクセス（バージョンに合わせて調整）
+# Access Windows R from WSL (adjust version)
 "/mnt/c/Program Files/R/R-4.5.0/bin/R.exe"
 "/mnt/c/Program Files/R/R-4.5.0/bin/Rscript.exe"
 
-# 現在のディレクトリをWindowsエクスプローラーで開く
+# Open current directory in Windows Explorer
 explorer.exe .
 ```
 
@@ -111,11 +111,11 @@ explorer.exe .
 ### 開発サイクル
 
 ```r
-devtools::load_all()        # 開発用にパッケージをロード
-devtools::document()        # ドキュメントを更新
-devtools::test()            # テストを実行
-devtools::check()           # パッケージの完全チェック
-devtools::install()         # パッケージをインストール
+devtools::load_all()        # Load package for development
+devtools::document()        # Update documentation
+devtools::test()            # Run tests
+devtools::check()           # Full package check
+devtools::install()         # Install package
 ```
 
 ### クイックチェック
@@ -130,19 +130,19 @@ urlchecker::url_check()
 ### CRAN提出
 
 ```r
-devtools::check_win_devel()     # Windowsビルダー
-devtools::check_win_release()   # Windowsビルダー
-rhub::rhub_check()              # R-hubマルチプラットフォーム
-devtools::release()             # 対話的なCRAN提出
+devtools::check_win_devel()     # Windows builder
+devtools::check_win_release()   # Windows builder
+rhub::rhub_check()              # R-hub multi-platform
+devtools::release()             # Interactive CRAN submission
 ```
 
 ### スキャフォールディング
 
 ```r
-usethis::use_r("function_name")           # 新しいRファイル
-usethis::use_test("function_name")        # 新しいテストファイル
-usethis::use_vignette("guide_name")       # 新しいビネット
-usethis::use_mit_license()                # MITライセンスを追加
+usethis::use_r("function_name")           # New R file
+usethis::use_test("function_name")        # New test file
+usethis::use_vignette("guide_name")       # New vignette
+usethis::use_mit_license()                # Add MIT license
 usethis::use_github_action_check_standard() # CI/CD
 ```
 
@@ -151,27 +151,27 @@ usethis::use_github_action_check_standard() # CI/CD
 ### 日常操作
 
 ```bash
-git status                 # ワーキングツリーの状態を表示
-git diff                   # ステージされていない変更を表示
-git diff --staged          # ステージされた変更を表示
-git log --oneline -10      # 最近のコミット
+git status                 # Show working tree status
+git diff                   # Show unstaged changes
+git diff --staged          # Show staged changes
+git log --oneline -10      # Recent commits
 
-git add filename           # 特定のファイルをステージ
-git commit -m "message"    # メッセージ付きコミット
-git commit --amend         # 直前のコミットを修正
+git add filename           # Stage specific file
+git commit -m "message"    # Commit with message
+git commit --amend         # Amend last commit
 
-git checkout -b new-branch # ブランチを作成して切り替え
-git merge feature-branch   # ブランチをマージ
+git checkout -b new-branch # Create and switch to branch
+git merge feature-branch   # Merge branch
 ```
 
 ### リモート操作
 
 ```bash
-git remote -v              # リモートを一覧表示
-git fetch origin           # 変更を取得
-git pull origin main       # プルしてマージ
-git push origin main       # リモートにプッシュ
-git push -u origin branch  # 新しいブランチをプッシュ
+git remote -v              # List remotes
+git fetch origin           # Fetch changes
+git pull origin main       # Pull and merge
+git push origin main       # Push to remote
+git push -u origin branch  # Push new branch
 ```
 
 ### 便利なエイリアス
@@ -189,9 +189,9 @@ git config --global alias.last 'log -1 HEAD'
 ### セッション管理
 
 ```bash
-claude                     # Claude Codeを起動
-claude mcp list            # 設定済みMCPサーバーを一覧表示
-claude mcp get r-mcptools  # サーバー詳細を取得
+claude                     # Start Claude Code
+claude mcp list            # List configured MCP servers
+claude mcp get r-mcptools  # Get server details
 ```
 
 ### 設定ファイル
@@ -204,7 +204,7 @@ Claude Desktop (GUI/Win):   %APPDATA%\Claude\claude_desktop_config.json
 ### MCPサーバー
 
 ```bash
-# R連携
+# R integration
 claude mcp add r-mcptools stdio \
   "/mnt/c/Program Files/R/R-4.5.0/bin/Rscript.exe" \
   -e "mcptools::mcp_server()"
@@ -220,34 +220,34 @@ claude mcp add hf-mcp-server \
 ### ナビゲーションと検索
 
 ```bash
-pwd                        # カレントディレクトリを表示
-ls -la                     # 詳細なファイル一覧
-tree                       # ディレクトリツリーを表示
-z project-name             # よく使うディレクトリにジャンプ
+pwd                        # Print working directory
+ls -la                     # List files with details
+tree                       # Show directory tree
+z project-name             # Jump to frequent directory
 
-rg "pattern"               # Ripgrep検索
-rg -t r "pattern"          # Rファイルのみ検索
-fd "pattern"               # ユーザーフレンドリーなfind
-fd -e R                    # 拡張子で検索
+rg "pattern"               # Ripgrep search
+rg -t r "pattern"          # Search only R files
+fd "pattern"               # User-friendly find
+fd -e R                    # Find by extension
 ```
 
 ### ファイル操作
 
 ```bash
-mkdir -p path/to/dir       # ネストしたディレクトリを作成
-cp -r source/ dest/        # ディレクトリを再帰的にコピー
-tar -czf archive.tar.gz dir/  # 圧縮tarを作成
-tar -xzf archive.tar.gz      # tar.gzを展開
-du -sh directory           # ディレクトリサイズ
-df -h                      # ディスク使用量
+mkdir -p path/to/dir       # Create nested directories
+cp -r source/ dest/        # Copy directory recursively
+tar -czf archive.tar.gz dir/  # Create compressed tar
+tar -xzf archive.tar.gz      # Extract tar.gz
+du -sh directory           # Directory size
+df -h                      # Disk space usage
 ```
 
 ### プロセス管理
 
 ```bash
-htop                       # 対話的プロセスビューア
-ps aux | grep process      # 特定のプロセスを検索
-kill PID                   # プロセスIDで終了
+htop                       # Interactive process viewer
+ps aux | grep process      # Find specific process
+kill PID                   # Kill process by ID
 ```
 
 ## キーボードショートカット
@@ -278,11 +278,11 @@ Ctrl+Shift+P   コマンドパレット    F1            コマンドパレッ�
 ## 環境変数
 
 ```bash
-printenv              # 全環境変数
-echo $PATH            # PATH変数
-export VAR=value      # 現在のセッションに設定
+printenv              # All environment variables
+echo $PATH            # PATH variable
+export VAR=value      # Set for current session
 
-# 永続的に設定
+# Set permanently
 echo 'export VAR=value' >> ~/.bashrc
 source ~/.bashrc
 ```
@@ -294,14 +294,14 @@ source ~/.bashrc
 sudo apt update && sudo apt install package
 
 # npm
-npm install -g package       # グローバルインストール
-npm list -g --depth=0        # グローバルパッケージを一覧表示
+npm install -g package       # Install globally
+npm list -g --depth=0        # List global packages
 
 # R (renv)
-renv::init()                 # renvを初期化
-renv::install("package")     # パッケージをインストール
-renv::snapshot()             # ロックファイルを保存
-renv::restore()              # ロックファイルから復元
+renv::init()                 # Initialize renv
+renv::install("package")     # Install package
+renv::snapshot()             # Save lockfile
+renv::restore()              # Restore from lockfile
 ```
 
 ## トラブルシューティング
@@ -309,26 +309,26 @@ renv::restore()              # ロックファイルから復元
 ### Rパッケージの問題
 
 ```bash
-which R                               # Rの場所
-R --version                           # Rのバージョン
-Rscript -e ".libPaths()"             # ライブラリパス
-echo $RSTUDIO_PANDOC                  # pandocパスの確認
+which R                               # R location
+R --version                           # R version
+Rscript -e ".libPaths()"             # Library paths
+echo $RSTUDIO_PANDOC                  # Check pandoc path
 ```
 
 ### WSLの問題
 
 ```bash
-wsl --list --verbose   # WSLディストリビューションを一覧表示
-wsl --status           # WSLステータス
-ip addr                # IPアドレス
+wsl --list --verbose   # List WSL distributions
+wsl --status           # WSL status
+ip addr                # IP addresses
 ```
 
 ### Gitの問題
 
 ```bash
-git config --list          # 全設定を表示
-git remote show origin     # リモート詳細を表示
-git status --porcelain     # 機械可読ステータス
+git config --list          # Show all config
+git remote show origin     # Show remote details
+git status --porcelain     # Machine-readable status
 ```
 
 ## 関連リソース

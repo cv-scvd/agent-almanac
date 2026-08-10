@@ -136,7 +136,7 @@ settings:
   sequence: adaptive       # adaptive, fixed (meditate→heal→center→shine)
   expression: minimal      # minimal, moderate, full
   attunement: enabled      # enabled, disabled
-  memory_integration: true # 将持久洞见写入 MEMORY.md
+  memory_integration: true # write durable insights to MEMORY.md
 ```
 
 ## 工具要求
