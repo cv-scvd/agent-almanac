@@ -6,7 +6,7 @@ Complete configuration files, templates, and multi-variant examples extracted fr
 
 ### Advanced SRE Runbook Template (Complete)
 
-```markdown
+````markdown
 # [Service Name] - [Incident Type] Runbook
 
 ## Metadata
@@ -116,7 +116,7 @@ Confirm incident is resolved and system is healthy.
 **Slack Channel**: #incident-response
 
 **Initial Message Template**:
-```text
+```
 🚨 INCIDENT: [Title]
 Severity: [Critical/High/Medium]
 Impact: [Description]
@@ -126,7 +126,7 @@ Dashboard: [link]
 ```
 
 **Update Template** (every 15-30 minutes):
-```text
+```
 📊 UPDATE: [Title]
 Current Status: [In Progress/Mitigated/Resolved]
 Actions Taken: [Summary]
@@ -135,7 +135,7 @@ ETA: [Estimated resolution time]
 ```
 
 **Resolution Message Template**:
-```text
+```
 ✅ RESOLVED: [Title]
 Duration: [Time to resolution]
 Impact: [Final customer impact assessment]
@@ -145,7 +145,7 @@ Post-Mortem: [Link to doc]
 
 ### External Communication
 **Status Page Update Template**:
-```text
+```
 We are currently investigating reports of [issue description].
 Our team is actively working to resolve this issue.
 We will provide updates every 30 minutes.
@@ -201,13 +201,13 @@ Next update: [time]
 | Date | Author | Changes |
 |---|---|---|
 | 2024-01-15 | @user | Initial version |
-```text
+````
 
 ## Step 2: Complete Diagnostic Procedures
 
 ### Diagnostic Checklist with Full Queries
 
-```markdown
+````markdown
 ## Diagnostic Procedures
 
 ### 1. Verify Service Health
@@ -330,7 +330,7 @@ histogram_quantile(0.99,
 )
 # Identify slow external dependencies
 ```
-```text
+````
 
 ### Failure Pattern Decision Tree
 
@@ -365,7 +365,7 @@ histogram_quantile(0.99,
 
 ### Resolution Procedures with All Options
 
-```markdown
+````markdown
 ## Resolution Procedures
 
 ### Option 1: Rollback Deployment (Fastest)
@@ -534,11 +534,11 @@ After any resolution attempt, verify:
 - [ ] **Downstream services**: All dependencies healthy
 - [ ] **User-facing tests**: Sample transactions succeeding
 - [ ] **Alerts**: No active critical alerts
-```text
+````
 
 ### Rollback Procedure
 
-```markdown
+````markdown
 ## Rollback Procedure
 
 If resolution attempt makes situation worse:
@@ -568,13 +568,13 @@ If resolution attempt makes situation worse:
 
 4. **Reassess situation**:
    Return to diagnostic phase with new information.
-```text
+````
 
 ## Step 4: Complete Escalation Guidelines
 
 ### Escalation Levels and Contact Directory (Complete)
 
-```markdown
+````markdown
 ## Escalation Guidelines
 
 ### When to Escalate
@@ -640,7 +640,7 @@ Escalate **proactively** if:
    Actions taken: [what you've tried]
    Requesting: [specific help needed]
    Dashboard: [link]
-   ```text
+   ```
 
 2. **Handoff if needed**:
    - Share incident timeline
@@ -679,7 +679,7 @@ Escalate **proactively** if:
 #### CDN Provider (e.g., Cloudflare)
 - **Critical**: +1-888-XXX-XXXX
 - **Account**: CF-67890
-```
+````
 
 ## Step 5: Complete Communication Templates
 
