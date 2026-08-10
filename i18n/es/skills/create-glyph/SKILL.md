@@ -311,7 +311,7 @@ Realizar ajustes y re-renderizar.
 
 ### Paletas de Color por Dominio y Entidad
 
-Los 58 colores de dominio (para habilidades) estan definidos en `viz/R/palettes.R` (la unica fuente de verdad). Los colores de agentes y equipos tambien se gestionan en `palettes.R`. La paleta cyberpunk (colores neon ajustados manualmente) esta en `get_cyberpunk_colors()`. Las paletas de la familia viridis se generan automaticamente via `viridisLite`.
+Los colores de dominio (para habilidades) estan definidos en `viz/R/palettes.R` (la unica fuente de verdad). Los colores de agentes y equipos tambien se gestionan en `palettes.R`. La paleta cyberpunk (colores neon ajustados manualmente) esta en `get_cyberpunk_colors()`. Las paletas de la familia viridis se generan automaticamente via `viridisLite`.
 
 Para buscar un color:
 ```r

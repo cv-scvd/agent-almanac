@@ -310,7 +310,7 @@ bash viz/build.sh --only <domain> --dry-run
 
 ### 域與實體色譜
 
-諸 58 域色（技用）定於 `viz/R/palettes.R`（單一真源）。行者與團色亦管於 `palettes.R`。賽博朋克譜（手調霓色）於 `get_cyberpunk_colors()`。viridis 族譜以 `viridisLite` 自動生。
+諸域色（技用）定於 `viz/R/palettes.R`（單一真源）。行者與團色亦管於 `palettes.R`。賽博朋克譜（手調霓色）於 `get_cyberpunk_colors()`。viridis 族譜以 `viridisLite` 自動生。
 
 查色：
 ```r

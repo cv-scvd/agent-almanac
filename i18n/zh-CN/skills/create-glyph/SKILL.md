@@ -317,7 +317,7 @@ cd viz && Rscript build-team-icons.R --only <team-id>
 
 ### 领域与实体调色板
 
-所有 58 个领域颜色（技能用）定义在 `viz/R/palettes.R` 中（唯一的真实数据来源）。代理和团队颜色也在 `palettes.R` 中管理。cyberpunk 调色板（手动调整的霓虹色）在 `get_cyberpunk_colors()` 中。Viridis 系列调色板通过 `viridisLite` 自动生成。
+所有领域颜色（技能用）定义在 `viz/R/palettes.R` 中（唯一的真实数据来源）。代理和团队颜色也在 `palettes.R` 中管理。cyberpunk 调色板（手动调整的霓虹色）在 `get_cyberpunk_colors()` 中。Viridis 系列调色板通过 `viridisLite` 自动生成。
 
 查找颜色：
 ```r

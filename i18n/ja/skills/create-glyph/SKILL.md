@@ -320,7 +320,7 @@ cd viz && Rscript build-team-icons.R --only <team-id>
 
 ### ドメインとエンティティのカラーパレット
 
-全58ドメインのカラー（スキル用）は `viz/R/palettes.R` で定義されている（唯一の信頼できるソース）。エージェントとチームのカラーも `palettes.R` で管理されている。cyberpunkパレット（手動調整されたネオンカラー）は `get_cyberpunk_colors()` に格納されている。viridisファミリーのパレットは `viridisLite` で自動生成される。
+全ドメインのカラー（スキル用）は `viz/R/palettes.R` で定義されている（唯一の信頼できるソース）。エージェントとチームのカラーも `palettes.R` で管理されている。cyberpunkパレット（手動調整されたネオンカラー）は `get_cyberpunk_colors()` に格納されている。viridisファミリーのパレットは `viridisLite` で自動生成される。
 
 カラーを参照するには:
 ```r
