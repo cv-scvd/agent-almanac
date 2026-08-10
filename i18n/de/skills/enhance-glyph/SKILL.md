@@ -148,22 +148,11 @@ Die modifizierte Glyphe rendern und die Korrektur verifizieren.
 
 1. Basierend auf dem Entitaetstyp neu rendern:
 
-   **Fuer Skills:**
    ```bash
-   cd /mnt/d/dev/p/agent-almanac/viz
-   Rscript build-icons.R --only <domain> --no-cache
-   ```
-
-   **Fuer Agents:**
-   ```bash
-   cd /mnt/d/dev/p/agent-almanac/viz
-   Rscript build-agent-icons.R --only <agent-id> --no-cache
-   ```
-
-   **Fuer Teams:**
-   ```bash
-   cd /mnt/d/dev/p/agent-almanac/viz
-   Rscript build-team-icons.R --only <team-id> --no-cache
+   # From project root — use --no-cache to force re-render of modified glyph
+   bash viz/build.sh --only <domain> --no-cache          # skills
+   bash viz/build.sh --type agent --only <id> --no-cache # agents
+   bash viz/build.sh --type team --only <id> --no-cache  # teams
    ```
 
 2. Ausgabedateien am erwarteten Pfad fuer jede Palette pruefen

@@ -10,6 +10,7 @@ on:
       - 'guides/**'
       - 'i18n/**'
       - 'scripts/check-yaml-fences.js'
+      - 'scripts/check-banned-invocations.js'
       - '.github/workflows/validate-content-style.yml'
   pull_request:
     paths:
@@ -19,6 +20,7 @@ on:
       - 'guides/**'
       - 'i18n/**'
       - 'scripts/check-yaml-fences.js'
+      - 'scripts/check-banned-invocations.js'
       - '.github/workflows/validate-content-style.yml'
   workflow_dispatch:
 
@@ -66,3 +68,18 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npm run validate:yaml-fences
+
+  # Blocks any command the repo forbids, in prose as well as in fences. The fence-parity
+  # gate cannot do this job: it accepts a match against ANY historical English revision,
+  # so a deliberate deletion in English never propagates and the old form stays green
+  # forever. See #526.
+  banned-invocations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run validate:banned-invocations

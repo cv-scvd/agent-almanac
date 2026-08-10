@@ -149,22 +149,11 @@ Renderizar el glyph modificado y verificar la correccion.
 
 1. Re-renderizar segun el tipo de entidad:
 
-   **Para habilidades:**
    ```bash
-   cd /mnt/d/dev/p/agent-almanac/viz
-   Rscript build-icons.R --only <domain> --no-cache
-   ```
-
-   **Para agentes:**
-   ```bash
-   cd /mnt/d/dev/p/agent-almanac/viz
-   Rscript build-agent-icons.R --only <agent-id> --no-cache
-   ```
-
-   **Para equipos:**
-   ```bash
-   cd /mnt/d/dev/p/agent-almanac/viz
-   Rscript build-team-icons.R --only <team-id> --no-cache
+   # From project root — use --no-cache to force re-render of modified glyph
+   bash viz/build.sh --only <domain> --no-cache          # skills
+   bash viz/build.sh --type agent --only <id> --no-cache # agents
+   bash viz/build.sh --type team --only <id> --no-cache  # teams
    ```
 
 2. Verificar que los archivos de salida existen en la ruta esperada para cada paleta

@@ -224,31 +224,21 @@ print(p)
 
 ### 步骤 5：渲染 — 生成图标
 
-运行构建流水线渲染 WebP 文件。
+运行图标流水线渲染新字形。始终使用 `build.sh` 作为入口点 — 它会处理平台检测和 R 二进制文件的选择。完整的标志参考和流水线架构见 [render-icon-pipeline](../render-icon-pipeline/SKILL.md)。
 
-1. 切换到 `viz/` 目录
-2. 根据实体类型进行渲染：
-
-**技能：**
 ```bash
-cd viz && Rscript build-icons.R --only <domain>
-# Or skip existing: Rscript build-icons.R --only <domain> --skip-existing
+# From project root — renders all palettes, standard + HD, skips existing icons
+bash viz/build.sh --only <domain> --skip-existing          # skills
+bash viz/build.sh --type agent --only <id> --skip-existing # agents
+bash viz/build.sh --type team --only <id> --skip-existing  # teams
+
+# Dry run first:
+bash viz/build.sh --only <domain> --dry-run
 ```
 
-**代理：**
-```bash
-cd viz && Rscript build-agent-icons.R --only <agent-id>
-# Or skip existing: Rscript build-agent-icons.R --only <agent-id> --skip-existing
-```
+`build.sh` 会运行完整流水线（调色板 → 数据 → 清单 → 渲染 → 终端字形）。非渲染步骤约需 10 秒，但可确保所有数据都是最新的。
 
-**团队：**
-```bash
-cd viz && Rscript build-team-icons.R --only <team-id>
-# Or skip existing: Rscript build-team-icons.R --only <team-id> --skip-existing
-```
-
-3. 如需先进行试运行，在任何命令后添加 `--dry-run`
-4. 输出位置：
+输出位置：
    - 技能：`viz/public/icons/<palette>/<domain>/<skill-id>.webp`
    - 代理：`viz/public/icons/<palette>/agents/<agent-id>.webp`
    - 团队：`viz/public/icons/<palette>/teams/<team-id>.webp`
