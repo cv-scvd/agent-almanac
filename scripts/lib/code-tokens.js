@@ -114,8 +114,10 @@ export const TAG_SYNTAX = {
   nginx: HASH,
   gitignore: HASH,
   makefile: HASH,
-  ini: HASH,
   properties: HASH,
+  // `;` is INI's canonical comment marker and `#` only its common extension, so
+  // HASH alone counts semicolon comment prose as code tokens.
+  ini: { line: ['#', ';'], block: [], strings: [DQ, SQ], tokens: 'generic' },
 
   // Python additionally drops triple-quoted docstrings, which translators do
   // rewrite; leaving them in measures prose.
@@ -141,7 +143,10 @@ export const TAG_SYNTAX = {
   c: SLASH,
   cpp: SLASH,
   go: SLASH,
-  rust: SLASH,
+  // Rust deliberately does NOT get SLASH: `'` is a lifetime sigil, not only a
+  // char quote, so `&'a str` opens a string that runs to the end of the line and
+  // deletes the rest of the signature from the skeleton.
+  rust: { line: ['//'], block: [['/*', '*/']], strings: [DQ, BQ], tokens: 'generic' },
   kotlin: SLASH,
   swift: SLASH,
   scala: SLASH,
@@ -166,7 +171,12 @@ export const TAG_SYNTAX = {
   // Config blocks: the keys are the skeleton, the values carry prose.
   yaml: { line: ['#'], block: [], strings: [], tokens: 'keys' },
   yml: { line: ['#'], block: [], strings: [], tokens: 'keys' },
-  toml: { line: ['#'], block: [], strings: [], tokens: 'keys' },
+  // TOML spells assignment `key = value`, so the YAML `key:` extractor matches
+  // nothing in it — every TOML fence came out `no-code-tokens`, which reads as
+  // "this fence is all comments" when the truth is "this tool cannot parse it".
+  // A wrong reason is worse than an unknown tag, because it names a benign
+  // cause for a tooling gap.
+  toml: { line: ['#'], block: [], strings: [], tokens: 'toml-keys' },
   // JSON has no comment syntax at all; jsonc/json5 are not in the corpus.
   json: { line: [], block: [], strings: [], tokens: 'json-keys' },
   jsonl: { line: [], block: [], strings: [], tokens: 'json-keys' },
@@ -238,6 +248,8 @@ export function stripCommentsAndStrings(body, syntax) {
 const GENERIC_TOKEN = /[A-Za-z_][A-Za-z0-9_]*|[0-9]+(?:\.[0-9]+)?/g;
 const YAML_KEY = /^[ \t]*(?:-[ \t]+)?["']?([A-Za-z_][A-Za-z0-9_.-]*)["']?[ \t]*:/gm;
 const JSON_KEY = /"([^"\\\n]+)"[ \t]*:/g;
+// `[table]` headers as well as `key =`: a TOML fence can be mostly headers.
+const TOML_KEY = /^[ \t]*(?:\[+[ \t]*)?["']?([A-Za-z_][A-Za-z0-9_.-]*)["']?[ \t]*(?:=|\])/gm;
 
 /**
  * The code skeleton of one fence body, as a set of tokens.
@@ -250,7 +262,8 @@ export function codeTokens(body, tag) {
   const stripped = stripCommentsAndStrings(body, syntax);
   const pattern = syntax.tokens === 'keys' ? YAML_KEY
     : syntax.tokens === 'json-keys' ? JSON_KEY
-      : GENERIC_TOKEN;
+      : syntax.tokens === 'toml-keys' ? TOML_KEY
+        : GENERIC_TOKEN;
 
   const tokens = new Set();
   pattern.lastIndex = 0;
@@ -306,12 +319,17 @@ export function measure(pre, post, tag) {
  * content fork: 0.00, 0.00, 0.04, 0.12, 0.20, 0.25, 0.83, 0.86.
  *
  * Six of the eight sit below the clean population's minimum of 0.40, so any
- * threshold in (0.25, 0.40) separates the two perfectly. 0.5 is deliberately
- * above that band: a threshold fitted to the observed clean minimum has zero
- * margin, and one future clean fence at 0.38 would fail it silently in the
- * dangerous direction. The margin costs 3 fences in 2 files out of the 345
- * swept — a false refusal sends a file to manual triage, which is the
- * recoverable error, while a false pass rewrites it.
+ * threshold in (0.25, 0.40) separates the two on this data. 0.5 is deliberately
+ * above that band, and it is worth being exact about which risk the margin buys
+ * down, because the obvious phrasing has it backwards.
+ *
+ * Raising the threshold refuses MORE. So the margin does nothing about a future
+ * clean fence scoring below 0.40 — that fence gets refused either way, and a
+ * false refusal is the recoverable error: the file goes to manual triage. What
+ * the margin covers is the unobserved upper tail of the FORK population, a fork
+ * scoring in [0.40, 0.50) that a threshold fitted to the clean minimum would
+ * wave through and rewrite. With one fork on record, that tail is unmeasured,
+ * and 0.5 prices it at 3 fences in 2 files out of the 345 swept.
  *
  * Both false suspects are small-token artifacts and are reported with their
  * token count so a reviewer can see it: `de/generate-puzzle` (c=0.40, n=5) is a

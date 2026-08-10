@@ -545,3 +545,207 @@ test('--fork-threshold rejects a value outside [0, 1]', async (t) => {
     assert.equal(r.status, 2, `'${value}' was accepted`);
   }
 });
+
+/**
+ * A file where only SOME fences are forked — the shape the real defect takes.
+ * `de/design-shiny-ui` scores 6 of its 8 fences below the threshold and the
+ * other two at 0.83 and 0.86, so a rule that refused only when EVERY measured
+ * fence fell below it would have released the one true positive.
+ *
+ * The all-forked fixture above cannot see that: there `below.length` equals
+ * `measured`, so `if (below.length === measured)` passes every test while
+ * rewriting the file this feature exists to protect.
+ */
+function addPartlyForkedSkill(dir) {
+  const english = [
+    '---', 'name: partly-forked', 'description: Three steps.', '---', '',
+    '# Partly', '', '## Procedure', '',
+    '```r', 'library(shiny)', 'runApp("app")', '```', '',
+    '```r', 'install.packages("bslib")', 'library(bslib)', '```', '',
+    '```r', 'sass_input <- sass::sass_file("styles.scss")', 'sass::sass(sass_input)', '```', '',
+  ].join('\n');
+  mkdirSync(join(dir, 'skills', 'partly-forked'), { recursive: true });
+  writeFileSync(join(dir, 'skills', 'partly-forked', 'SKILL.md'), english, 'utf8');
+  git(dir, ['add', '-A']);
+  git(dir, ['commit', '-m', 'english partly-forked source']);
+  const sc = git(dir, ['rev-parse', 'HEAD']);
+
+  const p = join(dir, 'i18n', 'de', 'skills', 'partly-forked', 'SKILL.md');
+  mkdirSync(dirname(p), { recursive: true });
+  writeFileSync(p, [
+    '---', 'name: partly-forked', 'description: Drei Schritte.',
+    'locale: de', 'source_locale: en', `source_commit: ${sc}`, '---', '',
+    '# Teilweise', '', '## Ablauf', '',
+    // Fences 1 and 2 are faithful — only their comments are German, so they
+    // score 1.00 and must NOT be what triggers the refusal.
+    '```r', '# App starten', 'library(shiny)', 'runApp("app")', '```', '',
+    '```r', '# Paket installieren', 'install.packages("bslib")', 'library(bslib)', '```', '',
+    // Fence 3 is a different step entirely.
+    '```r', '# Barrierefreiheit', 'tags$main(role = "main")', 'plotOutput("chart", alt = "Umsatz")', '```', '',
+  ].join('\n'), 'utf8');
+  git(dir, ['add', '-A']);
+  git(dir, ['commit', '-m', 'de translation with one forked step among three']);
+  return p;
+}
+
+test('a file with only SOME fences forked is still refused', async (t) => {
+  const { dir } = makeFixture(t);
+  const partly = addPartlyForkedSkill(dir);
+  const before = readFileSync(partly, 'utf8');
+
+  const r = run(dir, ['--write']);
+
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /i18n\/de\/skills\/partly-forked\/SKILL\.md/);
+  assert.match(r.stdout, /1 of 3 measured gated fence\(s\) below threshold/);
+  assert.equal(readFileSync(partly, 'utf8'), before, 'a partly-forked file was rewritten');
+});
+
+test('--fork-threshold 0 restores the partly-forked file too', async (t) => {
+  const { dir } = makeFixture(t);
+  const partly = addPartlyForkedSkill(dir);
+
+  const r = run(dir, ['--write', '--fork-threshold', '0']);
+
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(readFileSync(partly, 'utf8').includes('sass::sass_file'), 'nothing was restored');
+});
+
+/**
+ * A file where the LOWEST-scoring fence and the MOST-EVIDENCED fence are
+ * different fences, so the report's choice between them is observable. Without
+ * this, `below.reduce((a, b) => a)` — always take the first — keeps the
+ * evidence-weighting test green.
+ */
+function addEvidenceSkill(dir) {
+  const english = [
+    '---', 'name: evidence-skill', 'description: Two steps.', '---', '',
+    '# Evidence', '', '## Procedure', '',
+    '```r', 'n <- 1', '```', '',
+    '```r',
+    'summarise_metrics <- function(frame, group_col, value_col) {',
+    '  dplyr::group_by(frame, .data[[group_col]]) |>',
+    '    dplyr::summarise(total = sum(.data[[value_col]], na.rm = TRUE))',
+    '}', '```', '',
+  ].join('\n');
+  mkdirSync(join(dir, 'skills', 'evidence-skill'), { recursive: true });
+  writeFileSync(join(dir, 'skills', 'evidence-skill', 'SKILL.md'), english, 'utf8');
+  git(dir, ['add', '-A']);
+  git(dir, ['commit', '-m', 'english evidence-skill source']);
+  const sc = git(dir, ['rev-parse', 'HEAD']);
+
+  const p = join(dir, 'i18n', 'de', 'skills', 'evidence-skill', 'SKILL.md');
+  mkdirSync(dirname(p), { recursive: true });
+  writeFileSync(p, [
+    '---', 'name: evidence-skill', 'description: Zwei Schritte.',
+    'locale: de', 'source_locale: en', `source_commit: ${sc}`, '---', '',
+    '# Beweis', '', '## Ablauf', '',
+    // Fence 1: 2 tokens, shares none -> containment 0.00, evidence weight ~2.
+    '```r', 'z <- 9', '```', '',
+    // Fence 2: many tokens, shares none -> containment 0.00, evidence weight ~14.
+    '```r',
+    'plot_theme <- ggplot2::theme_minimal(base_size = 12)',
+    'ggplot2::ggsave("chart.png", width = 8, height = 6)',
+    '```', '',
+  ].join('\n'), 'utf8');
+  git(dir, ['add', '-A']);
+  git(dir, ['commit', '-m', 'de translation where the lowest score is not the best evidence']);
+  return p;
+}
+
+test('the refusal names the most-evidenced fence, not the lowest-scoring one', async (t) => {
+  const { dir } = makeFixture(t);
+  addEvidenceSkill(dir);
+
+  const r = run(dir);
+
+  const line = r.stdout.split('\n').find((l) => l.includes('evidence-skill'));
+  assert.ok(line, `no refusal line for evidence-skill:\n${r.stdout}`);
+  const m = /worst evidence fence (\d+) \[r\] at containment ([\d.]+) over (\d+) code token\(s\)/.exec(line);
+  assert.ok(m, `refusal line did not carry the evidence fields: ${line}`);
+  assert.equal(m[1], '2', `named fence ${m[1]}; fence 1 scores as low over far fewer tokens`);
+  assert.ok(Number(m[3]) > 2, `expected the many-token fence, got n=${m[3]}`);
+});
+
+/**
+ * A gated fence whose tag is outside `lib/code-tokens.js` — the honest
+ * "cannot measure this" path. Untested, deleting the unmeasured.push() is
+ * invisible, and the report silently loses the one signal that says a whole tag
+ * is going unchecked.
+ */
+function addUnmeasurableSkill(dir) {
+  const english = [
+    '---', 'name: unmeasurable-skill', 'description: Two fences.', '---', '',
+    '# Unmeasurable', '', '## Procedure', '',
+    '```bash', 'echo "english"', '```', '',
+    '```promql', 'rate(http_requests_total[5m])', '```', '',
+  ].join('\n');
+  mkdirSync(join(dir, 'skills', 'unmeasurable-skill'), { recursive: true });
+  writeFileSync(join(dir, 'skills', 'unmeasurable-skill', 'SKILL.md'), english, 'utf8');
+  git(dir, ['add', '-A']);
+  git(dir, ['commit', '-m', 'english unmeasurable-skill source']);
+  const sc = git(dir, ['rev-parse', 'HEAD']);
+
+  const p = join(dir, 'i18n', 'de', 'skills', 'unmeasurable-skill', 'SKILL.md');
+  mkdirSync(dirname(p), { recursive: true });
+  writeFileSync(p, [
+    '---', 'name: unmeasurable-skill', 'description: Zwei Bloecke.',
+    'locale: de', 'source_locale: en', `source_commit: ${sc}`, '---', '',
+    '# Nicht messbar', '', '## Ablauf', '',
+    '```bash', 'echo "uebersetzt"', '```', '',
+    '```promql', 'rate(http_anfragen_gesamt[5m])', '```', '',
+  ].join('\n'), 'utf8');
+  git(dir, ['add', '-A']);
+  git(dir, ['commit', '-m', 'de translation carrying an unmeasurable tag']);
+  return p;
+}
+
+test('an unmeasurable tag is reported by name, never silently passed', async (t) => {
+  const { dir } = makeFixture(t);
+  addUnmeasurableSkill(dir);
+
+  const r = run(dir);
+
+  assert.match(r.stdout, /gated fence\(s\) could not be measured for step correspondence/);
+  assert.match(r.stdout, /unknown-tag:promql=1/);
+});
+
+test('the unmeasured report distinguishes repaired files from refused ones', async (t) => {
+  // "They are still restored" was false for a fence in a refused file.
+  const { dir } = makeFixture(t);
+  addUnmeasurableSkill(dir);
+
+  const r = run(dir);
+
+  assert.match(r.stdout, /1 in file\(s\) this run repairs — unchecked for the #498 shape, and restored/);
+  assert.match(r.stdout, /0 in file\(s\) refused above — unchecked, and NOT restored/);
+});
+
+// ── the threshold is disclosed on every run ─────────────────────────────────
+
+test('the report states the threshold the run was made at, even with no refusals', async (t) => {
+  // It used to print only inside the refusal block, which --fork-threshold 0
+  // makes unreachable by construction: containment is in [0, 1], so
+  // `containment < 0` never holds and `forks` is always empty. A disabled run
+  // and a guarded one emitted byte-identical reports.
+  const { dir } = makeFixture(t);
+
+  const guarded = run(dir);
+  const off = run(dir, ['--fork-threshold', '0']);
+
+  assert.match(guarded.stdout, /fork threshold: 0\.5/);
+  assert.match(off.stdout, /fork threshold: 0\s+\*\*\* DISABLED/);
+  assert.notEqual(guarded.stdout, off.stdout, 'a disabled run is indistinguishable from a guarded one');
+});
+
+test('--fork-threshold refuses a whitespace value instead of coercing it to 0', async (t) => {
+  // Number(' ') is 0, so the range check passed and the guard silently turned
+  // off — the disabling value arriving through what looks like a typo.
+  const { dir } = makeFixture(t);
+
+  for (const value of [' ', '\t', ' 0.5 ', '0x0', '1e-1', '+0']) {
+    const r = run(dir, ['--fork-threshold', value]);
+    assert.equal(r.status, 2, `'${value}' was accepted: ${r.stdout}`);
+    assert.match(r.stderr, /must be a decimal in \[0, 1\]/);
+  }
+});

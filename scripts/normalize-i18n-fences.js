@@ -180,12 +180,32 @@ if (!['source-commit', 'head'].includes(BASIS)) {
  * `--fork-threshold 0` disables the check, and is the escape hatch for a
  * reviewer who has read a flagged file and confirmed it is faithful. There is
  * deliberately no `--no-fork-check`: naming the number forces the caller to say
- * what standard they are dropping to, and it shows up verbatim in the report
- * header, so a run made with the guard off cannot be mistaken for a guarded one.
+ * what standard they are dropping to, and the value is printed in the report
+ * summary on EVERY run, so a run made with the guard off cannot be mistaken for
+ * a guarded one.
+ *
+ * That last clause was false when written. The threshold was printed only
+ * inside the refusal block, which `--fork-threshold 0` makes unreachable by
+ * construction — containment is in [0, 1], so `containment < 0` never holds and
+ * `forks` is always empty. A disabled run therefore emitted a report
+ * byte-identical to a guarded one, on the exact file the feature exists to
+ * protect, while `check-i18n-fence-parity.js` reported the result OK afterwards
+ * by design. The same silence covered every guarded run that happened to refuse
+ * nothing. Printing it unconditionally is what makes the sentence true.
+ *
+ * Parsed with an explicit numeric pattern rather than `Number()` alone: JS
+ * coerces whitespace to 0, so `--fork-threshold ' '` passed the `[0, 1]` range
+ * check and silently turned the guard off — the disabling value arriving
+ * through what looks like a typo.
  */
-const FORK_THRESHOLD = Number(opts['fork-threshold']);
+const FORK_THRESHOLD_RAW = opts['fork-threshold'];
+if (!/^(?:[01](?:\.[0-9]+)?|\.[0-9]+)$/.test(FORK_THRESHOLD_RAW)) {
+  console.error(`ERROR: --fork-threshold must be a decimal in [0, 1] (got '${FORK_THRESHOLD_RAW}')`);
+  process.exit(2);
+}
+const FORK_THRESHOLD = Number(FORK_THRESHOLD_RAW);
 if (!Number.isFinite(FORK_THRESHOLD) || FORK_THRESHOLD < 0 || FORK_THRESHOLD > 1) {
-  console.error(`ERROR: --fork-threshold must be a number in [0, 1] (got '${opts['fork-threshold']}')`);
+  console.error(`ERROR: --fork-threshold must be a decimal in [0, 1] (got '${FORK_THRESHOLD_RAW}')`);
   process.exit(2);
 }
 
@@ -565,6 +585,10 @@ if (!PREVIEW) {
 
 console.log(`\n${PREVIEW ? 'PREVIEW — nothing written (pass --write to apply)' : 'Wrote changes'}`);
 console.log(`basis: ${BASIS}`);
+// Unconditional, and next to `basis`, because it describes the standard the run
+// was made at rather than an event that happened during it. Inside the refusal
+// block it was invisible exactly when it mattered most.
+console.log(`fork threshold: ${FORK_THRESHOLD}${FORK_THRESHOLD === 0 ? '   *** DISABLED — step correspondence was NOT checked ***' : ''}`);
 console.log(`files ${PREVIEW ? 'to change' : 'changed'}: ${filesChanged}`);
 console.log(`fences ${PREVIEW ? 'to restore' : 'restored'}: ${fencesRestored}`);
 if (changedByLocale.size) {
@@ -579,6 +603,7 @@ if (forks.length) {
   for (const f of forks) console.log(`  ${f.file}  (${f.n} divergent gated fence(s); ${f.reason})`);
   console.log(`  threshold: containment < ${FORK_THRESHOLD} (--fork-threshold 0 disables)`);
 }
+
 // Never folded into a pass. Containment over an empty token set is vacuously 1,
 // and reporting these as OK is how #503 hid 8 of its 86 fences behind an
 // apparent "0 suspects". Most are fences that are entirely `#` comments — the
@@ -589,5 +614,15 @@ if (unmeasured.length) {
   for (const u of unmeasured) byReason.set(u.reason, (byReason.get(u.reason) || 0) + 1);
   console.log(`\n${unmeasured.length} gated fence(s) could not be measured for step correspondence:`);
   console.log(`  ${[...byReason.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}=${v}`).join('  ')}`);
-  console.log('  These were NOT checked for the #498 fork shape. They are still restored.');
+  // Splitting on the file's actual disposition rather than asserting one. The
+  // flat claim "they are still restored" was false twice over: a fence in a
+  // refused file is not restored at all, and a fence outside `--tag` scope was
+  // never a candidate. A report that overstates what was written is the same
+  // class of defect as the empty-token pass it sits next to.
+  const forkedFiles = new Set(forks.map((f) => f.file));
+  const inRefused = unmeasured.filter((u) => forkedFiles.has(u.file)).length;
+  const inRepaired = unmeasured.length - inRefused;
+  console.log(`  ${inRepaired} in file(s) this run repairs — unchecked for the #498 shape, and restored`);
+  console.log(`  ${inRefused} in file(s) refused above — unchecked, and NOT restored`);
+  console.log('  (a fence outside --tag scope is counted here but was never a restore candidate)');
 }

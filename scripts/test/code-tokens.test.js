@@ -364,3 +364,69 @@ test('the default threshold sits between the measured populations', () => {
   assert.ok(DEFAULT_FORK_THRESHOLD > 0.25);
   assert.ok(DEFAULT_FORK_THRESHOLD <= 0.5);
 });
+
+// ── the per-tag `strings` entries ───────────────────────────────────────────
+//
+// Every entry in a syntax's `strings` list is a mutation site of its own, and
+// dropping one does not merely lose coverage — it turns the translated string
+// body back into "code", which is the false-refusal direction. Assert each
+// quote style the corpus actually uses.
+
+test('single-quoted string bodies are not code (HASH family)', () => {
+  const m = measure("echo 'Verarbeitung abgeschlossen'", "echo 'Processing complete'", 'bash');
+  assert.equal(m.measurable, true);
+  assert.equal(m.containment, 1, 'dropping SQ from HASH makes faithful translations look forked');
+});
+
+test('double-quoted string bodies are not code (HASH family)', () => {
+  const m = measure('message <- "Fertig"', 'message <- "Done"', 'r');
+  assert.equal(m.measurable, true);
+  assert.equal(m.containment, 1);
+});
+
+test('backtick template bodies are not code (C family)', () => {
+  const m = measure(
+    'const label = `Bericht erzeugt`;',
+    'const label = `Report generated`;',
+    'typescript',
+  );
+  assert.equal(m.measurable, true);
+  assert.equal(m.containment, 1, 'dropping BQ from SLASH makes faithful translations look forked');
+});
+
+test('an escaped quote does not close the string early', () => {
+  const { tokens } = codeTokens('echo "a \\" b" && kubectl get pods', 'bash');
+  assert.ok(tokens.has('kubectl'), 'an escaped quote ended the string and swallowed the command');
+});
+
+// ── tags whose skeleton is not what the family default assumes ──────────────
+
+test('toml keys and table headers are extracted, not silently unmeasurable', () => {
+  // TOML spells assignment `key = value`, so the YAML `key:` extractor matched
+  // nothing and every TOML fence reported `no-code-tokens` — a benign-sounding
+  // reason ("all comments") for a tooling gap.
+  const de = ['[paket]', 'name = "werkzeug"', 'version = "1.0"  # Fassung'].join('\n');
+  const en = ['[paket]', 'name = "tool"', 'version = "1.0"  # release'].join('\n');
+  const m = measure(de, en, 'toml');
+  assert.equal(m.measurable, true, `toml scored unmeasurable: ${m.reason}`);
+  assert.equal(m.containment, 1);
+  assert.ok(m.tokens >= 3, `expected the table header and both keys, got ${m.tokens}`);
+});
+
+test('a rust lifetime does not open a string and eat the signature', () => {
+  // `'` is a lifetime sigil as well as a char quote, so admitting single-quoted
+  // strings for rust deletes the rest of the line from the skeleton.
+  const { tokens } = codeTokens("fn parse<'a>(input: &'a str) -> Result<Token, Error> {", 'rust');
+  assert.ok(tokens.has('Result'), 'a lifetime swallowed the return type');
+  assert.ok(tokens.has('Error'), 'a lifetime swallowed the error type');
+});
+
+test('ini treats ; as a comment, its canonical marker', () => {
+  const m = measure(
+    ['; Datenbankeinstellungen', 'host = localhost'].join('\n'),
+    ['; Database settings', 'host = localhost'].join('\n'),
+    'ini',
+  );
+  assert.equal(m.measurable, true);
+  assert.equal(m.containment, 1);
+});
