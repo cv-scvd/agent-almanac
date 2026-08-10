@@ -3,7 +3,7 @@
  * normalize-i18n-fences.js
  *
  * Companion repair tool to `check-i18n-fence-parity.js` (#472). Restores the
- * English body of gated code fences in translated skills, which the
+ * English body of gated code fences in translated content, which the
  * keep-code-in-English rule requires them to carry verbatim.
  *
  * Shares `lib/fences.js` with the checker, so the two can never disagree about
@@ -30,9 +30,9 @@
  * Note that "head" reads the WORKING TREE, not the HEAD commit — and so does the
  * default basis whenever a translation's `source_commit` fails to resolve. An
  * uncommitted English edit is a legitimate parity basis, so this is deliberate,
- * but it means a dirty `skills/` changes what is spliced into the corpus. Such
- * restores are reported as basis `worktree`; a `--write` run warns when
- * `skills/` is dirty.
+ * but it means a dirty English tree changes what is spliced into the corpus. Such
+ * restores are reported as basis `worktree`; a `--write` run warns when any
+ * English content tree is dirty.
  *
  * ## What it refuses to touch
  *
@@ -195,8 +195,8 @@ const tagOf = (fence) => (fence.lang === '' ? 'untagged' : fence.lang);
 
 /**
  * The locales this tool can actually scan: a directory under `i18n/` carrying a
- * `skills/` subtree. Derived once and used BOTH to validate `--locale` and to
- * drive the scan below, so the two cannot disagree about what a locale is.
+ * content tree. Derived once and used BOTH to validate `--locale` and to drive
+ * the scan below, so the two cannot disagree about what a locale is.
  *
  * Validating instead by `existsSync` on the constructed `i18n/<value>` path —
  * the first version of this guard — accepted every input that named some
@@ -229,19 +229,18 @@ const PRESENT_TREES = TREES.filter((tree) =>
 const ONLY_TREES = opts.tree === null ? null : new Set(
   opts.tree.split(',').map((t) => t.trim().toLowerCase()).filter((t) => t !== ''),
 );
-if (ONLY_TREES !== null) {
-  if (ONLY_TREES.size === 0) {
-    console.error(`ERROR: --tree was given no usable value (got '${opts.tree}').`);
-    process.exit(2);
-  }
-  const unknown = [...ONLY_TREES].filter((t) => !PRESENT_TREES.includes(t));
-  if (unknown.length) {
-    console.error(`ERROR: --tree names no translated content tree: ${unknown.join(', ')}`);
-    console.error('Nothing would be scanned, and the run would report a clean-looking zero.');
-    console.error(`Available: ${PRESENT_TREES.join(', ') || '(none)'}`);
-    process.exit(2);
-  }
+if (ONLY_TREES !== null && ONLY_TREES.size === 0) {
+  console.error(`ERROR: --tree was given no usable value (got '${opts.tree}').`);
+  process.exit(2);
 }
+// The membership check is deliberately NOT here. Validating against
+// `PRESENT_TREES` — a corpus-wide union — passes for any tree some locale
+// carries, which stops being "the scan's own list" the moment `--locale`
+// narrows the scan: `--locale wenyan --tree guides` cleared both guards
+// independently and reported `files to change: 0`, the exact clean-looking zero
+// they exist to reject, because six of the ten locales carry `skills/` alone.
+// It is checked after the scan instead, against the trees the SCOPED run
+// actually visited — the same shape as `--tag`, and for the same reason.
 
 const SCANNABLE_LOCALES = readdirSync(I18N_DIR).filter((entry) =>
   PRESENT_TREES.some((tree) => hasTree(entry, tree)));
@@ -265,8 +264,8 @@ const WRITE_SCOPE = ONLY_LOCALE ? `i18n/${ONLY_LOCALE}` : 'i18n';
 // for this tool, and it discards uncommitted work along with the repair — so a
 // stray run over unstaged edits is unrecoverable in exactly the case where
 // recovery matters most. Checked before the ~90s history build so it fails fast.
-function gitStatus(pathspec) {
-  const status = spawnSync('git', ['status', '--porcelain', '--', pathspec], {
+function gitStatus(...pathspecs) {
+  const status = spawnSync('git', ['status', '--porcelain', '--', ...pathspecs], {
     cwd: ROOT, encoding: 'utf8',
   });
   // `status.error` is set and stdout/stderr are null when the spawn itself
@@ -310,9 +309,14 @@ if (WRITE) {
   // `skills/` changes what gets spliced into the corpus, and the run would
   // report it as basis `head`. Warn rather than refuse: refusing would block
   // the ordinary edit-English-then-repair pass this tool is for.
-  const english = gitStatus('skills');
+  // Every tree that can be spliced FROM, not just skills. The English basis is
+  // read off disk whenever a `source_commit` fails to resolve and always under
+  // `--basis head`, and `t.english` is now `guides/quick-reference.md` as
+  // readily as `skills/<id>/SKILL.md` — so a warning scoped to `skills` was
+  // silently half the surface it claimed to cover.
+  const english = gitStatus(...PRESENT_TREES);
   if (english.ok && english.dirty) {
-    console.error(`NOTE: skills/ has ${english.dirty.split('\n').length} uncommitted change(s).`);
+    console.error(`NOTE: English content (${PRESENT_TREES.join(', ')}) has ${english.dirty.split('\n').length} uncommitted change(s).`);
     console.error('      Fences restored from the working tree are labelled `worktree`, not a commit.');
   }
 }
@@ -328,7 +332,7 @@ function frontmatterField(text, field) {
   return m[1].replace(/\s+#.*$/, '').trim().replace(/^["']|["']$/g, '');
 }
 
-/** Batch-resolve `<commit>:skills/<id>/SKILL.md` blobs in one git process. */
+/** Batch-resolve `<commit>:<englishRel>` blobs in one git process. */
 function readBlobs(specs) {
   const out = new Map();
   if (!specs.length) return out;
@@ -365,10 +369,11 @@ const history = buildEnglishFenceHistory();
 
 // ---- gather targets ----
 const targets = [];
+/** Trees the locale-scoped scan found translated content in, before `--tree`. */
+const treesInScope = new Set();
 for (const locale of SCANNABLE_LOCALES) {
   if (ONLY_LOCALE && locale !== ONLY_LOCALE) continue;
   for (const tree of PRESENT_TREES) {
-    if (ONLY_TREES && !ONLY_TREES.has(tree)) continue;
     if (!hasTree(locale, tree)) continue;
     for (const entry of readdirSync(join(I18N_DIR, locale, tree))) {
       // `skills/<id>/SKILL.md` for skills, `<tree>/<id>.md` for the mirrors.
@@ -380,7 +385,20 @@ for (const locale of SCANNABLE_LOCALES) {
       if (key === null) continue;
       const translated = join(I18N_DIR, locale, englishRel);
       const english = join(ROOT, englishRel);
-      if (!existsSync(translated) || !existsSync(english)) continue;
+      // `isFile`, not merely `existsSync`, matching the checker. For skills the
+      // entry is a directory and the file is `SKILL.md`, so existence alone was
+      // safe by construction; on the mirror branch the ENTRY is the file, and a
+      // directory named `foo.md` would reach readFileSync and kill the run with
+      // EISDIR where the checker skips it.
+      if (!existsSync(translated) || !statSync(translated).isFile()) continue;
+      if (!existsSync(english) || !statSync(english).isFile()) continue;
+      // Recorded BEFORE the `--tree` filter, so the accept-list describes what
+      // this locale-scoped run could have reached rather than what it selected.
+      // Collected after the existence checks, so it means "carries translated
+      // content" and not merely "has a directory of that name" — the same
+      // distinction the `--locale` guard turns on.
+      treesInScope.add(tree);
+      if (ONLY_TREES && !ONLY_TREES.has(tree)) continue;
       const text = readFileSync(translated, 'utf8');
       targets.push({
         locale, tree, key, path: translated, english, englishRel,
@@ -389,6 +407,27 @@ for (const locale of SCANNABLE_LOCALES) {
         sourceCommit: frontmatterField(text, 'source_commit'),
       });
     }
+  }
+}
+
+/**
+ * Validate `--tree` against what the SCOPED scan actually reached, not against
+ * a corpus-wide union. Checked here rather than at parse time because the
+ * accept-list is the scan's own output — the only formulation that cannot drift
+ * from the scan — and before any write, so a mistyped or unreachable batch
+ * cannot touch the corpus.
+ *
+ * The pre-scan version passed `--locale wenyan --tree guides` and reported
+ * `files to change: 0`: each guard was satisfied on its own and neither saw the
+ * composition, while six of the ten locales carry `skills/` alone.
+ */
+if (ONLY_TREES !== null) {
+  const unreachable = [...ONLY_TREES].filter((t) => !treesInScope.has(t));
+  if (unreachable.length) {
+    console.error(`ERROR: --tree matched no translated content${ONLY_LOCALE ? ` in locale '${ONLY_LOCALE}'` : ''}: ${unreachable.join(', ')}`);
+    console.error('Nothing would be scanned, and the run would report a clean-looking zero.');
+    console.error(`Reachable here: ${[...treesInScope].sort().join(', ') || '(none)'}`);
+    process.exit(2);
   }
 }
 

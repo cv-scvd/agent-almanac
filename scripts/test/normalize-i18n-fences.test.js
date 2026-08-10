@@ -502,8 +502,69 @@ test('--tree naming no translated tree is an error, not a clean-looking zero', a
   const r = run(dir, ['--tree', 'teams', '--write']);
 
   assert.equal(r.status, 2, r.stdout);
-  assert.match(r.stderr, /names no translated content tree/);
-  assert.match(r.stderr, /Available: skills/);
+  assert.match(r.stderr, /matched no translated content/);
+  assert.match(r.stderr, /Reachable here: skills/);
+});
+
+/**
+ * A locale carrying `skills/` and nothing else — the dominant shape of the real
+ * corpus, where six of the ten locales are skills-only, and a shape no fixture
+ * had. Its absence hid two things at once: the per-locale `hasTree` guard was
+ * uncovered, and the `--locale`/`--tree` composition below was unreachable.
+ */
+function addSkillsOnlyLocale(dir) {
+  const p = join(dir, 'i18n', 'caveman', 'skills', 'demo-skill', 'SKILL.md');
+  mkdirSync(dirname(p), { recursive: true });
+  const sc = git(dir, ['rev-parse', 'HEAD']);
+  writeFileSync(p, [
+    '---', 'name: demo-skill', 'description: Demo.',
+    'locale: caveman', 'source_locale: en', `source_commit: ${sc}`, '---', '',
+    '# DEMO', '', '## STEPS', '',
+    '```bash', 'echo "UGG"', '```', '',
+  ].join('\n'), 'utf8');
+  git(dir, ['add', '-A']);
+  git(dir, ['commit', '-m', 'a skills-only locale']);
+  return p;
+}
+
+test('a locale missing a tree is skipped, not scanned into a crash', async (t) => {
+  const { dir } = makeFixture(t);
+  addGuideMirror(dir);
+  addSkillsOnlyLocale(dir);
+
+  const r = run(dir);
+
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /i18n\/de\/guides\/quick-ref\.md/);
+  assert.match(r.stdout, /i18n\/caveman\/skills\/demo-skill\/SKILL\.md/);
+});
+
+test('--tree is validated against the SCOPED scan, not a corpus-wide union', async (t) => {
+  // `--locale caveman --tree guides` satisfied each guard on its own while
+  // neither saw the composition, and reported `files to change: 0` — the exact
+  // clean-looking zero the guard family exists to reject.
+  const { dir } = makeFixture(t);
+  addGuideMirror(dir);
+  addSkillsOnlyLocale(dir);
+
+  const r = run(dir, ['--locale', 'caveman', '--tree', 'guides', '--write']);
+
+  assert.equal(r.status, 2, r.stdout);
+  assert.match(r.stderr, /matched no translated content in locale 'caveman'/);
+  assert.match(r.stderr, /Reachable here: skills/);
+});
+
+test('the same --tree value still works for a locale that does carry it', async (t) => {
+  // The paired positive: without it the test above passes on a build that
+  // rejects every --tree value.
+  const { dir } = makeFixture(t);
+  const guide = addGuideMirror(dir);
+  addSkillsOnlyLocale(dir);
+
+  const r = run(dir, ['--locale', 'de', '--tree', 'guides', '--write']);
+
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(readFileSync(guide, 'utf8').includes('# Count the skills'));
 });
 
 test('--tree with no usable value is an error', async (t) => {
@@ -538,4 +599,11 @@ test('a template or README inside a tree is not a target', async (t) => {
     const after = readFileSync(join(dir, 'i18n', 'de', 'guides', name), 'utf8');
     assert.ok(after.includes('echo uebersetzt'), `${name} was treated as content`);
   }
+  // Not merely unwritten — not a TARGET. Deleting the `contentKey` null-guard
+  // leaves the bytes untouched too, because the history lookup then misses and
+  // the file falls through to the unsound-mapping path. That mutant kept the
+  // whole suite green while sending a reviewer to hand-repair a template, so
+  // the report is what has to be asserted.
+  assert.doesNotMatch(r.stdout, /_template\.md/, 'a template reached the skipped list');
+  assert.doesNotMatch(r.stdout, /README\.md/, 'a README reached the skipped list');
 });
