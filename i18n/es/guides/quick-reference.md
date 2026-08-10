@@ -23,13 +23,13 @@ Hoja de referencia de comandos para invocar agentes, habilidades y equipos a tra
 Las habilidades se invocan como comandos de barra en Claude Code cuando están enlazadas simbólicamente en `.claude/skills/`:
 
 ```bash
-# Hacer disponible una habilidad como comando de barra
+# Make a skill available as a slash command
 ln -s ../../skills/submit-to-cran .claude/skills/submit-to-cran
 
-# En Claude Code, invocar con:
+# In Claude Code, invoke with:
 /submit-to-cran
 
-# Otros ejemplos
+# Other examples
 /commit-changes
 /security-audit-codebase
 /review-skill-format
@@ -64,28 +64,28 @@ Equipos disponibles: r-package-review, gxp-compliance-validation, fullstack-web-
 ### Consultas al Registro
 
 ```bash
-# Contar habilidades, agentes, equipos
+# Count skills, agents, teams
 grep "total_skills" skills/_registry.yml
 grep "total_agents" agents/_registry.yml
 grep "total_teams" teams/_registry.yml
 
-# Listar todos los dominios
+# List all domains
 grep "^  [a-z]" skills/_registry.yml | head -50
 
-# Listar todos los agentes
+# List all agents
 grep "^  - id:" agents/_registry.yml
 
-# Listar todos los equipos
+# List all teams
 grep "^  - id:" teams/_registry.yml
 ```
 
 ### Automatización de README
 
 ```bash
-# Regenerar todos los READMEs desde los registros
+# Regenerate all READMEs from registries
 npm run update-readmes
 
-# Verificar si los READMEs están actualizados (prueba seca de CI)
+# Check if READMEs are up to date (CI dry-run)
 npm run check-readmes
 ```
 
@@ -94,15 +94,15 @@ npm run check-readmes
 ### Conversión de Rutas
 
 ```bash
-# Windows a WSL
+# Windows to WSL
 C:\Users\Name\Documents  ->  /mnt/c/Users/Name/Documents
 D:\dev\projects          ->  /mnt/d/dev/projects
 
-# Acceder a R de Windows desde WSL (ajustar versión)
+# Access Windows R from WSL (adjust version)
 "/mnt/c/Program Files/R/R-4.5.0/bin/R.exe"
 "/mnt/c/Program Files/R/R-4.5.0/bin/Rscript.exe"
 
-# Abrir el directorio actual en el Explorador de Windows
+# Open current directory in Windows Explorer
 explorer.exe .
 ```
 
@@ -111,11 +111,11 @@ explorer.exe .
 ### Ciclo de Desarrollo
 
 ```r
-devtools::load_all()        # Cargar paquete para desarrollo
-devtools::document()        # Actualizar documentación
-devtools::test()            # Ejecutar pruebas
-devtools::check()           # Verificación completa del paquete
-devtools::install()         # Instalar paquete
+devtools::load_all()        # Load package for development
+devtools::document()        # Update documentation
+devtools::test()            # Run tests
+devtools::check()           # Full package check
+devtools::install()         # Install package
 ```
 
 ### Verificaciones Rápidas
@@ -132,17 +132,17 @@ urlchecker::url_check()
 ```r
 devtools::check_win_devel()     # Windows builder
 devtools::check_win_release()   # Windows builder
-rhub::rhub_check()              # R-hub multiplataforma
-devtools::release()             # Envío interactivo a CRAN
+rhub::rhub_check()              # R-hub multi-platform
+devtools::release()             # Interactive CRAN submission
 ```
 
 ### Estructura Inicial
 
 ```r
-usethis::use_r("function_name")           # Nuevo archivo R
-usethis::use_test("function_name")        # Nuevo archivo de pruebas
-usethis::use_vignette("guide_name")       # Nueva viñeta
-usethis::use_mit_license()                # Agregar licencia MIT
+usethis::use_r("function_name")           # New R file
+usethis::use_test("function_name")        # New test file
+usethis::use_vignette("guide_name")       # New vignette
+usethis::use_mit_license()                # Add MIT license
 usethis::use_github_action_check_standard() # CI/CD
 ```
 
@@ -151,27 +151,27 @@ usethis::use_github_action_check_standard() # CI/CD
 ### Operaciones Diarias
 
 ```bash
-git status                 # Mostrar estado del árbol de trabajo
-git diff                   # Mostrar cambios no preparados
-git diff --staged          # Mostrar cambios preparados
-git log --oneline -10      # Commits recientes
+git status                 # Show working tree status
+git diff                   # Show unstaged changes
+git diff --staged          # Show staged changes
+git log --oneline -10      # Recent commits
 
-git add filename           # Preparar archivo específico
-git commit -m "message"    # Confirmar con mensaje
-git commit --amend         # Enmendar último commit
+git add filename           # Stage specific file
+git commit -m "message"    # Commit with message
+git commit --amend         # Amend last commit
 
-git checkout -b new-branch # Crear y cambiar a rama
-git merge feature-branch   # Fusionar rama
+git checkout -b new-branch # Create and switch to branch
+git merge feature-branch   # Merge branch
 ```
 
 ### Operaciones Remotas
 
 ```bash
-git remote -v              # Listar remotos
-git fetch origin           # Obtener cambios
-git pull origin main       # Pull y merge
-git push origin main       # Enviar al remoto
-git push -u origin branch  # Enviar nueva rama
+git remote -v              # List remotes
+git fetch origin           # Fetch changes
+git pull origin main       # Pull and merge
+git push origin main       # Push to remote
+git push -u origin branch  # Push new branch
 ```
 
 ### Alias Útiles
@@ -189,9 +189,9 @@ git config --global alias.last 'log -1 HEAD'
 ### Gestión de Sesión
 
 ```bash
-claude                     # Iniciar Claude Code
-claude mcp list            # Listar servidores MCP configurados
-claude mcp get r-mcptools  # Obtener detalles del servidor
+claude                     # Start Claude Code
+claude mcp list            # List configured MCP servers
+claude mcp get r-mcptools  # Get server details
 ```
 
 ### Archivos de Configuración
@@ -204,7 +204,7 @@ Claude Desktop (GUI/Win):   %APPDATA%\Claude\claude_desktop_config.json
 ### Servidores MCP
 
 ```bash
-# Integración R
+# R integration
 claude mcp add r-mcptools stdio \
   "/mnt/c/Program Files/R/R-4.5.0/bin/Rscript.exe" \
   -e "mcptools::mcp_server()"
@@ -220,34 +220,34 @@ claude mcp add hf-mcp-server \
 ### Navegación y Búsqueda
 
 ```bash
-pwd                        # Mostrar directorio de trabajo
-ls -la                     # Listar archivos con detalles
-tree                       # Mostrar árbol de directorios
-z project-name             # Saltar a directorio frecuente
+pwd                        # Print working directory
+ls -la                     # List files with details
+tree                       # Show directory tree
+z project-name             # Jump to frequent directory
 
-rg "pattern"               # Búsqueda con Ripgrep
-rg -t r "pattern"          # Buscar solo en archivos R
-fd "pattern"               # Find amigable
-fd -e R                    # Buscar por extensión
+rg "pattern"               # Ripgrep search
+rg -t r "pattern"          # Search only R files
+fd "pattern"               # User-friendly find
+fd -e R                    # Find by extension
 ```
 
 ### Operaciones con Archivos
 
 ```bash
-mkdir -p path/to/dir       # Crear directorios anidados
-cp -r source/ dest/        # Copiar directorio recursivamente
-tar -czf archive.tar.gz dir/  # Crear tar comprimido
-tar -xzf archive.tar.gz      # Extraer tar.gz
-du -sh directory           # Tamaño del directorio
-df -h                      # Uso de espacio en disco
+mkdir -p path/to/dir       # Create nested directories
+cp -r source/ dest/        # Copy directory recursively
+tar -czf archive.tar.gz dir/  # Create compressed tar
+tar -xzf archive.tar.gz      # Extract tar.gz
+du -sh directory           # Directory size
+df -h                      # Disk space usage
 ```
 
 ### Gestión de Procesos
 
 ```bash
-htop                       # Visor interactivo de procesos
-ps aux | grep process      # Buscar proceso específico
-kill PID                   # Terminar proceso por ID
+htop                       # Interactive process viewer
+ps aux | grep process      # Find specific process
+kill PID                   # Kill process by ID
 ```
 
 ## Atajos de Teclado
@@ -278,11 +278,11 @@ Ctrl+Shift+P   Paleta de comandos       F1            Paleta de comandos
 ## Variables de Entorno
 
 ```bash
-printenv              # Todas las variables de entorno
-echo $PATH            # Variable PATH
-export VAR=value      # Establecer para la sesión actual
+printenv              # All environment variables
+echo $PATH            # PATH variable
+export VAR=value      # Set for current session
 
-# Establecer permanentemente
+# Set permanently
 echo 'export VAR=value' >> ~/.bashrc
 source ~/.bashrc
 ```
@@ -294,14 +294,14 @@ source ~/.bashrc
 sudo apt update && sudo apt install package
 
 # npm
-npm install -g package       # Instalar globalmente
-npm list -g --depth=0        # Listar paquetes globales
+npm install -g package       # Install globally
+npm list -g --depth=0        # List global packages
 
 # R (renv)
-renv::init()                 # Inicializar renv
-renv::install("package")     # Instalar paquete
-renv::snapshot()             # Guardar lockfile
-renv::restore()              # Restaurar desde lockfile
+renv::init()                 # Initialize renv
+renv::install("package")     # Install package
+renv::snapshot()             # Save lockfile
+renv::restore()              # Restore from lockfile
 ```
 
 ## Resolución de Problemas
@@ -309,26 +309,26 @@ renv::restore()              # Restaurar desde lockfile
 ### Problemas con Paquetes R
 
 ```bash
-which R                               # Ubicación de R
-R --version                           # Versión de R
-Rscript -e ".libPaths()"             # Rutas de bibliotecas
-echo $RSTUDIO_PANDOC                  # Verificar ruta de pandoc
+which R                               # R location
+R --version                           # R version
+Rscript -e ".libPaths()"             # Library paths
+echo $RSTUDIO_PANDOC                  # Check pandoc path
 ```
 
 ### Problemas con WSL
 
 ```bash
-wsl --list --verbose   # Listar distribuciones WSL
-wsl --status           # Estado de WSL
-ip addr                # Direcciones IP
+wsl --list --verbose   # List WSL distributions
+wsl --status           # WSL status
+ip addr                # IP addresses
 ```
 
 ### Problemas con Git
 
 ```bash
-git config --list          # Mostrar toda la configuración
-git remote show origin     # Mostrar detalles del remoto
-git status --porcelain     # Estado legible por máquina
+git config --list          # Show all config
+git remote show origin     # Show remote details
+git status --porcelain     # Machine-readable status
 ```
 
 ## Recursos Relacionados

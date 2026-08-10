@@ -118,9 +118,9 @@ Core skills (loaded automatically when spawned as subagent) are marked with **[c
 ## 配置选项
 
 ```yaml
-# R 开发偏好
+# R development preferences
 settings:
-  coding_style: tidyverse  # 或 base_r, data_table
+  coding_style: tidyverse  # or base_r, data_table
   documentation: roxygen2
   testing_framework: testthat
   version_control: git
@@ -264,11 +264,11 @@ result <- data %>%
 
 ### 统计建模
 ```r
-# 线性混合效应模型
+# Linear mixed-effects model
 library(lme4)
 model <- lmer(response ~ predictor + (1|subject), data = df)
 summary(model)
-plot(model)  # 诊断图
+plot(model)  # Diagnostic plots
 ```
 
 ### 包函数模板
