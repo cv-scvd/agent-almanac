@@ -169,6 +169,7 @@ Estrategia de evolucion segura:
 2. **Nunca eliminar ni renombrar** -- deprecar en su lugar
 3. **Versionar el esquema** en el identificador (`v1`, `v2`)
 4. **Usar un registro de esquemas** para formatos binarios (Confluent Schema Registry para Avro/Protobuf)
+
 #### Reglas de evolucion de Protobuf:
 
 ```protobuf
@@ -191,7 +192,6 @@ message Measurement {
   reserved "old_sensor_name";
 }
 ```
-
 
 #### Versionado de JSON Schema:
 

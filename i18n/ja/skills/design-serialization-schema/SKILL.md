@@ -168,6 +168,7 @@ enum Unit {
 2. **削除や名前変更は行わない** — 代わりに非推奨にする
 3. **識別子でスキーマをバージョニング**する（`v1`、`v2`）
 4. バイナリフォーマットには**スキーマレジストリを使用**する（Avro/ProtobufのConfluent Schema Registry）
+
 #### Protobufの進化ルール:
 
 ```protobuf
@@ -190,7 +191,6 @@ message Measurement {
   reserved "old_sensor_name";
 }
 ```
-
 
 #### JSON Schemaのバージョニング:
 

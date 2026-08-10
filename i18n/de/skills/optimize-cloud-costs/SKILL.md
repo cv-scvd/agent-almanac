@@ -218,7 +218,6 @@ jq '.data[] | select(.totalRecommendedSavings > 10) | {
 ```
 
 **Auslastungs-Dashboard erstellen:**
-
 ```yaml
 # grafana-utilization-dashboard.yaml
 apiVersion: v1

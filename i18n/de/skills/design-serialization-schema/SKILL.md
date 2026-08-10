@@ -165,6 +165,7 @@ Sichere Evolutionsstrategie:
 2. **Niemals entfernen oder umbenennen** -- stattdessen deprecaten
 3. **Schema versionieren** im Bezeichner (`v1`, `v2`)
 4. **Schema-Registry verwenden** fuer Binaerformate (Confluent Schema Registry fuer Avro/Protobuf)
+
 #### Protobuf-Evolutionsregeln:
 
 ```protobuf
@@ -187,7 +188,6 @@ message Measurement {
   reserved "old_sensor_name";
 }
 ```
-
 
 #### JSON-Schema-Versionierung:
 
