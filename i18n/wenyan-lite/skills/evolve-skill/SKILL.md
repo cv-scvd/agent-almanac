@@ -121,14 +121,12 @@ grep -oP '`[\w-]+`' skills/<skill-name>/SKILL.md | sort -u
 
 直接編既有 SKILL.md：
 
-```bash
-# Open for editing
-# Add/revise procedure steps
-# Strengthen Expected/On failure pairs
-# Add tables or examples
-# Update When to Use triggers
-# Revise Inputs if scope changed
-```
+- Open for editing
+- Add/revise procedure steps
+- Strengthen Expected/On failure pairs
+- Add tables or examples
+- Update When to Use triggers
+- Revise Inputs if scope changed
 
 遵此編輯規：
 - 保所有既有節——加內容，勿移節

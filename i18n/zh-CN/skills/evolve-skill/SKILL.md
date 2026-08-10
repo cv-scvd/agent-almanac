@@ -118,14 +118,12 @@ grep -oP '`[\w-]+`' skills/<skill-name>/SKILL.md | sort -u
 
 直接编辑现有 SKILL.md：
 
-```bash
-# Open for editing
-# Add/revise procedure steps
-# Strengthen Expected/On failure pairs
-# Add tables or examples
-# Update When to Use triggers
-# Revise Inputs if scope changed
-```
+- 打开编辑
+- 添加/修改步骤
+- 强化 Expected/On failure 对
+- 添加表格或示例
+- 更新 When to Use 触发条件
+- 若范围改变则修改 Inputs
 
 遵循以下编辑规则：
 - 保留所有现有章节——添加内容，不删除章节

@@ -181,24 +181,22 @@ Recommended: a GitHub App installation token. (Deploy key is a narrower
 single-repo alternative: add an SSH deploy key with write access and use
 `actor_type: DeployKey` in 3b.)
 
-```bash
-# Create a GitHub App (personal account, Settings > Developer settings >
-# GitHub Apps), permission Repository > Contents: Read and write; install it
-# on THIS repo. Store the App id as a repo variable and the private key as an
-# Actions secret. In the workflow, mint a token and pass it to checkout + the
-# commit action:
-#   - uses: actions/create-github-app-token@<sha>   # v2
-#     id: app-token
-#     with: { app-id: ${{ vars.APP_ID }}, private-key: ${{ secrets.APP_KEY }} }
-#   - uses: actions/checkout@<sha>
-#     with: { token: ${{ steps.app-token.outputs.token }} }
-#   - uses: stefanzweifel/git-auto-commit-action@<sha>
-#     with: { ... }   # inherits the app token via the checkout credentials
-#
-# The numeric App id used in Step 3b is shown on the App's own page:
-# Settings > Developer settings > GitHub Apps > <your app> > About ("App ID").
-# It is unrelated to the repository id and cannot be derived from /repos/$R.
-```
+Create a GitHub App (personal account, Settings > Developer settings >
+GitHub Apps), permission Repository > Contents: Read and write; install it
+on THIS repo. Store the App id as a repo variable and the private key as an
+Actions secret. In the workflow, mint a token and pass it to checkout + the
+commit action:
+  - uses: actions/create-github-app-token@<sha>   # v2
+    id: app-token
+    with: { app-id: ${{ vars.APP_ID }}, private-key: ${{ secrets.APP_KEY }} }
+  - uses: actions/checkout@<sha>
+    with: { token: ${{ steps.app-token.outputs.token }} }
+  - uses: stefanzweifel/git-auto-commit-action@<sha>
+    with: { ... }   # inherits the app token via the checkout credentials
+
+The numeric App id used in Step 3b is shown on the App's own page:
+Settings > Developer settings > GitHub Apps > <your app> > About ("App ID").
+It is unrelated to the repository id and cannot be derived from /repos/$R.
 
 **Higher-assurance alternative (no standing bypass actor).** If a manual merge
 click is acceptable, convert the job to open a PR with the App token (e.g.

@@ -121,14 +121,12 @@ Use this pick matrix to decide refine in-place or make variant:
 
 Edit existing SKILL.md direct:
 
-```bash
-# Open for editing
-# Add/revise procedure steps
-# Strengthen Expected/On failure pairs
-# Add tables or examples
-# Update When to Use triggers
-# Revise Inputs if scope changed
-```
+- Open for editing
+- Add/revise procedure steps
+- Strengthen Expected/On failure pairs
+- Add tables or examples
+- Update When to Use triggers
+- Revise Inputs if scope changed
 
 Follow these edit rules:
 - Keep all existing sections — add content, do not remove sections
