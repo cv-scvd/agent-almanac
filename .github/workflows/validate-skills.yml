@@ -133,12 +133,17 @@ jobs:
       # #485 = four). Deterministic exact comparison, unlike the heuristic
       # warn-only A9. Local `npm run validate:i18n-parity` matches.
       #
-      # #485 widened it from allowed-tools alone to every keep-in-English field
-      # except `version`, which is excluded by design — a translation pins the
-      # English version it was made from, so its 317 divergences are correct.
-      # The step prints a field-comparison count (21,456 today) precisely because
-      # a column-anchored implementation compares only the one top-level field and
-      # reports OK; the count is the tell that it did not.
+      # #485 widened it from allowed-tools alone to every keep-in-English field.
+      # `version` is compared on DIRECTION rather than equality: a translation pins
+      # the English version it was made from, so all 317 of its divergences lag and
+      # are correct — but 0 run ahead, and a translation claiming a version its
+      # source never reached can only have authored it, so that case blocks.
+      #
+      # The step prints a field-comparison count (21,456 today). Read it: a
+      # column-anchored implementation compares only the one top-level field and
+      # still reports OK, and the count is the only thing that distinguishes the
+      # two. NOTE it is printed, not asserted — nothing here fails on a low count,
+      # so it is a diagnostic for a human, not a gate. See the follow-up issue.
       - name: Check i18n frontmatter parity
         run: node scripts/check-i18n-frontmatter-parity.js
 

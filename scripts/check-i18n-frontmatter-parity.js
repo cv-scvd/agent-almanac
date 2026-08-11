@@ -69,8 +69,8 @@ function extractFrontmatter(text) {
 }
 
 /**
- * The keep-in-English fields this gate compares. `version` is excluded on purpose —
- * see the header. Order is the report order.
+ * The keep-in-English fields compared on EQUALITY. `version` is absent here because it
+ * is compared on DIRECTION instead — see compareVersions. Order is the report order.
  */
 const GATED_FIELDS = ['allowed-tools', 'tags', 'domain', 'language', 'complexity', 'author'];
 
@@ -111,16 +111,36 @@ function compareVersions(a, b) {
  * `metadata:` — so a column-anchored `^tags:` matches **zero** of the 3,576 pairs and the
  * gate reports clean having compared nothing. That was measured, not assumed:
  *
- *   tags        found at indent 0: 0    at any indent: 3526
+ *   tags        found at indent 0: 0    at any indent: 3576
  *   language    found at indent 0: 0    at any indent: 3576
  *   complexity  found at indent 0: 0    at any indent: 3576
  *
- * It also covers the two frontmatter shapes this corpus carries (#533): `de`/`zh-CN` nest
- * the locale fields under `metadata:` while `ja`/`es` place them top-level.
+ * (An earlier probe reported 3,526 for `tags`. That probe matched the inline form only;
+ * the missing 50 are the block-form files below, which this function does find.)
+ *
+ * It also covers the two frontmatter shapes this corpus carries (#533). The variance is
+ * per FILE, not per locale: `i18n/es/skills/create-skill/SKILL.md` nests `locale:` under
+ * `metadata:` while `i18n/es/skills/construct-geometric-figure/SKILL.md` puts
+ * `source_commit:` at column 0, and `ja` does both too. Indent tolerance is the only thing
+ * that survives that, which is a stronger argument than a per-locale rule would be.
  *
  * Inline form:  <field>: a b c
  * Block form:   <field>:\n  - a\n  - b
+ *
+ * Block form is live, not defensive: `skills/install-almanac-content/SKILL.md` carries
+ * block-form `allowed-tools` (grant `- Bash`) in English and all ten locales, and 50
+ * translated files carry block-form `tags` — 60 field comparisons the inline branch alone
+ * cannot see, including the one grant this gate most exists to protect.
+ *
+ * The block terminator compares indent against the KEY's indent. `^\S` would not fire for
+ * a nested list and would run into sibling keys; `indent < keyIndent` would never fire for
+ * a column-0 key and would swallow the rest of the frontmatter. Both are tested.
+ *
  * Returns an array of tokens, or null when the field is absent.
+ *
+ * Known latent: a quoted list (`tags: "a, b"`) tokenises to `"a` / `b"` and would
+ * false-MISMATCH against an unquoted source. No such pair exists in the corpus — the only
+ * quoted gated value is `allowed-tools: ""`, identical on both sides.
  */
 function extractField(fmText, key) {
   if (fmText === null) return null;
@@ -207,18 +227,18 @@ for (const locale of readdirSync(I18N_DIR)) {
     }
 
     // version: direction only, never equality. See compareVersions.
-    const sourceVersion = extractField(fm === null ? null : fm, 'version');
+    const translatedVersion = extractField(fm, 'version');
     const englishVersion = source.version;
-    if (englishVersion !== null && sourceVersion !== null) {
+    if (englishVersion !== null && translatedVersion !== null) {
       versionsChecked++;
       // Values are usually YAML-quoted (`version: "1.0"`); strip for display so the
       // message does not read `""1.0""`.
       const unquote = (v) => v.join(' ').replace(/^["']|["']$/g, '');
-      if (compareVersions(sourceVersion.join(' '), englishVersion.join(' ')) > 0) {
+      if (compareVersions(translatedVersion.join(' '), englishVersion.join(' ')) > 0) {
         problems.push({
           file: relPath,
           kind: 'AHEAD',
-          detail: `version "${unquote(sourceVersion)}" is ahead of source "${unquote(englishVersion)}" — a translation cannot legitimately reach a version its source never did`,
+          detail: `version "${unquote(translatedVersion)}" is ahead of source "${unquote(englishVersion)}" — a translation cannot legitimately reach a version its source never did`,
         });
       }
     }

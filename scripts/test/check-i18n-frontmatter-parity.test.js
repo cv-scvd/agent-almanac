@@ -5,7 +5,7 @@
  * exactly the kind that fails silently: `tags`, `domain`, `language`, `complexity` and
  * `author` are all nested under `metadata:`, so a column-anchored `^tags:` matches
  * **nothing** and the gate reports clean having compared zero fields. Measured before the
- * fix: 0 of 3,576 pairs found at indent 0, 3,526 found at any indent.
+ * fix: 0 of 3,576 pairs found at indent 0, all 3,576 found at any indent.
  *
  * Two properties therefore matter more than the individual verdicts:
  *
@@ -14,8 +14,8 @@
  *      "matched nothing". The script prints the field-comparison count for this reason and
  *      the tests assert on it.
  *
- * Fixtures cover BOTH frontmatter shapes this corpus carries (#533): locale fields nested
- * under `metadata:` (de, zh-CN) and placed top-level (ja, es).
+ * Fixtures cover BOTH frontmatter shapes this corpus carries (#533) and both value forms.
+ * The shape varies per FILE, not per locale — `es` and `ja` each carry both.
  */
 
 import { test } from 'node:test';
@@ -59,9 +59,43 @@ function shapeA(over = {}) {
   return english(over).replace('  author:', '  locale: de\n  source_locale: en\n  author:');
 }
 
-/** Shape B — locale fields at top level, as ja and es carry them. */
+/** Shape B — locale fields at top level. Both shapes occur, per file, not per locale. */
 function shapeB(over = {}) {
   return english(over).replace('allowed-tools:', 'locale: ja\nsource_locale: en\nallowed-tools:');
+}
+
+/**
+ * Block form: `allowed-tools` as a YAML list at indent 0, and `tags` as a list nested
+ * under `metadata:`. This is not hypothetical — `skills/install-almanac-content/SKILL.md`
+ * carries block-form `allowed-tools` (grant `- Bash`) in English and all ten locales, and
+ * 50 translated files carry block-form `tags`. Together that is 60 live field comparisons
+ * the inline branch alone cannot see.
+ *
+ * Each list is followed by a sibling key at the SAME indent as its own key, which is what
+ * exercises the block terminator: a terminator of `indent < keyIndent` never fires for a
+ * column-0 key and swallows everything after it.
+ */
+function blockForm({ tools = ['Bash', 'Read', 'Glob'], tags = ['shiny', 'ui', 'theming'] } = {}) {
+  return [
+    '---',
+    'name: demo-skill',
+    'description: A demo skill.',
+    'allowed-tools:',
+    ...tools.map((t) => `  - ${t}`),
+    'metadata:',
+    '  author: Philipp Thoss',
+    '  version: "1.0"',
+    '  domain: shiny',
+    '  complexity: intermediate',
+    '  language: R',
+    '  tags:',
+    ...tags.map((t) => `    - ${t}`),
+    '  locale: de',
+    '---',
+    '',
+    '# Demo Skill',
+    '',
+  ].join('\n');
 }
 
 function fixture(t, translations) {
@@ -122,7 +156,62 @@ test('the comparison count matches what is on disk', () => {
   }
 });
 
-// --- version is excluded, and must stay excluded ---------------------------------------
+// --- block form, which the inline branch cannot see ------------------------------------
+
+test('block-form allowed-tools is compared, at indent 0 with a sibling key after it', () => {
+  // Deleting the block branch leaves every inline test green while silently dropping
+  // `allowed-tools` on install-almanac-content — the skill granting `- Bash` — in all ten
+  // locales. That is the #368/#371 drift class this gate exists for.
+  const dir = mkdtempSync(join(tmpdir(), 'fm-parity-block-'));
+  try {
+    mkdirSync(join(dir, 'scripts'), { recursive: true });
+    cpSync(join(REPO, SCRIPT), join(dir, SCRIPT));
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ type: 'module' }), 'utf8');
+    mkdirSync(join(dir, 'skills', 'demo-skill'), { recursive: true });
+    writeFileSync(join(dir, 'skills', 'demo-skill', 'SKILL.md'), blockForm(), 'utf8');
+
+    const p = join(dir, 'i18n', 'de', 'skills', 'demo-skill', 'SKILL.md');
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(p, blockForm({ tools: ['Bash', 'Read'] }), 'utf8');
+
+    const r = run(dir);
+    assert.equal(r.status, 1, 'block-form allowed-tools drift was not detected');
+    assert.match(r.stdout, /allowed-tools "Bash Read" != source "Bash Read Glob"/);
+    // The list must stop at the sibling `metadata:` key rather than absorbing it. A
+    // terminator of `indent < keyIndent` never fires for a column-0 key, and the value
+    // would then read "Bash Read author ... tags shiny ui theming locale de" — which stays
+    // symmetric on both sides, so only this assertion catches it.
+    assert.doesNotMatch(r.stdout, /allowed-tools "[^"]*author/, 'the list ran past its sibling key');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('block-form tags nested under metadata is compared, and stops at its sibling', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'fm-parity-block2-'));
+  try {
+    mkdirSync(join(dir, 'scripts'), { recursive: true });
+    cpSync(join(REPO, SCRIPT), join(dir, SCRIPT));
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ type: 'module' }), 'utf8');
+    mkdirSync(join(dir, 'skills', 'demo-skill'), { recursive: true });
+    writeFileSync(join(dir, 'skills', 'demo-skill', 'SKILL.md'), blockForm(), 'utf8');
+
+    const p = join(dir, 'i18n', 'de', 'skills', 'demo-skill', 'SKILL.md');
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(p, blockForm({ tags: ['shiny', 'ui', 'INVENTED'] }), 'utf8');
+
+    const r = run(dir);
+    assert.equal(r.status, 1, 'block-form tags drift was not detected');
+    assert.match(r.stdout, /tags "shiny ui INVENTED" != source "shiny ui theming"/);
+    // `tags` sits at indent 2 with `locale: de` following at indent 2. The list must end
+    // there rather than swallowing the sibling.
+    assert.doesNotMatch(r.stdout, /tags "[^"]*locale/, 'the nested list ran past its sibling key');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- version: direction, not equality --------------------------------------------------
 
 test('a lagging version passes — a translation pins what it was made from', () => {
   // 317 of 3,576 real pairs lag. Gating equality would fail them all for being correct.
