@@ -186,18 +186,18 @@ New here? Start with [Understanding the System](guides/understanding-the-system.
 ## Translations
 
 <!-- AUTO:START:translations -->
-| Locale | Language | Skills | Agents | Teams | Guides | Total | Stubs |
-|---|---|---|---|---|---|---|---|
-| de | Deutsch | 329/369 | 3/75 | 1/22 | 2/34 | 335/500 (67%) | 35 |
-| zh-CN | 简体中文 | 325/369 | 3/75 | 1/22 | 2/34 | 331/500 (66.2%) | 26 |
-| ja | 日本語 | 339/369 | 3/75 | 1/22 | 2/34 | 345/500 (69%) | 26 |
-| es | Español | 323/369 | 3/75 | 1/22 | 2/34 | 329/500 (65.8%) | 40 |
-| caveman-lite | Caveman Lite | 345/369 | 0/75 | 0/22 | 0/34 | 345/500 (69%) | 6 |
-| caveman | Caveman | 345/369 | 0/75 | 0/22 | 0/34 | 345/500 (69%) | 6 |
-| caveman-ultra | Caveman Ultra | 345/369 | 0/75 | 0/22 | 0/34 | 345/500 (69%) | 6 |
-| wenyan-lite | 文言文輕 | 345/369 | 0/75 | 0/22 | 0/34 | 345/500 (69%) | 6 |
-| wenyan | 文言文 | 345/369 | 0/75 | 0/22 | 0/34 | 345/500 (69%) | 6 |
-| wenyan-ultra | 文言文極 | 343/369 | 0/75 | 0/22 | 0/34 | 343/500 (68.6%) | 6 |
+| Locale | Language | Skills | Agents | Teams | Guides | Total | Stubs | Unjudged |
+|---|---|---|---|---|---|---|---|---|
+| de | Deutsch | 329/369 | 3/75 | 1/22 | 2/34 | 335/500 (67%) | 35 | 13 |
+| zh-CN | 简体中文 | 321/369 | 3/75 | 1/22 | 2/34 | 327/500 (65.4%) | 26 | 30 |
+| ja | 日本語 | 339/369 | 3/75 | 1/22 | 2/34 | 345/500 (69%) | 26 | 12 |
+| es | Español | 323/369 | 3/75 | 1/22 | 2/34 | 329/500 (65.8%) | 40 | 14 |
+| caveman-lite | Caveman Lite | 345/369 | 0/75 | 0/22 | 0/34 | 345/500 (69%) | 6 | 1 |
+| caveman | Caveman | 345/369 | 0/75 | 0/22 | 0/34 | 345/500 (69%) | 6 | 1 |
+| caveman-ultra | Caveman Ultra | 345/369 | 0/75 | 0/22 | 0/34 | 345/500 (69%) | 6 | 1 |
+| wenyan-lite | 文言文輕 | 342/369 | 0/75 | 0/22 | 0/34 | 342/500 (68.4%) | 6 | 4 |
+| wenyan | 文言文 | 342/369 | 0/75 | 0/22 | 0/34 | 342/500 (68.4%) | 6 | 4 |
+| wenyan-ultra | 文言文極 | 343/369 | 0/75 | 0/22 | 0/34 | 343/500 (68.6%) | 6 | 3 |
 <!-- AUTO:END:translations -->
 
 See [i18n/README.md](i18n/README.md) for the translation contributor guide.

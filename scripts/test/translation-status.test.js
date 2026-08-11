@@ -33,7 +33,7 @@ import {
   REQUIRED_SCRIPT,
   MIN_LINES_TO_JUDGE,
 } from '../lib/translation-status.js';
-import { TREES, fenceShape } from '../lib/fences.js';
+import { TREES, fenceShape, hasSwallowedOpener } from '../lib/fences.js';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -79,24 +79,24 @@ const emptyPool = () => ({ lines: new Set(), fenceShapes: new Set() });
  * parameters. While they were separate, a caller could pass prose and forget shapes, losing
  * the #561 check with no symptom — the pairing makes that unrepresentable.
  */
+const poolOf = (...bodies) => ({
+  lines: new Set(bodies.flatMap((b) => substantiveLines(b))),
+  // Every fixture body is a legitimate English revision, so its own shape is in the pool.
+  fenceShapes: new Set(bodies.map((b) => fenceShape(b))),
+});
+
 /**
  * The pool, plus the fence-free shape.
  *
- * For fixtures that are bodies with NO fences: their English source must plausibly have had
- * a fence-free revision too, or the shape check (#561) fires first and the rule under test
- * never runs. Stating that explicitly beats loosening the rule to suit the fixture.
+ * For fixtures that are bodies with NO fences: their English source must plausibly have had a
+ * fence-free revision too, or the shape check (#561) fires first and the rule under test never
+ * runs. Stating that assumption beats loosening the rule to suit the fixture.
  */
 const poolAllowingNoFences = (...bodies) => {
   const pool = poolOf(...bodies);
   pool.fenceShapes.add(fenceShape(''));
   return pool;
 };
-
-const poolOf = (...bodies) => ({
-  lines: new Set(bodies.flatMap((b) => substantiveLines(b))),
-  // Every fixture body is a legitimate English revision, so its own shape is in the pool.
-  fenceShapes: new Set(bodies.map((b) => fenceShape(b))),
-});
 
 // ── stripFrontmatter ────────────────────────────────────────────────────────
 
@@ -454,6 +454,79 @@ test('a stray LOCALISABLE opener is caught even though it hides nothing', () => 
     classifyTranslation({ translatedText: strayed, locale: 'de', english: pool }).reason,
     'fence-mismatch',
   );
+});
+
+test('a SAME-TAG stray opener is caught, though the shape is byte-identical', () => {
+  // Found by adversarial review, not by this suite — and it is the case the shape comparison
+  // structurally CANNOT see. A stray opener carrying the same tag as the fence it swallows is
+  // closed by that fence's real closer and inherits its position in the shape string. Shape
+  // unchanged, count unchanged, mask completely wrong.
+  //
+  // It is not merely adversarial: a copy-paste that duplicates an existing opener line is
+  // same-tag by definition.
+  const body = [
+    '# Beispieltitel fuer die Pruefung',
+    '',
+    'Dies ist ein Satz mit genuegend Zeichen fuer die Zaehlung.',
+    'Und hier folgt ein zweiter Satz mit genuegend Zeichen.',
+    '',
+    '```yaml',
+    'name: keep-this-identifier-in-english',
+    'domain: testing',
+    '```',
+    '',
+    'Ein dritter Satz, ebenfalls lang genug fuer die Zaehlung.',
+    'Ein vierter Satz, ebenfalls lang genug fuer die Zaehlung.',
+    '',
+  ].join('\n');
+  const pool = poolOf(body);
+  const strayed = body.replace(
+    '# Beispieltitel fuer die Pruefung\n',
+    '# Beispieltitel fuer die Pruefung\n```yaml\n',
+  );
+
+  // The fixture must exhibit the property that defeats the shape check, or it proves nothing.
+  assert.equal(fenceShape(strayed), fenceShape(body), 'the shape MUST be identical here');
+  assert.ok(substantiveLines(strayed).length < substantiveLines(body).length,
+    'and the mask must genuinely have eaten prose');
+  assert.equal(hasSwallowedOpener(strayed), true);
+
+  assert.equal(
+    classifyTranslation({ translatedText: strayed, locale: 'de', english: pool }).reason,
+    'fence-mismatch',
+  );
+});
+
+test('legitimate fence-in-fence documentation is not a swallowed opener', () => {
+  // The false-positive risk of the swallowed-opener check. This corpus documents markdown by
+  // wrapping a longer outer run around a shorter inner one, and `extractFences`' own docstring
+  // says so. A four-backtick outer containing a three-backtick opener is well-formed: the
+  // inner run is shorter, so it could never have closed the outer fence.
+  const nested = [
+    '````markdown',
+    'A documented example that is long enough to compare.',
+    '```r',
+    'x <- 1',
+    '```',
+    '````',
+  ].join('\n');
+  assert.equal(hasSwallowedOpener(nested), false);
+
+  // And a backtick fence inside a tilde fence is ordinary content — different delimiter.
+  const tilde = ['~~~text', 'A line of prose that is long enough here.', '```yaml', 'name: x', '```', '~~~'].join('\n');
+  assert.equal(hasSwallowedOpener(tilde), false);
+});
+
+test('a tag containing a pipe cannot forge a multi-fence shape', () => {
+  // `lang` is the first token of the info string split on /[\s{,]/ — a comma can never occur
+  // inside a tag, but a PIPE can. Joining shapes on `|` let one fence tagged ```bash|yaml
+  // produce the shape of two fences, so a single gated fence wrapping an entire body could
+  // match a two-fence English shape, hide everything, and land `insufficient` — translated.
+  const oneForgedFence = '```bash|yaml\nname: everything is hidden in here\n```\n';
+  const twoRealFences = '```bash\necho hi\n```\n\n```yaml\nname: x\n```\n';
+  assert.notEqual(fenceShape(oneForgedFence), fenceShape(twoRealFences),
+    'a single fence must not be able to spell a two-fence shape');
+  assert.equal(fenceShape(twoRealFences), 'bash,yaml');
 });
 
 test('fence-mismatch outranks insufficient, because the flip drives the count down', () => {

@@ -150,7 +150,7 @@ export function parseStatus(statusText) {
 
   for (const key of [...CONTENT_TYPES, 'total']) {
     if (!coverage[key]) throw new Error(`translation_status.yml: coverage.${key} missing`);
-    for (const field of ['translated', 'total', 'pct', 'stubs']) {
+    for (const field of ['translated', 'total', 'pct', 'stubs', 'unjudged']) {
       if (coverage[key][field] === undefined) {
         throw new Error(`translation_status.yml: coverage.${key}.${field} missing`);
       }
@@ -183,12 +183,12 @@ export function parseReadmeTable(readmeText, markerName = 'translations') {
     const cells = line.split('|').slice(1, -1).map((c) => c.trim());
     if (!cells.length) continue;
     if (/^-+$/.test(cells[0]) || cells[0] === 'Locale') continue; // header / separator
-    if (cells.length !== 8) {
-      throw new Error(`README: translations row has ${cells.length} cells, expected 8: ${JSON.stringify(line)}`);
+    if (cells.length !== 9) {
+      throw new Error(`README: translations row has ${cells.length} cells, expected 9: ${JSON.stringify(line)}`);
     }
-    const [code, name, skills, agents, teams, guides, total, stubs] = cells;
+    const [code, name, skills, agents, teams, guides, total, stubs, unjudged] = cells;
     if (rows.has(code)) throw new Error(`README: duplicate translations row for locale '${code}'`);
-    rows.set(code, { code, name, skills, agents, teams, guides, total, stubs });
+    rows.set(code, { code, name, skills, agents, teams, guides, total, stubs, unjudged });
   }
   if (!rows.size) throw new Error('README: AUTO:translations block contains no data rows');
   return rows;
@@ -285,8 +285,10 @@ export function compareSurfaces({ locales, readmeRows, statusTexts }) {
           `but ${how} '${FALLBACK_MARK}' -- an unmeasured number is presented as measured`
         );
       }
-      if (row.stubs !== UNMEASURED) {
-        failures.push(`locale '${code}' has no status file, so stubs is unmeasured; expected '${UNMEASURED}', README says '${row.stubs}'`);
+      for (const field of ['stubs', 'unjudged']) {
+        if (row[field] !== UNMEASURED) {
+          failures.push(`locale '${code}' has no status file, so ${field} is unmeasured; expected '${UNMEASURED}', README says '${row[field]}'`);
+        }
       }
       continue;
     }
@@ -330,8 +332,13 @@ export function compareSurfaces({ locales, readmeRows, statusTexts }) {
     if (cells.total.pct !== String(expectedTotal.pct)) {
       failures.push(`${code}.total: README pct ${cells.total.pct}% != status pct ${expectedTotal.pct}%`);
     }
-    if (row.stubs !== String(expectedTotal.stubs)) {
-      failures.push(`${code}: README stubs column ${row.stubs} != status stubs ${expectedTotal.stubs}`);
+    // Every number in the status file now has a parity partner. `unjudged` was briefly the
+    // only one without — which is exactly the 'two surfaces, one unchecked' gap #560 closed
+    // for `translated`, reintroduced one field over.
+    for (const field of ['stubs', 'unjudged']) {
+      if (row[field] !== String(expectedTotal[field])) {
+        failures.push(`${code}: README ${field} column ${row[field]} != status ${field} ${expectedTotal[field]}`);
+      }
     }
   }
 

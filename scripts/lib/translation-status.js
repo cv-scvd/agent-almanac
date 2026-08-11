@@ -63,7 +63,7 @@
 import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 import { execFileSync, spawnSync } from 'child_process';
-import { toLines, extractFences, isGated, contentKey, fenceShape, TREES } from './fences.js';
+import { toLines, extractFences, isGated, contentKey, fenceShape, hasSwallowedOpener, TREES } from './fences.js';
 
 // Smaller than `lib/fences.js`'s 2 GiB, and the earlier justification here was wrong: the
 // buffer bounds `git cat-file --batch` stdout, which is the same bytes in both callers, so
@@ -292,8 +292,21 @@ export function classifyTranslation({ translatedText, locale, english }) {
   // `fenceShapes` is empty only for a key with no pooled revisions, which cannot happen once
   // `englishLines` is non-empty; the guard keeps a hand-built pool from silently disabling
   // the check.
+  // Two independent signatures, because neither can see the other's case.
+  //
+  // A shape mismatch catches a stray opener whose tag DIFFERS from the fence it swallows.
+  // It structurally cannot catch a stray opener carrying the SAME tag: that one is closed by
+  // the swallowed fence's real closer and inherits its position in the shape string, so the
+  // shape stays byte-identical while the mask is entirely wrong. Measured on a 5-line body:
+  // 5 -> 3 substantive lines, `insufficient`, counted as translated — one added line, shape
+  // unchanged, count unchanged. Found by adversarial review, not by this module's tests.
+  //
+  // `hasSwallowedOpener` catches that by looking for the flip's own fingerprint — a line
+  // inside a fence body that would itself have opened a fence — which is unreachable in a
+  // well-formed document whatever the tags happen to be.
   const shapes = english.fenceShapes;
-  if (shapes && shapes.size && !shapes.has(fenceShape(body))) {
+  const shapeUnknown = Boolean(shapes && shapes.size && !shapes.has(fenceShape(body)));
+  if (shapeUnknown || hasSwallowedOpener(body)) {
     return { stub: false, reason: 'fence-mismatch', novel: null, total: null };
   }
 
@@ -331,11 +344,19 @@ export function classifyTranslation({ translatedText, locale, english }) {
  * `git log` lists no paths for a merge commit and applies default history simplification, so
  * a body existing only as conflict-resolution output never enters the pool; and `--name-only`
  * without `--follow` loses pre-rename paths (harmless for the skills flatten, which
- * `contentKey` normalises, but not for an id rename). **Here** both shrink the pool, so a
- * scaffold shows novel lines and reads as translated — lenient. In `fences.js`, where the
- * same pool is a *violation* basis, a missing revision manufactures a false violation —
- * strict. Measured on this repo: adding `--diff-merges=separate` changes the pool by 0 lines
- * and the verdict set by 0 files.
+ * `contentKey` normalises, but not for an id rename). The direction differs by consumer, and
+ * there are now THREE, so "fix the walk" is not a decision that can be made from one of them:
+ *
+ *   - **prose pool, here:** a shrunk pool means a scaffold shows novel lines and reads as
+ *     translated — lenient.
+ *   - **fence bodies, `fences.js`:** the same pool is a *violation* basis, so a missing
+ *     revision manufactures a false violation — strict.
+ *   - **fence shapes, here (#561):** a missing revision means a missing *legitimate* shape,
+ *     so a genuine translation drops out of the count into `unjudged` — also strict, and this
+ *     one silently removes real coverage rather than raising a flag someone reads.
+ *
+ * Measured on this repo: adding `--diff-merges=separate` changes the pool by 0 lines and the
+ * verdict set by 0 files. Re-measure all three before changing the walk.
  *
  * @param {string} root repository root
  * @returns {Map<string, {lines: Set<string>, fenceShapes: Set<string>}>} per source: every
