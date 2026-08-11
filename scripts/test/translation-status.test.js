@@ -29,11 +29,12 @@ import {
   classifyTranslation,
   buildEnglishProseHistory,
   hidesLines,
+  hidesKnownProse,
   translationKey,
   REQUIRED_SCRIPT,
   MIN_LINES_TO_JUDGE,
 } from '../lib/translation-status.js';
-import { TREES, fenceShape, hasSwallowedOpener } from '../lib/fences.js';
+import { TREES, fenceShape, hasSwallowedOpener, extractFences, isGated } from '../lib/fences.js';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -83,6 +84,12 @@ const poolOf = (...bodies) => ({
   lines: new Set(bodies.flatMap((b) => substantiveLines(b))),
   // Every fixture body is a legitimate English revision, so its own shape is in the pool.
   fenceShapes: new Set(bodies.map((b) => fenceShape(b))),
+  // Mirrors buildEnglishProseHistory's third collector. A fixture pool missing this cannot
+  // distinguish the cross-pool fix from its absence -- the reviewer's own proof file predated
+  // the field, and its regression test could only ever fail for that reason.
+  fenceLines: new Set(bodies.flatMap((body) => extractFences(body)
+    .filter((f) => isGated(f) && !f.unterminated)
+    .flatMap((f) => substantiveLines(f.body)))),
 });
 
 /**
@@ -495,6 +502,127 @@ test('a SAME-TAG stray opener is caught, though the shape is byte-identical', ()
     classifyTranslation({ translatedText: strayed, locale: 'de', english: pool }).reason,
     'fence-mismatch',
   );
+});
+
+// ── cross-pool membership: the rule the fingerprints kept failing to be ──────
+// Third review round. Neither `fenceShape` nor `hasSwallowedOpener` generalises — a MOVED
+// closer leaves no stray fence, no unterminated fence and an identical shape, and a tilde or
+// longer-run wrap rides through both documented exemptions. Every construction in the family
+// works by moving the mask across the prose/frozen boundary, in one of two directions, and
+// membership tests catch both without knowing how the corruption was spelled.
+
+test('exposed frozen content is not evidence of translation', () => {
+  // EXPOSED-KNOWN-FENCE. Insert one bare ``` inside the last gated fence: it closes the fence
+  // early, the frozen remainder is exposed as prose, and those keep-in-English lines are
+  // absent from the English PROSE pool by construction — so they counted as NOVEL and the
+  // scaffold was reported `has-novel-lines`. A positive claim of translation, which is worse
+  // than `insufficient`: it asserts rather than admits.
+  const english = [
+    '# Harden GitHub Repo Security',
+    '',
+    'Use this skill to lock down a repository before it goes public.',
+    'It covers branch protection, required checks and deploy keys.',
+    '',
+    '```yaml',
+    'name: harden-github-repo-security',
+    'domain: defensive-security-practices',
+    '```',
+    '',
+    'Verify the ruleset is ENFORCED and not merely evaluated.',
+    'Record the bypass actors, because a deploy key is one.',
+    '',
+  ].join('\n');
+  const pool = poolOf(english);
+  assert.ok(pool.fenceLines.has('domain: defensive-security-practices'),
+    'the frozen body must be pooled, or this test cannot distinguish the fix from its absence');
+
+  const split = english.replace(
+    'name: harden-github-repo-security\n',
+    'name: harden-github-repo-security\n```\n',
+  );
+  // The construction must actually evade both fingerprints, or it proves nothing.
+  assert.equal(fenceShape(split), fenceShape(english), 'shape must survive the split');
+  assert.equal(hasSwallowedOpener(split), false, 'no opener sits inside a body here');
+  assert.ok(substantiveLines(split).includes('domain: defensive-security-practices'),
+    'the frozen line must genuinely be exposed as comparable prose');
+
+  const verdict = classifyTranslation({ translatedText: split, locale: 'de', english: pool });
+  assert.equal(verdict.novel, 0, 'keep-in-English content is not novelty');
+  assert.equal(verdict.stub, true);
+});
+
+test('a MOVED closer is caught too, though it leaves no stray fence at all', () => {
+  // The variant that defeats any fingerprint keyed to stray or unterminated fences: move the
+  // real closer up rather than inserting one. Shape identical, fence count identical, nothing
+  // unterminated, nothing swallowed. Plausibly accidental — a truncated paste that drops the
+  // tail of a fence body has exactly this signature.
+  const english = [
+    '# Harden GitHub Repo Security',
+    '',
+    'Use this skill to lock down a repository before it goes public.',
+    'It covers branch protection, required checks and deploy keys.',
+    '',
+    '```yaml',
+    'name: harden-github-repo-security',
+    'domain: defensive-security-practices',
+    '```',
+    '',
+    'Verify the ruleset is ENFORCED and not merely evaluated.',
+    'Record the bypass actors, because a deploy key is one.',
+    '',
+  ].join('\n');
+  const moved = english
+    .replace('name: harden-github-repo-security\n', 'name: harden-github-repo-security\n```\n')
+    .replace('domain: defensive-security-practices\n```\n', 'domain: defensive-security-practices\n');
+
+  assert.equal(fenceShape(moved), fenceShape(english));
+  assert.equal(hasSwallowedOpener(moved), false);
+  assert.equal(classifyTranslation({ translatedText: moved, locale: 'de', english: poolOf(english) }).novel, 0);
+});
+
+test('a frozen fence hiding known English prose is a mask corruption', () => {
+  // HIDDEN-KNOWN-PROSE, the other direction, and the one that catches the wrap: tilde or
+  // longer-run fences replicating the original tags reproduce the shape exactly and trip
+  // neither fingerprint by design. Asking what ended up INSIDE them settles it — English's own
+  // frozen bodies are excluded from the prose pool, so an intersection means prose was
+  // swallowed.
+  const english = [
+    '# Ein Titel fuer die Pruefung hier',
+    '',
+    'Dies ist ein Satz mit genuegend Zeichen fuer die Zaehlung.',
+    'Und hier folgt ein zweiter Satz mit genuegend Zeichen.',
+    'Ein dritter Satz, ebenfalls lang genug fuer die Zaehlung.',
+    'Ein vierter Satz, ebenfalls lang genug fuer die Zaehlung.',
+    '',
+  ].join('\n');
+  const pool = poolOf(english);
+
+  // A tilde wrap: inner backticks neither close it nor trip hasSwallowedOpener.
+  const wrapped = [
+    '# Ein Titel fuer die Pruefung hier',
+    '~~~yaml',
+    'Dies ist ein Satz mit genuegend Zeichen fuer die Zaehlung.',
+    'Und hier folgt ein zweiter Satz mit genuegend Zeichen.',
+    'Ein dritter Satz, ebenfalls lang genug fuer die Zaehlung.',
+    'Ein vierter Satz, ebenfalls lang genug fuer die Zaehlung.',
+    '~~~',
+    '',
+  ].join('\n');
+  assert.equal(hasSwallowedOpener(wrapped), false, 'the wrap evades the opener fingerprint by design');
+  assert.equal(hidesKnownProse(wrapped, pool.lines, pool.fenceLines), true);
+  assert.equal(
+    classifyTranslation({ translatedText: wrapped, locale: 'de', english: pool }).reason,
+    'fence-mismatch',
+  );
+});
+
+test('an untagged fence cannot masquerade as no fences at all', () => {
+  // `''` for an untagged fence made a single untagged terminated fence spell the same shape as
+  // a file with NO fences. If any English revision was fence-free, an untagged wrap around the
+  // whole body matched the pool and hid everything.
+  assert.notEqual(fenceShape('```\nhidden line long enough to compare\n```\n'), fenceShape('no fences here at all\n'));
+  assert.equal(fenceShape('```\nx\n```\n'), '~');
+  assert.equal(fenceShape('plain prose only\n'), '');
 });
 
 test('legitimate fence-in-fence documentation is not a swallowed opener', () => {

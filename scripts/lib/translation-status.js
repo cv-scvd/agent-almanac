@@ -178,6 +178,47 @@ export function openLines(text) {
 }
 
 /**
+ * Does a frozen fence in `text` hide lines English carries as PROSE?
+ *
+ * The hiding half of the cross-pool test (#561 R2). English's own frozen bodies are excluded
+ * from the prose pool by the same mask, so a gated fence in the translation whose body
+ * intersects that pool means the mask swallowed prose that should have been compared. No
+ * legitimate translation does this: a frozen fence is keep-in-English *code*, and code is not
+ * in the prose pool.
+ *
+ * Catches the wrap construction — tilde or longer-run fences replicating the original tags,
+ * which reproduce the shape exactly and trip no fingerprint — from the other side, by asking
+ * what ended up inside them rather than how they were spelled.
+ *
+ * `englishFrozen` is not optional refinement — without it this fires on 76 innocent files.
+ * Measured, before it shipped: the prose pool spans EVERY revision, so a line that sits in a
+ * frozen fence today but was unmasked in some older revision is in both pools. Real examples
+ * it flagged: `def route_issue(severity, issue_type):`, `helm repo add myrepo …`,
+ * `gt(descriptives) |>` — ordinary code in ordinary frozen fences, in 76 files that would each
+ * have dropped out of the translated count. That is the strict direction, which this module's
+ * header names as the expensive one, so the test has to be "known prose AND NOT known frozen
+ * content", not "known prose".
+ *
+ * Residual, stated rather than hidden: a line English carries inside a LOCALISABLE fence is in
+ * the prose pool and not the frozen pool, so a translation that moves such a line into a
+ * frozen fence trips this. That is a retag, which #481 already treats as a defect.
+ *
+ * @param {string} text body text, frontmatter already stripped
+ * @param {Set<string>} englishProse the English prose pool
+ * @param {Set<string>} englishFrozen lines English keeps inside its own frozen fences
+ * @returns {boolean}
+ */
+export function hidesKnownProse(text, englishProse, englishFrozen) {
+  if (!englishProse || !englishProse.size) return false;
+  const frozen = englishFrozen || new Set();
+  return extractFences(text).some(
+    (fence) => isGated(fence)
+      && !fence.unterminated
+      && substantiveLines(fence.body).some((line) => englishProse.has(line) && !frozen.has(line)),
+  );
+}
+
+/**
  * Does any frozen region of `text` actually remove content from comparison?
  *
  * Not used by the verdict — `fence-mismatch` deliberately does NOT require hiding, because a
@@ -304,9 +345,27 @@ export function classifyTranslation({ translatedText, locale, english }) {
   // `hasSwallowedOpener` catches that by looking for the flip's own fingerprint — a line
   // inside a fence body that would itself have opened a fence — which is unreachable in a
   // well-formed document whatever the tags happen to be.
+  //
+  // Neither fingerprint generalises, and a third review round proved it: a stray or MOVED
+  // CLOSER leaves no stray fence, no unterminated fence, and an identical shape, while a
+  // tilde or longer-run wrap replicating the original tags rides through both documented
+  // exemptions. Chasing each construction with its own fingerprint is a losing game.
+  //
+  // So the load-bearing test is the last one, and it is not a fingerprint at all. Every
+  // construction in the family — cross-tag, same-tag, localisable-stray, split, moved-closer,
+  // wrap — works by moving the mask across the boundary between prose and frozen content, in
+  // one of exactly two directions:
+  //
+  //   HIDDEN-KNOWN-PROSE     a frozen fence in the translation contains lines English carries
+  //                          as PROSE. Nothing legitimate does this: English's own frozen
+  //                          bodies are excluded from the prose pool, so an intersection means
+  //                          the mask swallowed prose.
+  //   EXPOSED-KNOWN-FENCE    handled below, in the novel count.
+  //
+  // Membership, not shape. That is why it covers constructions nobody has thought of yet.
   const shapes = english.fenceShapes;
   const shapeUnknown = Boolean(shapes && shapes.size && !shapes.has(fenceShape(body)));
-  if (shapeUnknown || hasSwallowedOpener(body)) {
+  if (shapeUnknown || hasSwallowedOpener(body) || hidesKnownProse(body, englishLines, english.fenceLines)) {
     return { stub: false, reason: 'fence-mismatch', novel: null, total: null };
   }
 
@@ -319,8 +378,19 @@ export function classifyTranslation({ translatedText, locale, english }) {
     return { stub: true, reason: 'no-script', novel: null, total: lines.length };
   }
 
+  // EXPOSED-KNOWN-FENCE, the other direction. `novel` used to mean "absent from the English
+  // PROSE pool", and absence from prose is not evidence of translation when the line is
+  // English that simply lives inside a frozen fence. Every expose-style corruption converted
+  // keep-in-English content into a positive claim of translation through exactly this gap —
+  // `has-novel-lines`, which is worse than the `insufficient` these issues started from,
+  // because it asserts rather than admits.
+  const fenceLines = english.fenceLines;
   let novel = 0;
-  for (const line of lines) if (!englishLines.has(line)) novel += 1;
+  for (const line of lines) {
+    if (englishLines.has(line)) continue;
+    if (fenceLines && fenceLines.has(line)) continue;
+    novel += 1;
+  }
 
   return novel === 0
     ? { stub: true, reason: 'no-novel-lines', novel, total: lines.length }
@@ -384,10 +454,24 @@ export function buildEnglishProseHistory(root) {
   const history = new Map();
   const add = (key, text) => {
     if (key === null) return;
-    if (!history.has(key)) history.set(key, { lines: new Set(), fenceShapes: new Set() });
+    if (!history.has(key)) {
+      history.set(key, { lines: new Set(), fenceShapes: new Set(), fenceLines: new Set() });
+    }
     const entry = history.get(key);
     const body = stripFrontmatter(text);
     for (const line of substantiveLines(body)) entry.lines.add(line);
+    // Third collector, same walk: the lines English keeps INSIDE its frozen fences.
+    //
+    // `lines` cannot contain these — it is built through the same mask, which is the whole
+    // point of the mask. That absence is what every remaining bypass monetises: corrupt the
+    // mask so a frozen body is exposed as prose, and those keep-in-English lines are "absent
+    // from the English prose pool", i.e. novel, i.e. evidence of translation. Pooling them
+    // separately lets the verdict say what is actually true — this line is English, it is
+    // simply English we normally decline to compare.
+    for (const fence of extractFences(body)) {
+      if (!isGated(fence) || fence.unterminated) continue;
+      for (const line of substantiveLines(fence.body)) entry.fenceLines.add(line);
+    }
     // Same walk, second collector. Pooling the shape here rather than in a third history
     // builder is deliberate: #559 already objects to the two near-identical walkers this
     // module and fences.js each carry, and a third would make that worse for one Set.

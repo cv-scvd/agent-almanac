@@ -271,7 +271,13 @@ export function toLines(text) {
 export function fenceShape(text) {
   return extractFences(text)
     .filter((f) => !f.unterminated)
-    .map((f) => f.lang || '')
+    // An untagged fence renders as `~`, not as the empty string. Empty made a single untagged
+    // terminated fence spell the shape `''` — identical to the shape of a file with NO fences
+    // at all. So if any English revision was fence-free, an untagged wrap around the whole
+    // body matched the pool, hid everything, and landed `insufficient`. `~` cannot occur in a
+    // `lang`, which is the first info-string token split on /[\s{,]/ and so never contains
+    // whitespace; joining on `,` already made commas impossible.
+    .map((f) => f.lang || '~')
     .join(',');
 }
 
