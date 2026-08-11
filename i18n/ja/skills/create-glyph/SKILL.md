@@ -227,31 +227,21 @@ print(p)
 
 ### ステップ 5: レンダリング — アイコンの生成
 
-ビルドパイプラインを実行してWebPをレンダリングする。
+アイコンパイプラインを実行して新しいグリフをレンダリングする。エントリポイントには常に `build.sh` を使用する — プラットフォーム検出とRバイナリの選択を処理してくれる。フラグの完全なリファレンスとパイプラインの構成については [render-icon-pipeline](../render-icon-pipeline/SKILL.md) を参照。
 
-1. `viz/` ディレクトリに移動する
-2. エンティティタイプに基づいてレンダリングする:
-
-**スキルの場合:**
 ```bash
-cd viz && Rscript build-icons.R --only <domain>
-# Or skip existing: Rscript build-icons.R --only <domain> --skip-existing
+# From project root — renders all palettes, standard + HD, skips existing icons
+bash viz/build.sh --only <domain> --skip-existing          # skills
+bash viz/build.sh --type agent --only <id> --skip-existing # agents
+bash viz/build.sh --type team --only <id> --skip-existing  # teams
+
+# Dry run first:
+bash viz/build.sh --only <domain> --dry-run
 ```
 
-**エージェントの場合:**
-```bash
-cd viz && Rscript build-agent-icons.R --only <agent-id>
-# Or skip existing: Rscript build-agent-icons.R --only <agent-id> --skip-existing
-```
+`build.sh` はパイプライン全体（パレット → データ → マニフェスト → レンダリング → ターミナルグリフ）を実行する。レンダリング以外のステップで約10秒かかるが、すべてのデータが最新であることが保証される。
 
-**チームの場合:**
-```bash
-cd viz && Rscript build-team-icons.R --only <team-id>
-# Or skip existing: Rscript build-team-icons.R --only <team-id> --skip-existing
-```
-
-3. ドライランを先に行うには、任意のコマンドに `--dry-run` を追加する
-4. 出力先:
+出力先:
    - スキル: `viz/public/icons/<palette>/<domain>/<skill-id>.webp`
    - エージェント: `viz/public/icons/<palette>/agents/<agent-id>.webp`
    - チーム: `viz/public/icons/<palette>/teams/<team-id>.webp`
