@@ -107,9 +107,20 @@ export function contentKey(relPath) {
   return null;
 }
 
-/** Names that live inside a content tree without being content. */
+/**
+ * Names that live inside a content tree without being content.
+ *
+ * Takes a RAW path segment and strips a `.md` suffix itself, so the two branches above can
+ * hand it the same kind of thing. They could not before: the flat branch stripped the
+ * extension before testing while the nested branch passed a bare directory segment, which
+ * made `contentKey('skills/README.md/SKILL.md')` return `skills/README.md` instead of null
+ * while `contentKey('skills/README.md')` correctly returned null. Unreachable today only
+ * because every caller happens to `statSync(...).isFile()` afterwards — which is the
+ * "unreachable because of ambient state" framing #519 exists to reject.
+ */
 function isExcludedId(id) {
-  return id.startsWith('_') || id === 'README';
+  const stem = id.endsWith('.md') ? id.slice(0, -3) : id;
+  return stem.startsWith('_') || stem === 'README';
 }
 
 /**

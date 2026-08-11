@@ -641,6 +641,9 @@ test('a template in the skills tree is not a target either', async (t) => {
   const r = run(dir, ['--tree', 'skills', '--write']);
 
   assert.equal(r.status, 0, r.stderr);
+  // Positive control, as the flat arm has: without it both assertions below pass vacuously
+  // if `--write` stopped writing at all. `demo-skill` is divergent and must still be repaired.
+  assert.match(r.stdout, /files changed: 1/);
   const after = readFileSync(translated, 'utf8');
   assert.ok(after.includes('echo uebersetzt'), 'the skills template was treated as content');
   // Not a target, not merely unwritten — same distinction the flat arm asserts.
