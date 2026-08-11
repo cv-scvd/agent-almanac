@@ -21,6 +21,7 @@
 import { readFileSync, existsSync, readdirSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
+import { toLines } from './lib/fences.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -121,12 +122,24 @@ export function countPitfalls(body) {
   return tableRows > 2 ? tableRows - 2 : 0;
 }
 
-export function auditSkill(skillId) {
-  const path = resolve(SKILLS_DIR, skillId, 'SKILL.md');
-  if (!existsSync(path)) return { skill: skillId, error: 'SKILL.md not found' };
-
-  const raw = readFileSync(path, 'utf8');
-  const lines = raw.split('\n');
+/**
+ * Audit already-read SKILL.md text. Separate from `auditSkill` so the verdict can be tested
+ * against a fixture: `auditSkill` is bound to this repo's `skills/` directory, and the only
+ * way to exercise it otherwise is to write a fixture into the corpus.
+ *
+ * @param {string} raw     full file text, LF or CRLF
+ * @param {string} skillId id to report back
+ */
+export function auditSkillText(raw, skillId) {
+  // Normalised, and the reason is `fenceMask`, not the heading match. Heading detection is
+  // safe on its own — it compares `line.trim()`, and `\r` is a LineTerminator that `trim()`
+  // strips. What breaks is the fence opener at :77, `/^ {0,3}(`{3,}|~{3,})(.*)$/`: the shape
+  // `lib/fences.js` documents as CRLF-fragile, since `.` does not match `\r` and an
+  // unanchored `$` asserts end of input. On a CRLF copy no fence is ever detected, the mask
+  // stays uniformly true, and the audit locks onto the ```markdown-fenced
+  // "## Common Pitfalls" template that `create-skill` and `evolve-skill` embed — the exact
+  // failure `fenceMask`'s own docstring exists to prevent (#532).
+  const lines = toLines(raw);
   const missing = REQUIRED_SECTIONS.filter((heading) => sectionBody(lines, heading) === null);
   const pitfalls = countPitfalls(sectionBody(lines, 'Common Pitfalls'));
   const versionMatch = raw.match(/^\s+version:\s*"([^"]+)"/m);
@@ -138,6 +151,12 @@ export function auditSkill(skillId) {
     version: versionMatch ? versionMatch[1] : null,
     missing,
   };
+}
+
+export function auditSkill(skillId) {
+  const path = resolve(SKILLS_DIR, skillId, 'SKILL.md');
+  if (!existsSync(path)) return { skill: skillId, error: 'SKILL.md not found' };
+  return auditSkillText(readFileSync(path, 'utf8'), skillId);
 }
 
 function listSkillIds() {

@@ -301,6 +301,13 @@ console.log('      green.\n');
 
 const original = readFileSync(absFile, 'utf8');
 
+// CRLF is safe here, and that was checked rather than assumed (#532's audit). Splitting on
+// '\n' leaves the '\r' attached to the END of each line, so rejoining on '\n' reproduces
+// every untouched line byte-for-byte — `"a\r\nX\r\nb\r\n"` deletes to `"a\r\nb\r\n"`. And
+// the --replace branch never splits lines at all. An earlier revision of this file added a
+// guard refusing carriage returns on the theory that rejoining rewrote line endings; the
+// theory was wrong and the guard only refused valid input.
+//
 // Build the mutant in memory. Comparing strings is how "did it land" is decided:
 // asking git would be blind to exactly the cases guarded against above.
 let mutated;

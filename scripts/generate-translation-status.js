@@ -7,6 +7,8 @@
  *
  * Usage:
  *   node scripts/generate-translation-status.js
+ *   node scripts/generate-translation-status.js --verdicts   # also list every stub, with
+ *                                                            # the reason and line counts
  */
 
 import { readFileSync, writeFileSync, readdirSync, existsSync, statSync } from 'fs';
@@ -14,6 +16,12 @@ import { resolve, dirname, join, basename } from 'path';
 import { fileURLToPath } from 'url';
 import * as yaml from 'js-yaml';
 import { assertNotShallow, createFreshnessChecker } from './lib/git-freshness.js';
+import { buildEnglishProseHistory, classifyTranslation, translationKey } from './lib/translation-status.js';
+
+// A stub verdict is acted on by deleting and re-scaffolding the file (#478), so a wrong one
+// destroys work. The aggregate counts cannot be reviewed; this prints the per-file list that
+// can. Use it before any bulk remediation.
+const SHOW_VERDICTS = process.argv.includes('--verdicts');
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -60,40 +68,13 @@ function extractSourceCommit(filePath) {
   return match ? match[1] : null;
 }
 
-/**
- * Strip YAML frontmatter, return body only.
- * Frontmatter is delimited by two '---' lines at the start of the file.
- */
-function stripFrontmatter(content) {
-  const lines = content.split('\n');
-  let fmCount = 0;
-  let bodyStart = -1;
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].trim() === '---') {
-      fmCount++;
-      if (fmCount === 2) {
-        bodyStart = i + 1;
-        break;
-      }
-    }
-  }
-  return bodyStart >= 0 ? lines.slice(bodyStart).join('\n') : content;
-}
-
-/**
- * Detect untranslated stub: scaffold copies English source byte-for-byte
- * and only injects frontmatter fields. If body equals source body, it's a stub.
- * Source bodies are cached — every locale compares against the same sources.
- */
-const sourceBodyCache = new Map();
-function isUntranslatedStub(translatedFile, sourcePath) {
-  if (!existsSync(sourcePath)) return false;
-  const tBody = stripFrontmatter(readFileSync(translatedFile, 'utf8')).trim();
-  if (!sourceBodyCache.has(sourcePath)) {
-    sourceBodyCache.set(sourcePath, stripFrontmatter(readFileSync(sourcePath, 'utf8')).trim());
-  }
-  return tBody === sourceBodyCache.get(sourcePath);
-}
+// Stub detection lives in ./lib/translation-status.js. It used to be body equality against
+// the English source on disk, which stopped being true the moment English was next edited
+// (#473) and was defeated outright by an interior `\r` (#532). See that module's header for
+// why comparing against the `source_commit` blob does not fix it either.
+//
+// Built once and reused across all ten locales: two git processes for the whole corpus.
+const englishProse = buildEnglishProseHistory(ROOT);
 
 // Batched staleness (#305): one `git log <source_commit>..HEAD` per DISTINCT
 // source_commit instead of per-file `git log -1` + `merge-base` spawns.
@@ -131,24 +112,43 @@ function countTranslations(locale, contentType) {
     const entryPath = resolve(typeDir, entry);
 
     let translatedFile;
+    let itemId;
     if (contentType === 'skills') {
       if (!statSync(entryPath).isDirectory()) continue;
       translatedFile = resolve(entryPath, 'SKILL.md');
       if (!existsSync(translatedFile)) continue;
+      itemId = entry;
     } else {
       if (!entry.endsWith('.md')) continue;
       translatedFile = entryPath;
+      itemId = basename(entry, '.md');
     }
 
-    const sourcePath = resolveSourcePath(contentType, translatedFile);
+    // Keyed through `translationKey`, which defers to `contentKey`, so this cannot drift
+    // from the pool's own idea of what an id is. The null branch below is NOT covered by a
+    // test: it fires only for a `_`-prefixed or README mirror, and no such file exists in
+    // `i18n/` — adding one to the corpus purely as a fixture would be worse than the gap.
+    // The derivation itself is covered in `translation-status.test.js`.
+    const key = translationKey(contentType, itemId);
+    if (key === null) continue;
 
-    if (isUntranslatedStub(translatedFile, sourcePath)) {
+    const verdict = classifyTranslation({
+      translatedText: readFileSync(translatedFile, 'utf8'),
+      locale,
+      englishLines: englishProse.get(key),
+    });
+    if (verdict.stub) {
       stubs++;
+      if (SHOW_VERDICTS) {
+        console.log(`  STUB ${locale}/${key}  (${verdict.reason}, ${verdict.foreign}/${verdict.total} foreign)`);
+      }
       continue;
     }
 
     translated++;
 
+    // Computed here rather than above the verdict: the stub path discards it.
+    const sourcePath = resolveSourcePath(contentType, translatedFile);
     const sourceCommit = extractSourceCommit(translatedFile);
     if (existsSync(sourcePath) && sourceCommit) {
       if (freshness.isStale(sourceCommit, toRelPath(sourcePath))) {
