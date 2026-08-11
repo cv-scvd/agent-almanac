@@ -122,11 +122,15 @@ export function countPitfalls(body) {
   return tableRows > 2 ? tableRows - 2 : 0;
 }
 
-export function auditSkill(skillId) {
-  const path = resolve(SKILLS_DIR, skillId, 'SKILL.md');
-  if (!existsSync(path)) return { skill: skillId, error: 'SKILL.md not found' };
-
-  const raw = readFileSync(path, 'utf8');
+/**
+ * Audit already-read SKILL.md text. Separate from `auditSkill` so the verdict can be tested
+ * against a fixture: `auditSkill` is bound to this repo's `skills/` directory, and the only
+ * way to exercise it otherwise is to write a fixture into the corpus.
+ *
+ * @param {string} raw     full file text, LF or CRLF
+ * @param {string} skillId id to report back
+ */
+export function auditSkillText(raw, skillId) {
   // Normalised, not `split('\n')`: heading detection compares whole trimmed lines, so a
   // working-tree CRLF copy would leave `## Common Pitfalls\r` matching nothing and report
   // every required section missing (#532's audit of the other splitting sites).
@@ -142,6 +146,12 @@ export function auditSkill(skillId) {
     version: versionMatch ? versionMatch[1] : null,
     missing,
   };
+}
+
+export function auditSkill(skillId) {
+  const path = resolve(SKILLS_DIR, skillId, 'SKILL.md');
+  if (!existsSync(path)) return { skill: skillId, error: 'SKILL.md not found' };
+  return auditSkillText(readFileSync(path, 'utf8'), skillId);
 }
 
 function listSkillIds() {

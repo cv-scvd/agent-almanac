@@ -55,9 +55,14 @@ const GIT_BUFFER = 512 * 1024 * 1024;
 
 /**
  * Shortest line worth comparing. Below this, markdown structure dominates — `---`, `1.`,
- * `**Note:**`, a bare heading — and matches English in every locale whether or not anything
- * was translated. The value is a floor on noise, not a tuned parameter: the verdict is
- * "zero foreign lines", so a lower floor only adds lines that agree by construction.
+ * `**Note:**` — and matches English in every locale whether or not anything was translated.
+ *
+ * The floor errs **strict**, not neutral: a short translated line such as `## Nutzung` is
+ * genuine evidence of translation that this discards, and discarding evidence can only flip
+ * a verdict toward `stub`. Measured, the margin holds anyway — the genuine translation
+ * closest to the scaffold verdict corpus-wide is a `caveman-lite` file with 2 foreign lines,
+ * and among the natural-language locales the closest carries 5. Re-measure before lowering
+ * it; do not reason about it.
  */
 export const MIN_LINE_LENGTH = 12;
 
