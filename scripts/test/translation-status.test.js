@@ -30,6 +30,7 @@ import {
   buildEnglishProseHistory,
   hidesLines,
   hidesKnownProse,
+  rawComparableLines,
   translationKey,
   REQUIRED_SCRIPT,
   MIN_LINES_TO_JUDGE,
@@ -89,7 +90,7 @@ const poolOf = (...bodies) => ({
   // the field, and its regression test could only ever fail for that reason.
   fenceLines: new Set(bodies.flatMap((body) => extractFences(body)
     .filter((f) => isGated(f) && !f.unterminated)
-    .flatMap((f) => substantiveLines(f.body)))),
+    .flatMap((f) => rawComparableLines(f.body)))),
 });
 
 /**
@@ -612,6 +613,88 @@ test('a frozen fence hiding known English prose is a mask corruption', () => {
   assert.equal(hidesKnownProse(wrapped, pool.lines, pool.fenceLines), true);
   assert.equal(
     classifyTranslation({ translatedText: wrapped, locale: 'de', english: pool }).reason,
+    'fence-mismatch',
+  );
+});
+
+test('a SHAPE-REPLICATING wrap is caught by membership, not by shape', () => {
+  // The killing test for the wiring, supplied by review. My own wrap fixture built its pool
+  // from a FENCE-FREE English body, so the wrapped fixture mismatched on shape and the
+  // assertion was satisfied by `shapeUnknown` alone — the one fingerprint the wrap family is
+  // defined by evading. It passed for the wrong reason, and deleting the `hidesKnownProse`
+  // call from `classifyTranslation` left the entire suite green.
+  //
+  // Here the English source HAS a `yaml` fence and the wrap copies that tag, so the shape is
+  // replicated exactly and only membership can decide.
+  const english = [
+    '# Title long enough for compare',
+    'Prose line one long enough here.',
+    'Prose line two long enough here.',
+    'Prose line three long enough yes.',
+    'Prose line four long enough yes.',
+    '```yaml',
+    'name: keep-in-english',
+    '```',
+  ].join('\n');
+  const pool = poolOf(english);
+  const wrapped = [
+    '~~~yaml',
+    '# Title long enough for compare',
+    'Prose line one long enough here.',
+    'Prose line two long enough here.',
+    'Prose line three long enough yes.',
+    'Prose line four long enough yes.',
+    '~~~',
+  ].join('\n');
+
+  // Both fingerprints must be genuinely silent, or this proves nothing about membership.
+  assert.equal(fenceShape(wrapped), 'yaml', 'the wrap must replicate the shape exactly');
+  assert.ok(pool.fenceShapes.has(fenceShape(wrapped)), 'so shapeUnknown is FALSE');
+  assert.equal(hasSwallowedOpener(wrapped), false);
+
+  assert.equal(
+    classifyTranslation({ translatedText: wrapped, locale: 'de', english: pool }).reason,
+    'fence-mismatch',
+  );
+});
+
+test('a DEPTH-2 wrap cannot hide prose from the hiding detector', () => {
+  // `hidesKnownProse` inspected the fence body through `substantiveLines`, which re-masks
+  // fences INSIDE that body — so it looked through the very mask it audits. A 5-backtick outer
+  // wrapping a 4-backtick inner (inner run < outer, the documented fence-in-fence exemption)
+  // hid five prose lines from it: it saw `[]`, intersected nothing, and the file reached
+  // `insufficient` — counted as translated. Byte-for-byte the outcome the flat-wrap fix
+  // exists to close, one nesting level down.
+  const english = [
+    '# Title long enough for compare',
+    'Prose line one long enough here.',
+    'Prose line two long enough here.',
+    'Prose line three long enough yes.',
+    'Prose line four long enough yes.',
+    '```bash',
+    'echo hello world here',
+    '```',
+  ].join('\n');
+  const pool = poolOf(english);
+  const nested = [
+    '`````bash',
+    '````bash',
+    '# Title long enough for compare',
+    'Prose line one long enough here.',
+    'Prose line two long enough here.',
+    'Prose line three long enough yes.',
+    'Prose line four long enough yes.',
+    'echo hello world here',
+    '````',
+    '`````',
+  ].join('\n');
+
+  assert.equal(fenceShape(nested), 'bash', 'shape replicated');
+  assert.equal(hasSwallowedOpener(nested), false, 'inner run is shorter — the exemption');
+  assert.deepEqual(substantiveLines(nested), [], 'the mask really does swallow everything');
+
+  assert.equal(
+    classifyTranslation({ translatedText: nested, locale: 'de', english: pool }).reason,
     'fence-mismatch',
   );
 });

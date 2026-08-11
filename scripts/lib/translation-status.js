@@ -214,7 +214,9 @@ export function hidesKnownProse(text, englishProse, englishFrozen) {
   return extractFences(text).some(
     (fence) => isGated(fence)
       && !fence.unterminated
-      && substantiveLines(fence.body).some((line) => englishProse.has(line) && !frozen.has(line)),
+      // RAW lines: see rawComparableLines. Using substantiveLines here made this detector
+      // look through the mask it audits, and a depth-2 wrap walked straight past it.
+      && rawComparableLines(fence.body).some((line) => englishProse.has(line) && !frozen.has(line)),
   );
 }
 
@@ -242,9 +244,34 @@ export function hidesLines(text) {
  * @returns {string[]}
  */
 export function substantiveLines(text) {
-  return openLines(text)
+  return comparable(openLines(text));
+}
+
+/** The comparability filter alone: trimmed, long enough, containing a letter. */
+function comparable(lines) {
+  return lines
     .map((line) => line.trim())
     .filter((line) => line.length >= MIN_COMPARABLE_LINE_CHARS && /\p{L}/u.test(line));
+}
+
+/**
+ * Comparable lines of `text` WITHOUT applying the fence mask.
+ *
+ * For auditing a fence body, where `substantiveLines` is the wrong tool and quietly so: it
+ * routes through `openLines`, which re-extracts fences *inside* the body and drops any gated
+ * terminated one. So a detector that inspects a fence body through it cannot see prose hidden
+ * one nesting level deeper — it looks through the very mask it is auditing.
+ *
+ * That was a live bypass. A depth-2 wrap (5-backtick outer, 4-backtick inner, tags copied so
+ * the shape matches) hid five prose lines from `hidesKnownProse`, which then returned `[]`,
+ * intersected nothing, and let the file reach `insufficient` — counted as translated. Exactly
+ * the outcome the flat-wrap fix was written to close, one level down.
+ *
+ * @param {string} text
+ * @returns {string[]}
+ */
+export function rawComparableLines(text) {
+  return comparable(toLines(text));
 }
 
 /**
@@ -470,7 +497,10 @@ export function buildEnglishProseHistory(root) {
     // simply English we normally decline to compare.
     for (const fence of extractFences(body)) {
       if (!isGated(fence) || fence.unterminated) continue;
-      for (const line of substantiveLines(fence.body)) entry.fenceLines.add(line);
+      // RAW here too, and for the mirror-image reason: English content nested gated-in-gated
+      // would never enter the frozen pool, so if a corrupted mask later EXPOSED it, it would
+      // count as novel — a positive claim of translation built out of keep-in-English text.
+      for (const line of rawComparableLines(fence.body)) entry.fenceLines.add(line);
     }
     // Same walk, second collector. Pooling the shape here rather than in a third history
     // builder is deliberate: #559 already objects to the two near-identical walkers this
