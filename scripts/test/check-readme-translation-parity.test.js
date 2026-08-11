@@ -131,6 +131,19 @@ test('parseLocales throws rather than returning a short list', () => {
   assert.throws(() => parseLocales('supported_locales:\n  - code: de\n    status: active\n'), /no name/);
 });
 
+test('parseLocales handles a block that runs to end of file', () => {
+  // Newly reachable in production once `content_types:` was deleted (#574): that key used to
+  // be the first dedented line, so it was always what stopped the loop. With it gone the loop
+  // terminates by exhausting `lines` instead — a different path, and the whole argument for
+  // deleting the key was that nothing changes, so the path it newly reaches needs a test
+  // rather than an assurance.
+  const toEof = 'version: "1.0"\nsupported_locales:\n  - code: de\n    name: Deutsch\n    status: active\n';
+  assert.deepEqual(parseLocales(toEof), [{ code: 'de', name: 'Deutsch' }]);
+
+  // Also with no trailing newline at all, which is what a hand-edit can leave behind.
+  assert.deepEqual(parseLocales(toEof.trimEnd()), [{ code: 'de', name: 'Deutsch' }]);
+});
+
 test('parseLocales stops at the end of the block', () => {
   const withTrailer = `${CONFIG}other_key:\n  - code: nope\n    name: Nope\n`;
   assert.deepEqual(parseLocales(withTrailer).map((l) => l.code), ['de', 'ja']);
