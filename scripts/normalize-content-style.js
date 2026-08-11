@@ -10,12 +10,29 @@
 //   fences     : untagged opening code fences    -> add a language tag
 //                (heuristic detection of bash/console/json/yaml/r/diff; `text` fallback)
 //
+// It PREVIEWS by default and writes only when `--write` is passed (#490). The inverse —
+// write by default, `--dry` to preview — is what this file used to do, and it is the shape
+// #486 inverted in the i18n normalizer after a read-only probe agent typed the bare command
+// and silently rewrote 281 files. Every later measurement of that backlog was then wrong
+// and self-consistent. The blast radius here is larger, not smaller: `--scope all` is
+// skills/ agents/ teams/ guides/ i18n/, and the *default* scope is still every English
+// content file. The destructive mode must not be the one you get by typing the obvious
+// command.
+//
+// `--dry` is retained as an explicit no-op so old invocations keep working and keep
+// meaning what they meant. Passing both `--write` and `--dry` is an error rather than a
+// guess.
+//
+// Two further guards follow the same reasoning: it refuses to write into a dirty scope
+// (`git checkout --` is the only undo, and it would destroy uncommitted work), and it
+// announces the write on stderr before touching anything.
+//
 // Usage:
 //   node scripts/normalize-content-style.js --mode <separators|fences|both> --scope <english|all>
 //   node scripts/normalize-content-style.js --mode both --files a.md b.md ...
-//   add --dry to report changes without writing.
+//   node scripts/normalize-content-style.js --write            # apply; default is preview
 
-import { execSync } from "node:child_process";
+import { execSync, execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 
 const CONTENT_GLOBS = ["skills/", "agents/", "teams/", "guides/", "i18n/"];
@@ -168,18 +185,81 @@ function flagVal(name) {
   const i = argv.indexOf(name);
   return i >= 0 ? argv[i + 1] : null;
 }
+
+// Default-deny on flags. An unrecognised flag is a typo or a stale invocation, and
+// silently ignoring it means the run does something other than what was asked.
+const VALUE_FLAGS = new Set(["--mode", "--scope"]);
+const BOOL_FLAGS = new Set(["--write", "--dry"]);
+const filesIdx = argv.indexOf("--files");
+for (let i = 0; i < argv.length; i += 1) {
+  if (filesIdx >= 0 && i > filesIdx) break; // remaining args are filenames
+  const a = argv[i];
+  if (!a.startsWith("--")) continue;
+  if (a === "--files" || BOOL_FLAGS.has(a)) continue;
+  if (VALUE_FLAGS.has(a)) { i += 1; continue; }
+  console.error(`ERROR: unknown flag ${a}`);
+  process.exit(2);
+}
+
+// Guessing which one the caller meant is how a preview becomes a write.
+if (argv.includes("--write") && argv.includes("--dry")) {
+  console.error("ERROR: --write and --dry contradict each other. Pass one.");
+  process.exit(2);
+}
+const WRITE = argv.includes("--write");
+
 const mode = flagVal("--mode") || "both";
-const dry = argv.includes("--dry");
+if (!["separators", "fences", "both"].includes(mode)) {
+  console.error(`ERROR: --mode must be separators|fences|both (got '${mode}')`);
+  process.exit(2);
+}
 const doSep = mode === "separators" || mode === "both";
 const doFence = mode === "fences" || mode === "both";
 
 let files;
-const filesIdx = argv.indexOf("--files");
+let pathspec;
 if (filesIdx >= 0) {
-  files = argv.slice(filesIdx + 1).filter((a) => !a.startsWith("--"));
+  // Stop at the next flag. Filtering out only `--`-prefixed args left the VALUE of a
+  // following flag in the list, so `--files a.md --mode both` treated 'both' as a file.
+  files = [];
+  for (let i = filesIdx + 1; i < argv.length; i += 1) {
+    if (argv[i].startsWith("--")) break;
+    files.push(argv[i]);
+  }
+  if (!files.length) {
+    console.error("ERROR: --files requires at least one path");
+    process.exit(2);
+  }
+  pathspec = files;
 } else {
   const scope = flagVal("--scope") || "english";
+  if (!["english", "all"].includes(scope)) {
+    console.error(`ERROR: --scope must be english|all (got '${scope}')`);
+    process.exit(2);
+  }
   files = listFiles(scope);
+  pathspec = scope === "english" ? ENGLISH_GLOBS : CONTENT_GLOBS;
+}
+
+// Refuse to write into a dirty scope. The only undo for a bad run is `git checkout --`,
+// which would also destroy whatever uncommitted work was already there.
+if (WRITE) {
+  let status;
+  try {
+    status = execFileSync("git", ["status", "--porcelain", "--", ...pathspec], {
+      encoding: "utf8",
+      maxBuffer: 128 * 1024 * 1024,
+    });
+  } catch (err) {
+    console.error(`ERROR: could not determine whether the scope is clean: ${err.message}`);
+    process.exit(2);
+  }
+  if (status.trim()) {
+    console.error("ERROR: refusing to write into a dirty scope. Commit or stash first.");
+    console.error(status.trimEnd());
+    process.exit(2);
+  }
+  console.error(`normalize-content-style: WRITING to ${files.length} scanned file(s) in scope.`);
 }
 
 let totalSep = 0;
@@ -200,11 +280,12 @@ for (const f of files) {
     fenceFiles++;
   }
   if (text !== original) {
-    if (!dry) writeFileSync(f, text);
+    if (WRITE) writeFileSync(f, text);
     written++;
   }
 }
-console.log(`normalize-content-style (mode=${mode}${dry ? ", DRY" : ""}):`);
+console.log(`normalize-content-style (mode=${mode}${WRITE ? "" : ", PREVIEW"}):`);
 if (doSep) console.log(`  separators compacted: ${totalSep} across ${sepFiles} files`);
 if (doFence) console.log(`  fences tagged:        ${totalFence} across ${fenceFiles} files`);
-console.log(`  files ${dry ? "to change" : "written"}: ${written} (of ${files.length} scanned)`);
+console.log(`  files ${WRITE ? "written" : "to change"}: ${written} (of ${files.length} scanned)`);
+if (!WRITE && written) console.log("  (preview only — pass --write to apply)");
