@@ -338,14 +338,24 @@ replicaCount: 1
 resources:
   limits: {cpu: 500m, memory: 256Mi}
 ingress:
-  hosts: [my-app-dev.example.com]
+  enabled: true
+  hosts:
+  - host: my-app-dev.example.com
+    paths:
+    - path: /
+      pathType: Prefix
 
 ---
 # values-prod.yaml (excerpt)
 replicaCount: 5
 autoscaling: {enabled: true, minReplicas: 3, maxReplicas: 10}
 ingress:
-  hosts: [my-app.example.com]
+  enabled: true
+  hosts:
+  - host: my-app.example.com
+    paths:
+    - path: /
+      pathType: Prefix
   tls:
   - secretName: my-app-tls
     hosts:
@@ -363,6 +373,10 @@ postgresql:
         cpu: 4000m
         memory: 8Gi
 ```
+
+Two shapes in that block are easy to get backwards. `ingress.hosts` is a list of **mappings** — the template renders `.host` and iterates `.paths` — while `tls[].hosts` is a list of **strings**, ranged as scalars. And `enabled: true` is required in each environment file because the base `values.yaml` ships `ingress.enabled: false` and the whole template is wrapped in that guard; omit it and the ingress renders nothing at all, silently.
+
+Siehe [EXAMPLES.md](references/EXAMPLES.md#step-5-environment-specific-values) fuer die vollstaendigen values-dev.yaml und values-prod.yaml
 
 **Mit verschiedenen Umgebungen testen:**
 ```bash
