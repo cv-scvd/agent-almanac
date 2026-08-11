@@ -8,13 +8,20 @@
  * changes, every locale snapshot silently desyncs (the drift class behind
  * PR #368; root cause filed as #371).
  *
- * Compares every keep-in-English frontmatter field EXCEPT `version` (#485).
+ * Compares every keep-in-English frontmatter field on EQUALITY except `version`,
+ * which is compared on DIRECTION instead (#485).
  *
- * `version` is deliberately excluded and must stay excluded. It diverges on 317
- * of 3,576 pairs across all ten locales, and that is not drift: a translation
- * records the English version it was made from, so a bump on the English side
- * is expected to leave the snapshot behind. Gating it would fail 317 files for
- * doing the right thing.
+ * `version` cannot be gated on equality. It diverges on 317 of 3,576 pairs
+ * across all ten locales, and that is not drift: a translation records the
+ * English version it was made from, so a bump on the English side is expected to
+ * leave the snapshot behind. Gating equality would fail 317 files for doing the
+ * right thing.
+ *
+ * But it can be gated on direction. All 317 divergences are the translation
+ * running BEHIND its source; measured, exactly 0 run ahead. Nothing legitimate
+ * produces a translation claiming a version its source never reached — that can
+ * only come from metadata being authored rather than copied, which is the #543
+ * signature. So the AHEAD case is blocking, with nothing to catch up.
  *
  * The remaining fields were measured at the time this was extended:
  *
@@ -66,6 +73,35 @@ function extractFrontmatter(text) {
  * see the header. Order is the report order.
  */
 const GATED_FIELDS = ['allowed-tools', 'tags', 'domain', 'language', 'complexity', 'author'];
+
+/**
+ * `version` cannot be gated on equality, but it can be gated on DIRECTION.
+ *
+ * A translation records the English version it was made from, so lagging behind is correct
+ * and 317 of 3,576 pairs do exactly that. Running *ahead* is a different thing: no
+ * legitimate process produces a translation claiming a version its source never reached.
+ * It can only come from metadata being authored rather than copied — the #543 signature.
+ *
+ * Measured before this was added: 317 behind, **0 ahead**, 0 incomparable. So the check
+ * ships blocking with nothing to catch up, and it closes the hole a blanket exclusion
+ * would leave open.
+ */
+function compareVersions(a, b) {
+  const parts = (v) => v.replace(/^["']|["']$/g, '').split('.')
+    .map((x) => (/^\d+$/.test(x) ? Number(x) : x));
+  const pa = parts(a);
+  const pb = parts(b);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
+    const x = pa[i] ?? 0;
+    const y = pb[i] ?? 0;
+    if (x === y) continue;
+    // A non-numeric segment (a pre-release tag, say) falls back to string order rather
+    // than being silently treated as equal.
+    if (typeof x === 'number' && typeof y === 'number') return x < y ? -1 : 1;
+    return String(x) < String(y) ? -1 : 1;
+  }
+  return 0;
+}
 
 /**
  * Extract one field from a frontmatter block, at ANY indent.
@@ -121,11 +157,13 @@ for (const skillName of readdirSync(SKILLS_DIR)) {
   const fm = extractFrontmatter(readFileSync(sourcePath, 'utf8'));
   const byField = {};
   for (const field of GATED_FIELDS) byField[field] = extractField(fm, field);
+  byField.version = extractField(fm, 'version');
   englishFields.set(skillName, byField);
 }
 
 let comparedPairs = 0;
 let comparedFields = 0;
+let versionsChecked = 0;
 const problems = []; // { file, kind, detail }
 
 for (const locale of readdirSync(I18N_DIR)) {
@@ -167,6 +205,23 @@ for (const locale of readdirSync(I18N_DIR)) {
         });
       }
     }
+
+    // version: direction only, never equality. See compareVersions.
+    const sourceVersion = extractField(fm === null ? null : fm, 'version');
+    const englishVersion = source.version;
+    if (englishVersion !== null && sourceVersion !== null) {
+      versionsChecked++;
+      // Values are usually YAML-quoted (`version: "1.0"`); strip for display so the
+      // message does not read `""1.0""`.
+      const unquote = (v) => v.join(' ').replace(/^["']|["']$/g, '');
+      if (compareVersions(sourceVersion.join(' '), englishVersion.join(' ')) > 0) {
+        problems.push({
+          file: relPath,
+          kind: 'AHEAD',
+          detail: `version "${unquote(sourceVersion)}" is ahead of source "${unquote(englishVersion)}" — a translation cannot legitimately reach a version its source never did`,
+        });
+      }
+    }
   }
 }
 
@@ -177,11 +232,18 @@ console.log(`\ni18n frontmatter parity: ${comparedPairs} translated skills again
 // Field comparisons are reported because the pair count alone cannot distinguish "compared
 // six fields per pair" from "matched nothing and reported clean" — the exact failure a
 // column-anchored implementation produces.
-console.log(`${comparedFields} field comparison(s) across: ${GATED_FIELDS.join(', ')} (version excluded by design).`);
+console.log(`${comparedFields} field comparison(s) across: ${GATED_FIELDS.join(', ')};`);
+console.log(`${versionsChecked} version(s) checked for direction only (lagging is legitimate, running ahead is not).`);
 if (problems.length === 0) {
   console.log('OK: all keep-in-English frontmatter fields match their source.');
 } else {
   console.log(`${problems.length} parity problem(s) found. Fix: copy the English value verbatim (keep-in-English fields, see i18n/README.md).`);
+  if (problems.some((p) => p.kind === 'AHEAD')) {
+    // Copying English is the wrong advice here: the translation's version is meant to lag.
+    console.log('For [AHEAD]: do NOT copy the English version. A translation ahead of its');
+    console.log('source means the value was authored rather than recorded — investigate the');
+    console.log('file before changing anything (see #543).');
+  }
 }
 
 process.exit(problems.length > 0 && !WARN_ONLY ? 1 : 0);

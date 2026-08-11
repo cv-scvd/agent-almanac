@@ -124,18 +124,43 @@ test('the comparison count matches what is on disk', () => {
 
 // --- version is excluded, and must stay excluded ---------------------------------------
 
-test('version may differ without failing — a translation pins what it was made from', () => {
-  // 317 of 3,576 real pairs diverge here. Gating it would fail them all for being correct.
+test('a lagging version passes — a translation pins what it was made from', () => {
+  // 317 of 3,576 real pairs lag. Gating equality would fail them all for being correct.
   const dir = fixture({ after: () => {} }, { de: shapeA({ version: '"0.9"' }) });
   try {
     const r = run(dir);
     assert.equal(r.status, 0, r.stdout);
-    // Scoped to a reported problem: the summary line legitimately names `version` when it
-    // says the field is excluded by design, so a bare /version/i match is too loose.
-    assert.doesNotMatch(r.stdout, /(MISMATCH|MISSING|EXTRA)\] .*version /, 'version was gated');
-    assert.match(r.stdout, /version excluded by design/, 'the exclusion should be stated in the report');
+    // Scoped to a reported problem: the summary line legitimately names `version`, so a
+    // bare /version/i match is too loose.
+    assert.doesNotMatch(r.stdout, /(MISMATCH|MISSING|EXTRA|AHEAD)\] .*version /, 'a lagging version was gated');
+    assert.match(r.stdout, /1 version\(s\) checked for direction/, 'the version check did not run');
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a version AHEAD of its source fails — nothing legitimate produces one', () => {
+  // Paired with the test above, which is what stops that one being vacuous: a check that
+  // passes a lagging version would also pass if it examined nothing at all.
+  const dir = fixture({ after: () => {} }, { de: shapeA({ version: '"1.1"' }) });
+  try {
+    const r = run(dir);
+    assert.equal(r.status, 1, 'a translation ahead of its source did not fail the gate');
+    assert.match(r.stdout, /AHEAD\] .*version "1\.1" is ahead of source "1\.0"/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('version direction compares numerically, not as strings', () => {
+  // '10' < '9' as strings. A string comparison would call 1.10 "ahead" of 1.9 and,
+  // worse, call a genuinely-ahead 1.9 "behind" 1.10 — a false pass.
+  const behind = fixture({ after: () => {} }, { de: shapeA({ version: '"1.9"' }) });
+  try {
+    // English is 1.0, so 1.9 IS ahead and must fail regardless of segment width.
+    assert.equal(run(behind).status, 1);
+  } finally {
+    rmSync(behind, { recursive: true, force: true });
   }
 });
 
