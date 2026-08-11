@@ -40,14 +40,63 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DREAMS_DIR = join(ROOT, 'dreams');
 const OUT = join(DREAMS_DIR, 'atlas.html');
 
+/**
+ * Entries link to their source on GitHub rather than to a sibling path. A relative
+ * `href="2026-08-11-geometry.md"` resolves beside the file locally and resolves to nothing
+ * once the page is published, which would leave every entry title a dead link in the one
+ * place the page is most likely to be read.
+ */
+const SOURCE_URL = 'https://github.com/pjt222/agent-almanac/blob/main/dreams/';
+
+/**
+ * The closed vocabulary for `recovered:`. It is closed on purpose: `intact` and the damage
+ * map below both key off these exact strings, so an unrecognised value — `Full`, a typo,
+ * anything — would silently draw a dream as damaged, omit the explanation, and make the
+ * "N intact" count wrong, with no warning. Enumerate the exemptions rather than trusting
+ * the input.
+ */
+const RECOVERY_STATES = new Map([
+  ['full', null],
+  ['partial', 'Recovered incompletely — part of the text is missing.'],
+  ['summary', 'The full text is lost with its container. What remains is a condensation written at the time.'],
+  ['none', 'The dream text was never emitted. Only its seed and its output survive.'],
+]);
+
 /** Frontmatter + body of one dream file. */
 function parseDream(file) {
   const raw = readFileSync(join(DREAMS_DIR, file), 'utf8');
   const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
   if (!m) throw new Error(`dreams/${file}: no YAML frontmatter`);
-  const meta = yaml.load(m[1]) || {};
+  let meta;
+  try {
+    meta = yaml.load(m[1]) || {};
+  } catch (err) {
+    // js-yaml names the line but not the file, and a bare YAMLException stack is a worse
+    // error than the hand-rolled checks below produce.
+    throw new Error(`dreams/${file}: frontmatter is not valid YAML — ${err.message}`);
+  }
+  const bad = (msg) => { throw new Error(`dreams/${file}: ${msg}`); };
+
   for (const field of ['title', 'date', 'motifs']) {
-    if (!meta[field]) throw new Error(`dreams/${file}: frontmatter is missing '${field}'`);
+    if (!meta[field]) bad(`frontmatter is missing '${field}'`);
+  }
+  if (!Array.isArray(meta.motifs)) bad("'motifs' must be a list, not a scalar");
+  if (!meta.motifs.length) bad("'motifs' must name at least one mode");
+  // An empty array is truthy, so the presence check above cannot catch it.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(meta.date))) {
+    bad(`'date' must be YYYY-MM-DD (got '${meta.date}') — entries sort lexically`);
+  }
+  const recovered = String(meta.recovered || 'full');
+  if (!RECOVERY_STATES.has(recovered)) {
+    bad(`'recovered' must be one of ${[...RECOVERY_STATES.keys()].join(', ')} (got '${recovered}')`);
+  }
+  if (meta.movements !== undefined && !Number.isInteger(meta.movements)) {
+    bad(`'movements' must be a whole number (got '${meta.movements}')`);
+  }
+  for (const listField of ['glows', 'downstream']) {
+    if (meta[listField] !== undefined && !Array.isArray(meta[listField])) {
+      bad(`'${listField}' must be a list`);
+    }
   }
   return {
     id: file.replace(/\.md$/, ''),
@@ -57,8 +106,8 @@ function parseDream(file) {
     session: meta.session ? String(meta.session) : 'unrecorded',
     seed: meta.seed ? String(meta.seed).trim() : '',
     trigger: meta.trigger ? String(meta.trigger) : '',
-    motifs: (meta.motifs || []).map(String),
-    recovered: String(meta.recovered || 'full'),
+    motifs: meta.motifs.map(String),
+    recovered,
     movements: Number(meta.movements || 1),
     glows: (meta.glows || []).map(String),
     downstream: (meta.downstream || []).map(String),
@@ -103,7 +152,10 @@ function escapeHtml(s) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    // Every attribute emitted below is double-quoted, but nothing enforces that. Escaping
+    // the apostrophe removes the dependency on an unenforced convention.
+    .replace(/'/g, '&#39;');
 }
 
 /**
@@ -582,10 +634,35 @@ const JS = `
     if (i >= 0) location.hash = DATA.nodes[i].id;
   });
 
+  // Keyboard parity for the pointer interaction above. The canvas carries tabindex="0", so
+  // arrow keys step through the marks in placement order and Enter opens the focused entry.
+  canvas.addEventListener('keydown', function (ev) {
+    var n = placed.length;
+    if (!n) return;
+    if (ev.key === 'ArrowRight' || ev.key === 'ArrowDown') { hot = (hot + 1 + n) % n; }
+    else if (ev.key === 'ArrowLeft' || ev.key === 'ArrowUp') { hot = (hot <= 0 ? n : hot) - 1; }
+    else if (ev.key === 'Escape') { hot = -1; }
+    else if ((ev.key === 'Enter' || ev.key === ' ') && hot >= 0) { location.hash = DATA.nodes[hot].id; return; }
+    else return;
+    ev.preventDefault();
+    setReadout(hot);
+    render();
+  });
+  canvas.addEventListener('blur', function () { hot = -1; setReadout(-1); render(); });
+
   function resize() { layout(); render(); }
   window.addEventListener('resize', resize);
   var mq = window.matchMedia('(prefers-color-scheme: dark)');
   if (mq.addEventListener) mq.addEventListener('change', function () { render(); });
+
+  // The canvas reads its palette imperatively at paint time, so a CSS-only theme change
+  // repaints the page around a figure still drawn in the old colours. The media query above
+  // covers the system-preference case; a host that stamps data-theme after load does not
+  // fire it, and the stamped case is exactly what the [data-theme] CSS blocks exist for.
+  if (window.MutationObserver) {
+    new MutationObserver(function () { render(); })
+      .observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  }
 
   layout();
   setReadout(-1);
@@ -619,11 +696,7 @@ function stratum(d) {
     ? `<ul class="glows">${d.glows.map((g) => `<li>${escapeHtml(g)}</li>`).join('')}</ul>`
     : '';
   const motifs = `<div class="motifs">${d.motifs.map((t) => `<b>${escapeHtml(t)}</b>`).join('')}</div>`;
-  const damage = {
-    none: 'The dream text was never emitted. Only its seed and its output survive.',
-    summary: 'The full text is lost with its container. What remains is a condensation written at the time.',
-    partial: 'Recovered incompletely — part of the text is missing.',
-  }[d.recovered];
+  const damage = RECOVERY_STATES.get(d.recovered);
   const brk = damage
     ? `<div class="break">
         <svg width="52" height="10" viewBox="0 0 52 10" aria-hidden="true">
@@ -641,7 +714,7 @@ function stratum(d) {
       <span class="sess">${d.words.toLocaleString('en-US')} words</span>
     </div>
     <div>
-      <h3><a href="${escapeHtml(d.file)}">${escapeHtml(d.title)}</a></h3>
+      <h3><a href="${escapeHtml(SOURCE_URL + encodeURIComponent(d.file))}">${escapeHtml(d.title)}</a></h3>
       ${d.seed ? `<p class="seed">Seed: ${escapeHtml(d.seed)}</p>` : ''}
       ${glows}
       ${motifs}
@@ -667,7 +740,8 @@ function page(dreams, data) {
   </header>
 
   <div class="plate">
-    <canvas id="plate" aria-label="Spiral of ${dreams.length} dream marks, each a nodal sand figure. Details follow below."></canvas>
+    <canvas id="plate" tabindex="0" role="img"
+      aria-label="Spiral of ${dreams.length} dream marks, each a nodal sand figure. Focus it and use the arrow keys to step through entries; every entry is also listed in full below."></canvas>
     <div class="readout" id="readout" data-empty="true"></div>
   </div>
   <div class="key">
@@ -722,7 +796,8 @@ function main() {
     const current = existsSync(OUT) ? readFileSync(OUT, 'utf8') : '';
     if (current !== html) {
       console.error('build-dreams: dreams/atlas.html is stale. Run `npm run build-dreams`.');
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
     console.log(`build-dreams: atlas.html is up to date (${dreams.length} dreams).`);
     return;

@@ -14,6 +14,24 @@ dream lived in a Claude Code plan file that has since been deleted; the glyph dr
 never emitted as text at all. A dream held only in a session transcript is one cleanup away
 from gone. Writing it here is what makes it durable.
 
+## Five is a floor, not a census
+
+The initial five entries were recovered by scanning 15 session transcripts for a `^#+ *Dream`
+heading plus a length heuristic. **That is a fact about the search, not about the corpus.**
+The probe cannot see:
+
+- a dream that produced no heading — which is the *canonical* shape, since the skill itself
+  says dreams produce "fragments, not blueprints" and sets no expected structure
+- a short dream, which the length floor drops — again the canonical shape
+- a heading worded differently (`## Dreaming`, `## The Dream`, lowercase)
+- a session whose transcript is gone, or whose early turns were compacted away — a class
+  proven non-empty by the two damaged entries above
+- a `/dream` run from a sibling project directory
+
+So the corpus starts at five because five is what one bounded probe returned. If you find an
+older dream, add it; the atlas has no notion of a complete set, and an entry dated before the
+newest simply takes its place in the spiral.
+
 ## The atlas
 
 [`atlas.html`](atlas.html) draws the whole corpus as one figure — open it in a browser, or
@@ -70,8 +88,15 @@ spectrum — a finite vocabulary of shapes it can hold — and the motif list is
 which ones a given dream excited. Reuse an existing motif when the dream genuinely rings in
 it; two dreams sharing a motif are drawn joined.
 
-A note on `recovered`: do not quietly drop a damaged entry. A loss drawn as a break is more
-informative than a gap, and it is the argument for keeping this directory at all.
+A note on `recovered`: the four values are a **closed set**, and the generator refuses
+anything outside it rather than guessing. `intact` and the damage note both key off the
+exact string, so a typo — `Full`, `parital` — would otherwise draw the dream as damaged,
+print no explanation, and quietly make the "N intact" count wrong. Adding a fifth state
+means editing `RECOVERY_STATES` in the generator; that is the one part of the gnomon rule
+that is *not* free, and it is deliberate.
+
+And do not quietly drop a damaged entry. A loss drawn as a break is more informative than a
+gap, and it is the argument for keeping this directory at all.
 
 ## Related
 
