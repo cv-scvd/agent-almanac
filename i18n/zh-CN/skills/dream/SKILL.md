@@ -18,7 +18,7 @@ metadata:
   domain: esoteric
   complexity: intermediate
   language: natural
-  tags: esoteric, dream, creativity, exploration, ideation, meta-cognition, ai-self-application
+  tags: esoteric, creativity, exploration, emergence, ideation, meta-cognition, ai-self-application
 ---
 
 # Dream（梦想）

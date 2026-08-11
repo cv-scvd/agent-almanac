@@ -8,10 +8,27 @@
  * changes, every locale snapshot silently desyncs (the drift class behind
  * PR #368; root cause filed as #371).
  *
- * Currently compares: allowed-tools (the field that actually drifted).
- * Extending to tags/domain/language is a recorded follow-up decision — the
- * corpus carries pre-existing paraphrase drift in tags that needs its own
- * catch-up first (see #371 discussion).
+ * Compares every keep-in-English frontmatter field EXCEPT `version` (#485).
+ *
+ * `version` is deliberately excluded and must stay excluded. It diverges on 317
+ * of 3,576 pairs across all ten locales, and that is not drift: a translation
+ * records the English version it was made from, so a bump on the English side
+ * is expected to leave the snapshot behind. Gating it would fail 317 files for
+ * doing the right thing.
+ *
+ * The remaining fields were measured at the time this was extended:
+ *
+ *   tags           61 divergences   de 11, es 19, ja  9, zh-CN 22
+ *   language       14 divergences   es  3, ja  6, zh-CN 5
+ *   complexity     13 divergences   es  8, ja  2, zh-CN 3
+ *   domain          0
+ *   author          0
+ *   allowed-tools   0   (repaired by 439d92df; dead as a live detector, see #485)
+ *
+ * All 88 were caught up in the commit that extended this, and every divergent
+ * value was recorded on #543 first — those files are that issue's screening
+ * population, and pasting English over them destroys the signal that identifies
+ * them.
  *
  * Deliberately does NOT parse the full frontmatter as YAML: pilot-era
  * translations carry shape variance (locale fields at top level vs under
@@ -45,23 +62,49 @@ function extractFrontmatter(text) {
 }
 
 /**
- * Extract allowed-tools tokens from a frontmatter block.
- * Inline form:  allowed-tools: Bash Read Write
- * Block form:   allowed-tools:\n  - Bash\n  - Read
+ * The keep-in-English fields this gate compares. `version` is excluded on purpose —
+ * see the header. Order is the report order.
+ */
+const GATED_FIELDS = ['allowed-tools', 'tags', 'domain', 'language', 'complexity', 'author'];
+
+/**
+ * Extract one field from a frontmatter block, at ANY indent.
+ *
+ * The indent tolerance is load-bearing, not defensive. `allowed-tools` sits at column 0,
+ * but `tags`, `domain`, `language`, `complexity` and `author` are all nested under
+ * `metadata:` — so a column-anchored `^tags:` matches **zero** of the 3,576 pairs and the
+ * gate reports clean having compared nothing. That was measured, not assumed:
+ *
+ *   tags        found at indent 0: 0    at any indent: 3526
+ *   language    found at indent 0: 0    at any indent: 3576
+ *   complexity  found at indent 0: 0    at any indent: 3576
+ *
+ * It also covers the two frontmatter shapes this corpus carries (#533): `de`/`zh-CN` nest
+ * the locale fields under `metadata:` while `ja`/`es` place them top-level.
+ *
+ * Inline form:  <field>: a b c
+ * Block form:   <field>:\n  - a\n  - b
  * Returns an array of tokens, or null when the field is absent.
  */
-function extractAllowedTools(fmText) {
+function extractField(fmText, key) {
   if (fmText === null) return null;
+  const inlineRe = new RegExp(`^[ \\t]*${key}:[ \\t]*(\\S.*)$`);
+  const emptyRe = new RegExp(`^([ \\t]*)${key}:[ \\t]*$`);
   const lines = fmText.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
-    const inline = lines[i].match(/^allowed-tools:[ \t]*(\S.*)$/);
-    if (inline) return inline[1].trim().split(/[\s,]+/);
-    if (/^allowed-tools:[ \t]*$/.test(lines[i])) {
+    const inline = lines[i].match(inlineRe);
+    if (inline) return inline[1].trim().split(/[\s,]+/).filter(Boolean);
+    const empty = lines[i].match(emptyRe);
+    if (empty) {
       const items = [];
+      const keyIndent = empty[1].length;
       for (let j = i + 1; j < lines.length; j++) {
         const item = lines[j].match(/^[ \t]+-[ \t]*(\S.*)$/);
-        if (item) items.push(item[1].trim());
-        else if (/^\S/.test(lines[j])) break; // next top-level key
+        if (item) { items.push(item[1].trim()); continue; }
+        // A line indented no further than the key ends the block. Anchoring on `^\S`
+        // would run a nested field's list into the following sibling keys.
+        const indent = lines[j].match(/^[ \t]*/)[0].length;
+        if (lines[j].trim() !== '' && indent <= keyIndent) break;
       }
       return items;
     }
@@ -69,17 +112,20 @@ function extractAllowedTools(fmText) {
   return null;
 }
 
-// Cache the English side once: skill name -> token array (or null).
-const englishTools = new Map();
+// Cache the English side once: skill name -> { field -> token array (or null) }.
+const englishFields = new Map();
 for (const skillName of readdirSync(SKILLS_DIR)) {
   if (skillName.startsWith('_')) continue;
   const sourcePath = join(SKILLS_DIR, skillName, 'SKILL.md');
   if (!existsSync(sourcePath)) continue;
   const fm = extractFrontmatter(readFileSync(sourcePath, 'utf8'));
-  englishTools.set(skillName, extractAllowedTools(fm));
+  const byField = {};
+  for (const field of GATED_FIELDS) byField[field] = extractField(fm, field);
+  englishFields.set(skillName, byField);
 }
 
-let compared = 0;
+let comparedPairs = 0;
+let comparedFields = 0;
 const problems = []; // { file, kind, detail }
 
 for (const locale of readdirSync(I18N_DIR)) {
@@ -90,31 +136,36 @@ for (const locale of readdirSync(I18N_DIR)) {
     if (!existsSync(translatedPath)) continue;
     const relPath = `i18n/${locale}/skills/${skillName}/SKILL.md`;
 
-    if (!englishTools.has(skillName)) {
+    if (!englishFields.has(skillName)) {
       problems.push({ file: relPath, kind: 'ORPHAN', detail: 'no English source skill' });
       continue;
     }
-    const sourceTokens = englishTools.get(skillName);
+    const source = englishFields.get(skillName);
     const fm = extractFrontmatter(readFileSync(translatedPath, 'utf8'));
-    const translatedTokens = extractAllowedTools(fm);
-    compared++;
+    comparedPairs++;
 
-    if (sourceTokens === null) {
-      // English has no allowed-tools; a translation must not invent one.
-      if (translatedTokens !== null) {
-        problems.push({ file: relPath, kind: 'EXTRA', detail: `allowed-tools "${translatedTokens.join(' ')}" but English source has no such field` });
+    for (const field of GATED_FIELDS) {
+      const sourceTokens = source[field];
+      const translatedTokens = extractField(fm, field);
+
+      if (sourceTokens === null) {
+        // English has no such field; a translation must not invent one.
+        if (translatedTokens !== null) {
+          problems.push({ file: relPath, kind: 'EXTRA', detail: `${field} "${translatedTokens.join(' ')}" but English source has no such field` });
+        }
+        continue;
       }
-      continue;
-    }
+      comparedFields++;
 
-    if (translatedTokens === null) {
-      problems.push({ file: relPath, kind: 'MISSING', detail: `allowed-tools absent (source: ${sourceTokens.join(' ')})` });
-    } else if (translatedTokens.join(' ') !== sourceTokens.join(' ')) {
-      problems.push({
-        file: relPath,
-        kind: 'MISMATCH',
-        detail: `allowed-tools "${translatedTokens.join(' ')}" != source "${sourceTokens.join(' ')}"`,
-      });
+      if (translatedTokens === null) {
+        problems.push({ file: relPath, kind: 'MISSING', detail: `${field} absent (source: ${sourceTokens.join(' ')})` });
+      } else if (translatedTokens.join(' ') !== sourceTokens.join(' ')) {
+        problems.push({
+          file: relPath,
+          kind: 'MISMATCH',
+          detail: `${field} "${translatedTokens.join(' ')}" != source "${sourceTokens.join(' ')}"`,
+        });
+      }
     }
   }
 }
@@ -122,11 +173,15 @@ for (const locale of readdirSync(I18N_DIR)) {
 const label = WARN_ONLY ? 'WARN' : 'FAIL';
 for (const p of problems) console.log(`${label} [${p.kind}] ${p.file}: ${p.detail}`);
 
-console.log(`\ni18n frontmatter parity: ${compared} translated skills compared against ${englishTools.size} English sources.`);
+console.log(`\ni18n frontmatter parity: ${comparedPairs} translated skills against ${englishFields.size} English sources;`);
+// Field comparisons are reported because the pair count alone cannot distinguish "compared
+// six fields per pair" from "matched nothing and reported clean" — the exact failure a
+// column-anchored implementation produces.
+console.log(`${comparedFields} field comparison(s) across: ${GATED_FIELDS.join(', ')} (version excluded by design).`);
 if (problems.length === 0) {
-  console.log('OK: all keep-in-English allowed-tools fields match their source.');
+  console.log('OK: all keep-in-English frontmatter fields match their source.');
 } else {
-  console.log(`${problems.length} parity problem(s) found. Fix: copy the English allowed-tools value verbatim (keep-in-English field, see i18n/README.md).`);
+  console.log(`${problems.length} parity problem(s) found. Fix: copy the English value verbatim (keep-in-English fields, see i18n/README.md).`);
 }
 
 process.exit(problems.length > 0 && !WARN_ONLY ? 1 : 0);

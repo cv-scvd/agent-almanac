@@ -18,7 +18,7 @@ metadata:
   domain: esoteric
   complexity: intermediate
   language: natural
-  tags: esoteric, shine, authenticity, expression, meta-cognition, ai-self-application
+  tags: esoteric, radiance, authenticity, presence, engagement, stardust, luminosity
 ---
 
 # Shine（光辉）

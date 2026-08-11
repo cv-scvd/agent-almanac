@@ -23,7 +23,7 @@ metadata:
   domain: spectroscopy
   complexity: intermediate
   language: natural
-  tags: spectroscopy, raman, vibrational, carbon-materials, SERS, symmetry
+  tags: spectroscopy, raman, polarizability, vibrational, complementary-ir
 ---
 
 # Interpretar Espectro Raman

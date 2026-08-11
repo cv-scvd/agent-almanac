@@ -21,7 +21,7 @@ metadata:
   domain: chromatography
   complexity: intermediate
   language: natural
-  tags: chromatography, interpretation, peak-integration, quantification, retention-time
+  tags: chromatography, peak-analysis, resolution, integration, system-suitability
 ---
 
 # Interpretar Cromatograma

@@ -19,9 +19,9 @@ metadata:
   author: Philipp Thoss
   version: "1.0"
   domain: chromatography
-  complexity: intermediate
+  complexity: advanced
   language: natural
-  tags: chromatography, gc, gas-chromatography, method-development, volatile-analysis
+  tags: chromatography, gc, gas-chromatography, method-development, separation
 ---
 
 # Desarrollar Método GC

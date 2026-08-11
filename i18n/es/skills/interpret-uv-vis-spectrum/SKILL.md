@@ -21,7 +21,7 @@ metadata:
   domain: spectroscopy
   complexity: intermediate
   language: natural
-  tags: spectroscopy, uv-vis, chromophore, beer-lambert, woodward-fieser
+  tags: spectroscopy, uv-vis, chromophore, beer-lambert, electronic-transitions
 ---
 
 # Interpretar Espectro UV-Vis

@@ -22,7 +22,7 @@ metadata:
   domain: spectroscopy
   complexity: intermediate
   language: natural
-  tags: spectroscopy, ir, infrared, functional-groups, organic-chemistry
+  tags: spectroscopy, ir, infrared, functional-groups, absorption
 ---
 
 # Interpretar Espectro IR

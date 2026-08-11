@@ -21,9 +21,9 @@ metadata:
   author: Philipp Thoss
   version: "1.0"
   domain: chromatography
-  complexity: intermediate
+  complexity: advanced
   language: natural
-  tags: chromatography, hplc, liquid-chromatography, method-development, reversed-phase
+  tags: chromatography, hplc, liquid-chromatography, method-development, separation
 ---
 
 # Desarrollar Método HPLC
