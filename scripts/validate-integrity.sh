@@ -572,8 +572,15 @@ if ! command -v node >/dev/null 2>&1; then
   echo "FAIL: node not available, so B13 could not be evaluated (this is not a pass)"
   failed=1
 else
-  b13_out=$(node scripts/check-readme-translation-parity.js 2>&1)
-  b13_rc=$?
+  # `|| b13_rc=$?` is load-bearing: this script runs under `set -e`, and a
+  # bare `b13_out=$(...)` assignment aborts the whole script the moment the
+  # checker exits non-zero. That still fails closed, but it prints nothing --
+  # no discrepancy list, no summary -- so CI would go red with no diagnostic
+  # and every line below here would be dead. Proving the checker can fail is
+  # not the same as proving the check that runs it can report a failure; this
+  # PR exists because of that exact distinction.
+  b13_rc=0
+  b13_out=$(node scripts/check-readme-translation-parity.js 2>&1) || b13_rc=$?
   echo "$b13_out"
   # 0 = agree, 1 = disagree, 2 = could not evaluate. Anything non-zero fails.
   if [ "$b13_rc" -ne 0 ]; then
