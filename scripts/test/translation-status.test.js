@@ -27,6 +27,7 @@ import {
   substantiveLines,
   classifyTranslation,
   buildEnglishProseHistory,
+  translationKey,
   MIN_SUBSTANTIVE_LINES,
 } from '../lib/translation-status.js';
 
@@ -313,6 +314,20 @@ test('a translation whose English source is gone is reported no-source', () => {
   });
   assert.equal(verdict.stub, false);
   assert.equal(verdict.reason, 'no-source');
+});
+
+// ── the pool key ────────────────────────────────────────────────────────────
+
+test('translationKey agrees with contentKey, including on what is not content', () => {
+  assert.equal(translationKey('skills', 'create-r-package'), 'skills/create-r-package');
+  assert.equal(translationKey('guides', 'agent-best-practices'), 'guides/agent-best-practices');
+  assert.equal(translationKey('agents', 'r-developer'), 'agents/r-developer');
+  // The reason this helper exists rather than a second `${tree}/${id}` in the caller: a
+  // mirror of a template or a README keys to nothing, reports `no-source`, and is counted
+  // as translated. Both branches must exclude them, which is what #519 was about.
+  assert.equal(translationKey('skills', '_template'), null);
+  assert.equal(translationKey('guides', '_template'), null);
+  assert.equal(translationKey('teams', 'README'), null);
 });
 
 // ── the git path ────────────────────────────────────────────────────────────

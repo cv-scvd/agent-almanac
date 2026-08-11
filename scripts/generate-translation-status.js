@@ -16,8 +16,7 @@ import { resolve, dirname, join, basename } from 'path';
 import { fileURLToPath } from 'url';
 import * as yaml from 'js-yaml';
 import { assertNotShallow, createFreshnessChecker } from './lib/git-freshness.js';
-import { buildEnglishProseHistory, classifyTranslation } from './lib/translation-status.js';
-import { contentKey } from './lib/fences.js';
+import { buildEnglishProseHistory, classifyTranslation, translationKey } from './lib/translation-status.js';
 
 // A stub verdict is acted on by deleting and re-scaffolding the file (#478), so a wrong one
 // destroys work. The aggregate counts cannot be reviewed; this prints the per-file list that
@@ -125,14 +124,12 @@ function countTranslations(locale, contentType) {
       itemId = basename(entry, '.md');
     }
 
-    // Keyed through `contentKey` rather than by re-deriving `<tree>/<id>` here, so this
-    // cannot drift from the pool's own idea of what an id is — the exact drift #519 was.
-    // It also skips `_`-prefixed and README entries, which would otherwise key to nothing,
-    // report `no-source`, and be counted as translated.
-    const relSourcePath = contentType === 'skills'
-      ? `${contentType}/${itemId}/SKILL.md`
-      : `${contentType}/${itemId}.md`;
-    const key = contentKey(relSourcePath);
+    // Keyed through `translationKey`, which defers to `contentKey`, so this cannot drift
+    // from the pool's own idea of what an id is. The null branch below is NOT covered by a
+    // test: it fires only for a `_`-prefixed or README mirror, and no such file exists in
+    // `i18n/` — adding one to the corpus purely as a fixture would be worse than the gap.
+    // The derivation itself is covered in `translation-status.test.js`.
+    const key = translationKey(contentType, itemId);
     if (key === null) continue;
 
     const verdict = classifyTranslation({

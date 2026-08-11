@@ -169,6 +169,24 @@ export function substantiveLines(text) {
 }
 
 /**
+ * The pool key for a translated item, or `null` when the id is not content.
+ *
+ * Exists so the caller does not re-derive `<tree>/<id>` next to `contentKey`'s own rule for
+ * what an id is. Two copies of that rule is exactly the drift #519 was, and here the
+ * consequence is quiet: a mirror of `_template` or `README` keys to nothing, reports
+ * `no-source`, and is counted as *translated*.
+ *
+ * @param {string} contentType `skills` | `agents` | `teams` | `guides`
+ * @param {string} itemId      directory name (skills) or filename stem (everything else)
+ * @returns {string|null}
+ */
+export function translationKey(contentType, itemId) {
+  return contentKey(contentType === 'skills'
+    ? `${contentType}/${itemId}/SKILL.md`
+    : `${contentType}/${itemId}.md`);
+}
+
+/**
  * Decide whether one translated file is an untranslated scaffold.
  *
  * @param {object} input
