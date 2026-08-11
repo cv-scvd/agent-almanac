@@ -40,7 +40,7 @@
  * threshold that catches a scaffold also condemns that tier for meeting its own spec. The
  * zero-evidence rule does not: measured on the corpus of 2026-08-11, every genuine
  * `caveman-lite` translation carries at least one line English never had — the closest
- * carrying exactly one — and its scaffolds carry none. That is a measurement, not an
+ * carrying two, per `--margins` — and its scaffolds carry none. That is a measurement, not an
  * invariant. Nothing in the spec forbids a short, heavily fenced skill from compressing to
  * zero novel lines.
  *
@@ -65,9 +65,12 @@ import { join } from 'path';
 import { execFileSync, spawnSync } from 'child_process';
 import { toLines, extractFences, isGated, contentKey, TREES } from './fences.js';
 
-// Deliberately smaller than `lib/fences.js`'s 2 GiB: this pool holds trimmed prose lines,
-// not whole fence bodies. On overflow `execFileSync` throws ENOBUFS, so the difference fails
-// loud rather than producing a short pool. Raise both together if either is ever hit.
+// Smaller than `lib/fences.js`'s 2 GiB, and the earlier justification here was wrong: the
+// buffer bounds `git cat-file --batch` stdout, which is the same bytes in both callers, so
+// what the pool later retains has nothing to do with it. The honest statement is that this
+// caller will hit ENOBUFS first as history grows, and that the failure is loud — `spawnSync`
+// sets `error` and a short `stdout`, and the parse below would silently produce a truncated
+// pool if it were not for the `status !== 0` check. Raise both together, and keep that check.
 const GIT_BUFFER = 512 * 1024 * 1024;
 
 /**
@@ -79,7 +82,9 @@ const GIT_BUFFER = 512 * 1024 * 1024;
  * a verdict toward `stub`. Measured, the margin holds anyway — the genuine translation
  * closest to the scaffold verdict corpus-wide is a `caveman-lite` file with 2 novel lines,
  * and among the natural-language locales the closest carries 5. Re-measure before lowering
- * it; do not reason about it.
+ * it, with `generate-translation-status.js --margins`; do not reason about it. (An earlier
+ * revision stated this margin as 1 here and 2 below, from the same corpus. Numbers written
+ * into prose drift against each other; the flag exists so this one does not have to.)
  */
 export const MIN_COMPARABLE_LINE_CHARS = 12;
 
@@ -122,7 +127,10 @@ export const REQUIRED_SCRIPT = new Map([
  * caused once, unfixed at this call site.
  *
  * @param {string} content full file text
- * @returns {string} body with LF line endings, or the whole text when no frontmatter closes
+ * @returns {string} body with LF line endings, or the whole text when fewer than two `---`
+ *   lines are present. Note the delimiters are counted anywhere in the file, not only at the
+ *   top, so a frontmatter-less document opening with two thematic breaks loses everything
+ *   above the second — see the note in the body for why that is left alone.
  */
 export function stripFrontmatter(content) {
   // Counts any two `---` lines, so a frontmatter-less historical blob whose body opens with
@@ -145,6 +153,14 @@ export function stripFrontmatter(content) {
  * bodies dropped, localisable (`text`/`markdown`/`md`) fence bodies kept because those are
  * translatable and a scaffold's English in them is evidence.
  *
+ * An **unterminated** fence is deliberately not treated as frozen. CommonMark says such a
+ * fence runs to end of document, and honouring that here was a one-line bypass of the whole
+ * detector: appending a single ```` ```bash ```` to a scaffold hid every remaining line from
+ * comparison, collapsed `total` from 5 to 0, and turned a `stub` verdict into `insufficient`
+ * — which is counted as *translated*. Measured, not theorised. An unterminated fence is a
+ * malformed document, not a claim that the rest of the file is keep-in-English, so its body
+ * is compared like any other prose. The fence gate flags the malformation separately.
+ *
  * @param {string} text
  * @returns {string[]}
  */
@@ -154,7 +170,7 @@ export function openLines(text) {
   for (const fence of extractFences(text)) {
     dropped[fence.line - 1] = true;
     if (fence.bodyEnd < lines.length) dropped[fence.bodyEnd] = true;
-    if (isGated(fence)) {
+    if (isGated(fence) && !fence.unterminated) {
       for (let i = fence.bodyStart; i < fence.bodyEnd; i += 1) dropped[i] = true;
     }
   }
@@ -304,6 +320,14 @@ export function buildEnglishProseHistory(root) {
       input: Buffer.from(`${specs.join('\n')}\n`, 'utf8'),
       maxBuffer: GIT_BUFFER,
     });
+    // Surfaced explicitly, not left to the status check. A maxBuffer overflow SIGTERMs the
+    // child and leaves `status` null, which `!== 0` happens to catch — but the message would
+    // then blame git for failing rather than naming the truncation, and a truncated pool is
+    // the one failure here that silently reclassifies files.
+    if (batch.error) {
+      throw new Error(`git cat-file --batch did not complete (${batch.error.code ?? batch.error.message}). `
+        + `If this is ENOBUFS, GIT_BUFFER (${GIT_BUFFER}) is too small for this history.`);
+    }
     if (batch.status !== 0) {
       throw new Error(`git cat-file --batch failed: ${batch.stderr?.toString().slice(0, 500)}`);
     }

@@ -29,6 +29,7 @@ import {
   classifyTranslation,
   buildEnglishProseHistory,
   translationKey,
+  REQUIRED_SCRIPT,
   MIN_LINES_TO_JUDGE,
 } from '../lib/translation-status.js';
 import { TREES } from '../lib/fences.js';
@@ -266,6 +267,65 @@ test('zh-CN does not accept kana as evidence of Chinese', () => {
 });
 
 // ── the lenient residue, stated rather than hidden ──────────────────────────
+
+test('a stray unterminated fence cannot hide a scaffold from comparison', () => {
+  // A one-line bypass of the entire detector, measured before the fix: appending a single
+  // ```bash to a scaffold made `extractFences` report a frozen fence running to EOF, so
+  // every remaining line was dropped, `total` collapsed 5 -> 0, and the verdict went from
+  // `no-novel-lines` (stub) to `insufficient` — which is counted as TRANSLATED. That is the
+  // coverage-inflating direction this whole line of work exists to remove.
+  // Fence-free body, so the added opener is genuinely UNTERMINATED rather than pairing with
+  // an existing delimiter. (A stray opener that pairs with a real one is a different hazard
+  // — phase-flipping — and is not what this fix addresses.)
+  const plain = [
+    '# Create R Package',
+    'Use this skill when starting a new R package from scratch.',
+    'It covers the directory layout and the DESCRIPTION file.',
+    'Verify the package directory was created before continuing.',
+    'The DESCRIPTION file must name an author and a maintainer.',
+    'One further line of English prose to clear the floor.',
+  ].join('\n');
+  const pool = poolOf(plain);
+
+  const clean = classifyTranslation({
+    translatedText: withFrontmatter(plain), locale: 'de', englishLines: pool,
+  });
+  assert.equal(clean.reason, 'no-novel-lines');
+  assert.equal(clean.total, 6);
+
+  // The opener goes near the top, so everything English below it is what would vanish.
+  const withStray = classifyTranslation({
+    translatedText: withFrontmatter(plain.replace('# Create R Package', '# Create R Package\n```bash')),
+    locale: 'de',
+    englishLines: pool,
+  });
+  assert.equal(withStray.stub, true, 'a stray fence opener must not launder a scaffold');
+  assert.equal(withStray.reason, 'no-novel-lines');
+  assert.equal(withStray.total, clean.total, 'the remainder must stay in scope, not vanish');
+
+  // A properly closed frozen fence still hides its body, which is the behaviour being kept.
+  const closed = openLines('prose line one here\n```bash\nhidden = 1\n```\nprose line two here\n');
+  assert.ok(!closed.some((l) => l.includes('hidden')));
+  // ...and an unterminated one does not.
+  const open = openLines('prose line one here\n```bash\nvisible = 1\n');
+  assert.ok(open.some((l) => l.includes('visible')));
+});
+
+test('every CJK-script locale in the config is pinned in REQUIRED_SCRIPT', () => {
+  // Deleting any wenyan entry survived every other test — the script rule's coverage came
+  // entirely from `ja` and `zh-CN` fixtures. This pins the map against the config itself, so
+  // adding a CJK locale without a script entry is caught rather than silently degrading to
+  // prose-only.
+  for (const code of ['ja', 'zh-CN', 'wenyan', 'wenyan-lite', 'wenyan-ultra']) {
+    assert.ok(REQUIRED_SCRIPT.has(code), `${code} must declare its writing system`);
+    assert.equal(REQUIRED_SCRIPT.get(code).test('一'), true, `${code} must accept han`);
+    assert.equal(REQUIRED_SCRIPT.get(code).test('nothing but latin here'), false);
+  }
+  // The caveman tiers are English by construction and must NOT be pinned.
+  for (const code of ['caveman', 'caveman-lite', 'caveman-ultra', 'de', 'es']) {
+    assert.equal(REQUIRED_SCRIPT.has(code), false, `${code} is written in latin script`);
+  }
+});
 
 test('an orphaned CJK mirror is no-source, not a scaffold — the irreversible case', () => {
   // The file exists; its English source was deleted or its id renamed, so there is nothing
