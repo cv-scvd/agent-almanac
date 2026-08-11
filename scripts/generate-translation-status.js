@@ -7,8 +7,12 @@
  *
  * Usage:
  *   node scripts/generate-translation-status.js
- *   node scripts/generate-translation-status.js --verdicts   # also list every stub, with
- *                                                            # the reason and line counts
+ *   node scripts/generate-translation-status.js --verdicts   # list every stub with its
+ *                                                            # reason and line counts, plus
+ *                                                            # any orphaned mirror
+ *   node scripts/generate-translation-status.js --margins     # per locale, the genuine
+ *                                                            # translations that came
+ *                                                            # closest to a stub verdict
  */
 
 import { readFileSync, writeFileSync, readdirSync, existsSync, statSync } from 'fs';
@@ -17,11 +21,19 @@ import { fileURLToPath } from 'url';
 import * as yaml from 'js-yaml';
 import { assertNotShallow, createFreshnessChecker } from './lib/git-freshness.js';
 import { buildEnglishProseHistory, classifyTranslation, translationKey } from './lib/translation-status.js';
+import { TREES } from './lib/fences.js';
 
 // A stub verdict is acted on by deleting and re-scaffolding the file (#478), so a wrong one
 // destroys work. The aggregate counts cannot be reviewed; this prints the per-file list that
 // can. Use it before any bulk remediation.
 const SHOW_VERDICTS = process.argv.includes('--verdicts');
+
+// The detector's safety case is a MARGIN — how many novel lines the closest genuine
+// translation carries above the scaffold verdict. That was measured once and written into a
+// comment, where it rots. This re-measures it on demand, and doubles as the drift alarm the
+// comment's "re-measure before lowering the floor" instruction otherwise lacks.
+const SHOW_MARGINS = process.argv.includes('--margins');
+const MARGIN_COUNT = 5;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -102,9 +114,14 @@ function countTranslations(locale, contentType) {
   let translated = 0;
   let stale = 0;
   let stubs = 0;
+  // Every non-stub verdict's novel-line count, so `--margins` can report how close the
+  // closest genuine translation came to the scaffold verdict. The module header's safety
+  // case rests on that margin being 2 lines on the compressed tiers; an instruction to
+  // "re-measure before lowering the floor" needs something to re-measure with.
+  const margins = [];
 
   if (!existsSync(typeDir)) {
-    return { translated, stale, stubs };
+    return { translated, stale, stubs, margins };
   }
 
   const entries = readdirSync(typeDir);
@@ -137,13 +154,25 @@ function countTranslations(locale, contentType) {
       locale,
       englishLines: englishProse.get(key),
     });
+    // `novel` is null when the comparison did not run. Printing `-` rather than `0` keeps
+    // the distinction visible in the one list a maintainer reads before deleting files.
+    const measured = verdict.novel === null ? '-' : String(verdict.novel);
+
     if (verdict.stub) {
       stubs++;
       if (SHOW_VERDICTS) {
-        console.log(`  STUB ${locale}/${key}  (${verdict.reason}, ${verdict.foreign}/${verdict.total} foreign)`);
+        console.log(`  STUB      ${locale}/${key}  (${verdict.reason}, ${measured}/${verdict.total} novel)`);
       }
       continue;
     }
+
+    // Surfaced because it is a lenient hole with no counter of its own: a mirror whose id
+    // matches no English content in history OR the working tree is counted as translated,
+    // and it most likely indicates an orphaned or misspelt directory, which is actionable.
+    if (verdict.reason === 'no-source' && SHOW_VERDICTS) {
+      console.log(`  NO-SOURCE ${locale}/${key}  (counted as translated — orphaned mirror?)`);
+    }
+    if (verdict.novel !== null) margins.push({ key, novel: verdict.novel });
 
     translated++;
 
@@ -157,12 +186,15 @@ function countTranslations(locale, contentType) {
     }
   }
 
-  return { translated, stale, stubs };
+  return { translated, stale, stubs, margins };
 }
 
 // ── Main ─────────────────────────────────────────────────────────
 
-const contentTypes = ['skills', 'agents', 'teams', 'guides'];
+// `TREES`, not a second literal list: `buildEnglishProseHistory` pools from `TREES`, so a
+// fifth tree added there but not here would be pooled and never scanned — coverage for it
+// silently absent from the YAML, with no error. Same drift class as #519.
+const contentTypes = TREES;
 const locales = config.supported_locales.map(l => l.code);
 const today = new Date().toISOString().split('T')[0];
 
@@ -179,16 +211,26 @@ for (const locale of locales) {
   let totalStubs = 0;
   const totalSource = sourceCounts.total;
 
+  const localeMargins = [];
   for (const contentType of contentTypes) {
     const startedAt = Date.now();
-    const { translated, stale, stubs } = countTranslations(locale, contentType);
+    const { translated, stale, stubs, margins } = countTranslations(locale, contentType);
     const total = sourceCounts[contentType];
     const pct = total > 0 ? Math.round((translated / total) * 1000) / 10 : 0;
     coverage[contentType] = { translated, total, pct, stale, stubs };
     totalTranslated += translated;
     totalStale += stale;
     totalStubs += stubs;
+    localeMargins.push(...margins);
     console.log(`  scan ${locale}/${contentType}: ${translated} translated, ${stale} stale, ${stubs} stubs (${Date.now() - startedAt}ms)`);
+  }
+
+  if (SHOW_MARGINS) {
+    const closest = localeMargins.sort((a, b) => a.novel - b.novel).slice(0, MARGIN_COUNT);
+    console.log(`  margin ${locale}: closest genuine translations to the scaffold verdict — `
+      + (closest.length
+        ? closest.map((m) => `${m.key}=${m.novel}`).join('  ')
+        : 'none (no judged translations)'));
   }
 
   const totalPct = totalSource > 0
@@ -212,4 +254,10 @@ for (const locale of locales) {
   writeFileSync(statusPath, yaml.dump(status, { flowLevel: 3 }));
   console.log(`GENERATED: ${statusPath.replace(ROOT + '/', '')}`);
   console.log(`  Coverage: ${totalTranslated}/${totalSource} (${totalPct}%), ${totalStale} stale, ${totalStubs} stubs`);
+  // Standing hint, not a footnote in a docstring. A stub verdict is remediated by deleting
+  // the file, the detector's errors point strict, and `--verdicts` was discoverable only by
+  // reading the source — which makes the containment documentation rather than a control.
+  if (totalStubs > 0 && !SHOW_VERDICTS) {
+    console.log(`  ${totalStubs} stubs — re-run with --verdicts and read the per-file list before any re-scaffold.`);
+  }
 }

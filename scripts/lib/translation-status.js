@@ -77,11 +77,11 @@ const GIT_BUFFER = 512 * 1024 * 1024;
  * The floor errs **strict**, not neutral: a short translated line such as `## Nutzung` is
  * genuine evidence of translation that this discards, and discarding evidence can only flip
  * a verdict toward `stub`. Measured, the margin holds anyway — the genuine translation
- * closest to the scaffold verdict corpus-wide is a `caveman-lite` file with 2 foreign lines,
+ * closest to the scaffold verdict corpus-wide is a `caveman-lite` file with 2 novel lines,
  * and among the natural-language locales the closest carries 5. Re-measure before lowering
  * it; do not reason about it.
  */
-export const MIN_LINE_LENGTH = 12;
+export const MIN_COMPARABLE_LINE_CHARS = 12;
 
 /**
  * Fewest substantive lines a file must have before the zero-evidence rule may fire. A file
@@ -89,7 +89,7 @@ export const MIN_LINE_LENGTH = 12;
  * "short". Files below this are reported `insufficient` and counted as translated, which is
  * the lenient direction — stated so a reader knows which way the residue leans.
  */
-export const MIN_SUBSTANTIVE_LINES = 5;
+export const MIN_LINES_TO_JUDGE = 5;
 
 /**
  * Locales written in a script English does not use. A file in one of these containing none
@@ -125,6 +125,10 @@ export const REQUIRED_SCRIPT = new Map([
  * @returns {string} body with LF line endings, or the whole text when no frontmatter closes
  */
 export function stripFrontmatter(content) {
+  // Counts any two `---` lines, so a frontmatter-less historical blob whose body opens with
+  // two horizontal rules loses everything before the second. That shrinks the pool, which is
+  // the lenient direction (more lines look novel, the file reads as translated), and no blob
+  // in this corpus is shaped that way. Left as-is knowingly.
   const lines = toLines(content);
   let delimiters = 0;
   for (let i = 0; i < lines.length; i += 1) {
@@ -165,7 +169,7 @@ export function openLines(text) {
 export function substantiveLines(text) {
   return openLines(text)
     .map((line) => line.trim())
-    .filter((line) => line.length >= MIN_LINE_LENGTH && /\p{L}/u.test(line));
+    .filter((line) => line.length >= MIN_COMPARABLE_LINE_CHARS && /\p{L}/u.test(line));
 }
 
 /**
@@ -194,9 +198,16 @@ export function translationKey(contentType, itemId) {
  * @param {string} input.locale           locale code, e.g. `de`
  * @param {Set<string>} input.englishLines every substantive prose line the English source
  *                                        has ever had (see `buildEnglishProseHistory`)
- * @returns {{stub: boolean, reason: string, foreign: number, total: number}}
- *   `reason` is one of `no-script`, `no-foreign-lines`, `has-foreign-lines`,
+ * @returns {{stub: boolean, reason: string, novel: number|null, total: number}}
+ *   `reason` is one of `no-script`, `no-novel-lines`, `has-novel-lines`,
  *   `insufficient`, `no-source`.
+ *
+ *   **`novel` is `null` whenever the comparison did not run** — on `no-script`, `no-source`
+ *   and `insufficient`. It used to report `0` there, which is a fabricated measurement in
+ *   the one place it does the most damage: the `--verdicts` list a maintainer reads before
+ *   a delete-and-re-scaffold. `(no-script, 0/57)` reads as "checked, nothing novel,
+ *   open-and-shut" for a file that might carry forty novel lines. A verdict must be able to
+ *   say it did not measure.
  */
 export function classifyTranslation({ translatedText, locale, englishLines }) {
   const body = stripFrontmatter(translatedText);
@@ -204,22 +215,22 @@ export function classifyTranslation({ translatedText, locale, englishLines }) {
 
   const script = REQUIRED_SCRIPT.get(locale);
   if (script && !script.test(body)) {
-    return { stub: true, reason: 'no-script', foreign: 0, total: lines.length };
+    return { stub: true, reason: 'no-script', novel: null, total: lines.length };
   }
 
   if (!englishLines) {
-    return { stub: false, reason: 'no-source', foreign: 0, total: lines.length };
+    return { stub: false, reason: 'no-source', novel: null, total: lines.length };
   }
-  if (lines.length < MIN_SUBSTANTIVE_LINES) {
-    return { stub: false, reason: 'insufficient', foreign: 0, total: lines.length };
+  if (lines.length < MIN_LINES_TO_JUDGE) {
+    return { stub: false, reason: 'insufficient', novel: null, total: lines.length };
   }
 
-  let foreign = 0;
-  for (const line of lines) if (!englishLines.has(line)) foreign += 1;
+  let novel = 0;
+  for (const line of lines) if (!englishLines.has(line)) novel += 1;
 
-  return foreign === 0
-    ? { stub: true, reason: 'no-foreign-lines', foreign, total: lines.length }
-    : { stub: false, reason: 'has-foreign-lines', foreign, total: lines.length };
+  return novel === 0
+    ? { stub: true, reason: 'no-novel-lines', novel, total: lines.length }
+    : { stub: false, reason: 'has-novel-lines', novel, total: lines.length };
 }
 
 /**
@@ -228,7 +239,7 @@ export function classifyTranslation({ translatedText, locale, englishLines }) {
  *
  * Pooling across history is what makes the verdict survive surgical mirror propagation: a
  * paragraph spliced into `i18n/**` from a later English revision, sitting in a body copied
- * from an earlier one, is English in both halves and foreign in neither.
+ * from an earlier one, is English in both halves and novel in neither.
  *
  * Costs two git processes for the whole corpus — one `git log --name-only`, one
  * `git cat-file --batch` — rather than one per file (#305). The working tree is added last
@@ -240,7 +251,7 @@ export function classifyTranslation({ translatedText, locale, englishLines }) {
  * a body existing only as conflict-resolution output never enters the pool; and `--name-only`
  * without `--follow` loses pre-rename paths (harmless for the skills flatten, which
  * `contentKey` normalises, but not for an id rename). **Here** both shrink the pool, so a
- * scaffold shows foreign lines and reads as translated — lenient. In `fences.js`, where the
+ * scaffold shows novel lines and reads as translated — lenient. In `fences.js`, where the
  * same pool is a *violation* basis, a missing revision manufactures a false violation —
  * strict. Measured on this repo: adding `--diff-merges=separate` changes the pool by 0 lines
  * and the verdict set by 0 files.

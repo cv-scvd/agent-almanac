@@ -17,9 +17,10 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readdirSync, statSync } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { join, dirname, resolve } from 'path';
+import { fileURLToPath } from 'url';
 import { execFileSync } from 'child_process';
 import {
   stripFrontmatter,
@@ -28,8 +29,11 @@ import {
   classifyTranslation,
   buildEnglishProseHistory,
   translationKey,
-  MIN_SUBSTANTIVE_LINES,
+  MIN_LINES_TO_JUDGE,
 } from '../lib/translation-status.js';
+import { TREES } from '../lib/fences.js';
+
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 // ── fixtures ────────────────────────────────────────────────────────────────
 
@@ -127,7 +131,7 @@ test('a scaffold is a scaffold after English moves on (#473 — the window)', ()
 
   const verdict = classifyTranslation({ translatedText: scaffold, locale: 'de', englishLines: pool });
   assert.equal(verdict.stub, true);
-  assert.equal(verdict.reason, 'no-foreign-lines');
+  assert.equal(verdict.reason, 'no-novel-lines');
 
   // And the point of the historical pool: comparing against current English ALONE would
   // still call it a stub here only because the old lines survived the edit. Delete one and
@@ -150,7 +154,7 @@ test('a CRLF scaffold is still a scaffold (#532)', () => {
   const scaffold = withFrontmatter(ENGLISH_BODY).replace(/\n/g, '\r\n');
   const verdict = classifyTranslation({ translatedText: scaffold, locale: 'de', englishLines: poolOf(ENGLISH_BODY) });
   assert.equal(verdict.stub, true, 'CRLF must not launder a scaffold into the translated count');
-  assert.equal(verdict.foreign, 0);
+  assert.equal(verdict.novel, 0);
 });
 
 test('a scaffold surgically patched from a later revision is still a scaffold', () => {
@@ -194,7 +198,7 @@ test('a genuine translation is not a scaffold', () => {
   ].join('\n'));
   const verdict = classifyTranslation({ translatedText: german, locale: 'de', englishLines: poolOf(ENGLISH_BODY) });
   assert.equal(verdict.stub, false);
-  assert.equal(verdict.reason, 'has-foreign-lines');
+  assert.equal(verdict.reason, 'has-novel-lines');
 });
 
 test('a near-English compressed tier is not a scaffold on one differing line', () => {
@@ -207,7 +211,7 @@ test('a near-English compressed tier is not a scaffold on one differing line', (
   );
   const verdict = classifyTranslation({ translatedText: caveman, locale: 'caveman-lite', englishLines: poolOf(ENGLISH_BODY) });
   assert.equal(verdict.stub, false);
-  assert.equal(verdict.foreign, 1);
+  assert.equal(verdict.novel, 1);
 });
 
 test('an identical body under a locale with no script rule still needs prose evidence', () => {
@@ -251,39 +255,72 @@ test('a translated CJK file passes the script rule and then the prose rule', () 
   ].join('\n'));
   const verdict = classifyTranslation({ translatedText: japanese, locale: 'ja', englishLines: poolOf(ENGLISH_BODY) });
   assert.equal(verdict.stub, false);
-  assert.equal(verdict.reason, 'has-foreign-lines');
+  assert.equal(verdict.reason, 'has-novel-lines');
 });
 
 test('zh-CN does not accept kana as evidence of Chinese', () => {
   // Kana only — no han. `行` would be a Han character and would defeat the point.
   const kanaOnly = withFrontmatter(`${ENGLISH_BODY}\nこれはひらがなだけのぎょうです。\n`);
   assert.equal(classifyTranslation({ translatedText: kanaOnly, locale: 'zh-CN', englishLines: poolOf(ENGLISH_BODY) }).reason, 'no-script');
-  assert.equal(classifyTranslation({ translatedText: kanaOnly, locale: 'ja', englishLines: poolOf(ENGLISH_BODY) }).reason, 'has-foreign-lines');
+  assert.equal(classifyTranslation({ translatedText: kanaOnly, locale: 'ja', englishLines: poolOf(ENGLISH_BODY) }).reason, 'has-novel-lines');
 });
 
 // ── the lenient residue, stated rather than hidden ──────────────────────────
+
+test('a verdict that did not measure reports novel as null, never 0', () => {
+  // The `--verdicts` list is what a maintainer reads before deleting files. A `0` there
+  // means "compared, nothing novel". These three paths return BEFORE the comparison runs,
+  // and reporting 0 fabricates a measurement in the one place it does the most damage:
+  // `(no-script, 0/57)` reads open-and-shut for a file that may carry forty novel lines.
+  const english = poolOf(ENGLISH_BODY);
+
+  const noScript = classifyTranslation({
+    translatedText: withFrontmatter(ENGLISH_BODY), locale: 'ja', englishLines: english,
+  });
+  assert.equal(noScript.reason, 'no-script');
+  assert.equal(noScript.novel, null);
+
+  const noSource = classifyTranslation({
+    translatedText: withFrontmatter(ENGLISH_BODY), locale: 'de', englishLines: undefined,
+  });
+  assert.equal(noSource.reason, 'no-source');
+  assert.equal(noSource.novel, null);
+
+  const short = classifyTranslation({
+    translatedText: withFrontmatter('# Title\n\nOne single line of prose here.\n'),
+    locale: 'de',
+    englishLines: english,
+  });
+  assert.equal(short.reason, 'insufficient');
+  assert.equal(short.novel, null);
+
+  // And the paths that DO measure still report a number, including zero.
+  assert.equal(classifyTranslation({
+    translatedText: withFrontmatter(ENGLISH_BODY), locale: 'de', englishLines: english,
+  }).novel, 0);
+});
 
 test('a file too short to judge is reported insufficient, not a scaffold', () => {
   const tiny = withFrontmatter('# Title\n\nOne single line of prose here.\n');
   const verdict = classifyTranslation({ translatedText: tiny, locale: 'de', englishLines: poolOf(ENGLISH_BODY) });
   assert.equal(verdict.stub, false);
   assert.equal(verdict.reason, 'insufficient');
-  assert.ok(verdict.total < MIN_SUBSTANTIVE_LINES);
+  assert.ok(verdict.total < MIN_LINES_TO_JUDGE);
 });
 
 // The boundary, pinned on BOTH sides with literal counts. Asserting
-// `total < MIN_SUBSTANTIVE_LINES` against the imported constant is self-referential and
+// `total < MIN_LINES_TO_JUDGE` against the imported constant is self-referential and
 // cannot fix a value: mutating 5 to 2, 3 or 4 survives it. These two do not — the fixtures
 // are built to have exactly 5 and exactly 4 substantive lines by construction.
 const lineOfLength = (n, i) => `Fixture prose line ${i}`.padEnd(n, 'x');
 
-test('exactly MIN_SUBSTANTIVE_LINES substantive lines is enough to judge', () => {
+test('exactly MIN_LINES_TO_JUDGE substantive lines is enough to judge', () => {
   const body = Array.from({ length: 5 }, (_, i) => lineOfLength(20, i)).join('\n\n');
   const verdict = classifyTranslation({
     translatedText: withFrontmatter(body), locale: 'de', englishLines: poolOf(body),
   });
   assert.equal(verdict.total, 5, 'fixture must sit exactly on the boundary');
-  assert.equal(verdict.reason, 'no-foreign-lines');
+  assert.equal(verdict.reason, 'no-novel-lines');
   assert.equal(verdict.stub, true);
 });
 
@@ -297,7 +334,7 @@ test('one line below the boundary is not judged', () => {
   assert.equal(verdict.stub, false);
 });
 
-test('MIN_LINE_LENGTH is pinned at both ends too', () => {
+test('MIN_COMPARABLE_LINE_CHARS is pinned at both ends too', () => {
   // A 12-character line counts; an 11-character one does not. Without this, `>=` mutates to
   // `>` and nothing notices.
   const twelve = 'abcdefghijkl';
@@ -328,6 +365,26 @@ test('translationKey agrees with contentKey, including on what is not content', 
   assert.equal(translationKey('skills', '_template'), null);
   assert.equal(translationKey('guides', '_template'), null);
   assert.equal(translationKey('teams', 'README'), null);
+});
+
+test('every content tree present in i18n/ is one the scan walks', () => {
+  // `generate-translation-status.js` iterates `TREES`, and `buildEnglishProseHistory` pools
+  // from `TREES` — one list, so they cannot disagree. What they CAN both miss is a tree that
+  // exists in the corpus and is in neither: it would be silently absent from every coverage
+  // number, with no error. Mutating `contentTypes` away from `TREES` in the script survives
+  // the unit suite (no seam), so this asserts the corpus-level invariant instead.
+  const i18nDir = join(REPO_ROOT, 'i18n');
+  const found = new Set();
+  for (const locale of readdirSync(i18nDir)) {
+    const localeDir = join(i18nDir, locale);
+    if (!statSync(localeDir).isDirectory()) continue;
+    for (const entry of readdirSync(localeDir)) {
+      if (statSync(join(localeDir, entry)).isDirectory()) found.add(entry);
+    }
+  }
+  const unscanned = [...found].filter((tree) => !TREES.includes(tree)).sort();
+  assert.deepEqual(unscanned, [],
+    `i18n/ carries content tree(s) the status scan never visits: ${unscanned.join(', ')}`);
 });
 
 // ── the git path ────────────────────────────────────────────────────────────
