@@ -6,9 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Fixed
+- i18n stub detection: a stray fence opener that *pairs* with a real fence inverted the document's fence phase and hid prose from comparison. An added ```` ```bash ```` cannot close anything (a closer carries no trailing text) but it opens, so the real opener was swallowed into its body and the real closer closed the stray fence. Measured: `total` 5 → 3, verdict `no-novel-lines` (a scaffold) → `insufficient`, which is counted as **translated**. One added line laundered a scaffold. #558 fixed only the *unterminated* case and passes this fixture. Detected now by comparing the file's fence **shape** — the ordered list of info-string tags, which are keep-in-English in every locale — against every shape its English source has ever had. Shape, not count: the flip leaves the count unchanged. Tags, not bodies: #477's backlog leaves 1,220+ bodies diverging, so a body comparison would refuse to judge much of the corpus. (#561)
 - `scripts/generate-readmes.js` — the published README translations table counted files, not translations, so every cell was `translated + stubs`: it read `de 383/500 (76.6%)` where `i18n/de/translation_status.yml` measured `347/500 (69.4%)`. The table now renders the status files' figures verbatim (denominators and `pct` included, so the two surfaces cannot disagree by rounding) and breaks `stubs` out as its own column. Existence counting survives only for a locale with no status file, and such a cell is marked `*`. (#560)
 
 ### Added
+- `unjudged` count in every `translation_status.yml`, and an `UNJUDGED` line in `translation:status --verdicts`. A file whose fence mask cannot be trusted is counted as neither translated nor stub: counting it translated inflates coverage, and calling it a stub routes a possibly fully-translated file into a remedy that deletes it. (#561)
 - `scripts/check-readme-translation-parity.js` + integrity check B13 — gates the README table against `i18n/*/translation_status.yml`. It parses both committed artifacts and never calls the generator: a regenerate-and-compare gate agrees with any generator bug, which is why `check-readmes` passed throughout (it also runs only in `release.yml`). Iterates locales rather than table rows, so a deleted row is visible. (#560)
 
 ### Changed

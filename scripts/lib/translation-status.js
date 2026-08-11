@@ -63,7 +63,7 @@
 import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 import { execFileSync, spawnSync } from 'child_process';
-import { toLines, extractFences, isGated, contentKey, TREES } from './fences.js';
+import { toLines, extractFences, isGated, contentKey, fenceShape, TREES } from './fences.js';
 
 // Smaller than `lib/fences.js`'s 2 GiB, and the earlier justification here was wrong: the
 // buffer bounds `git cat-file --batch` stdout, which is the same bytes in both callers, so
@@ -178,6 +178,24 @@ export function openLines(text) {
 }
 
 /**
+ * Does any frozen region of `text` actually remove content from comparison?
+ *
+ * The second half of the `fence-mismatch` test (#561). A fence shape that matches no English
+ * revision is only *dangerous* when the mask built from it swallowed something; when it hid
+ * nothing, the count is sound whatever the shape says. Mirrors `openLines`' own conditions
+ * exactly — gated, terminated, non-empty body — so the two cannot drift into disagreeing
+ * about what "hidden" means.
+ *
+ * @param {string} text body text, frontmatter already stripped
+ * @returns {boolean}
+ */
+export function hidesLines(text) {
+  return extractFences(text).some(
+    (fence) => isGated(fence) && !fence.unterminated && fence.bodyEnd > fence.bodyStart,
+  );
+}
+
+/**
  * The lines of `text` long enough to carry prose, trimmed.
  * @param {string} text
  * @returns {string[]}
@@ -212,22 +230,30 @@ export function translationKey(contentType, itemId) {
  * @param {object} input
  * @param {string} input.translatedText   full text of the translated file
  * @param {string} input.locale           locale code, e.g. `de`
- * @param {Set<string>} input.englishLines every substantive prose line the English source
- *                                        has ever had (see `buildEnglishProseHistory`)
- * @returns {{stub: boolean, reason: string, novel: number|null, total: number}}
+ * @param {{lines: Set<string>, fenceShapes: Set<string>}|undefined} input.english the English
+ *   source's pooled history (see `buildEnglishProseHistory`), or undefined when it has none.
+ *   Both pools arrive together deliberately: passing prose without shapes was possible while
+ *   they were separate parameters, and a caller that forgot the second one would silently
+ *   lose the #561 check with no symptom.
+ * @returns {{stub: boolean, reason: string, novel: number|null, total: number|null}}
  *   `reason` is one of `no-script`, `no-novel-lines`, `has-novel-lines`,
- *   `insufficient`, `no-source`.
+ *   `insufficient`, `no-source`, `fence-mismatch`.
  *
- *   **`novel` is `null` whenever the comparison did not run** — on `no-script`, `no-source`
- *   and `insufficient`. It used to report `0` there, which is a fabricated measurement in
+ *   `fence-mismatch` reports `total: null` as well as `novel: null`: the count itself was
+ *   taken through a mask the file just proved untrustworthy, so reporting it would be
+ *   presenting a corrupted measurement as a measurement.
+ *
+ *   **`novel` is `null` whenever the comparison did not run** — on `no-script`, `no-source`,
+ *   `insufficient` and `fence-mismatch`. It used to report `0` there, which is a fabricated measurement in
  *   the one place it does the most damage: the `--verdicts` list a maintainer reads before
  *   a delete-and-re-scaffold. `(no-script, 0/57)` reads as "checked, nothing novel,
  *   open-and-shut" for a file that might carry forty novel lines. A verdict must be able to
  *   say it did not measure.
  */
-export function classifyTranslation({ translatedText, locale, englishLines }) {
+export function classifyTranslation({ translatedText, locale, english }) {
   const body = stripFrontmatter(translatedText);
   const lines = substantiveLines(body);
+  const englishLines = english?.lines;
 
   // ORDER MATTERS, and it is not the obvious one. The two "we cannot judge this" checks run
   // BEFORE the decisive script rule, because a decisive rule must not outrank an admission
@@ -245,6 +271,29 @@ export function classifyTranslation({ translatedText, locale, englishLines }) {
   if (!englishLines) {
     return { stub: false, reason: 'no-source', novel: null, total: lines.length };
   }
+
+  // Third "we cannot judge this" check, and it must precede `insufficient` rather than follow
+  // it. A shape mismatch means the frozen-region mask is wrong, and `lines.length` is computed
+  // THROUGH that mask — so `total` is exactly the number not to be trusted. Ordering this
+  // after the line-count rule would let the corrupted count answer first, which is the bug:
+  // the phase flip drives `total` DOWN, straight through MIN_LINES_TO_JUDGE, and
+  // `insufficient` is counted as translated (#561).
+  //
+  // Two conditions, and the second is what keeps this narrow. A shape mismatch alone is not
+  // enough: #558's unterminated stray opener also mismatches, but an unterminated fence is no
+  // longer treated as frozen, so it hides nothing and the count through the mask is sound —
+  // that file must stay judgeable, and its scaffold must still be called a scaffold. What
+  // makes a measurement void is a mask that BOTH disagrees with every English revision AND
+  // actually removed lines. The phase flip does both; the unterminated case does neither.
+  //
+  // `fenceShapes` is empty only for a key with no pooled revisions, which cannot happen once
+  // `englishLines` is non-empty; the guard keeps a hand-built pool from silently disabling
+  // the check.
+  const shapes = english.fenceShapes;
+  if (shapes && shapes.size && !shapes.has(fenceShape(body)) && hidesLines(body)) {
+    return { stub: false, reason: 'fence-mismatch', novel: null, total: null };
+  }
+
   if (lines.length < MIN_LINES_TO_JUDGE) {
     return { stub: false, reason: 'insufficient', novel: null, total: lines.length };
   }
@@ -286,7 +335,9 @@ export function classifyTranslation({ translatedText, locale, englishLines }) {
  * and the verdict set by 0 files.
  *
  * @param {string} root repository root
- * @returns {Map<string, Set<string>>}
+ * @returns {Map<string, {lines: Set<string>, fenceShapes: Set<string>}>} per source: every
+ *   substantive prose line it has ever carried, and every fence shape it has ever had
+ *   (see `fenceShape`). One walk feeds both.
  */
 export function buildEnglishProseHistory(root) {
   const log = execFileSync(
@@ -309,9 +360,14 @@ export function buildEnglishProseHistory(root) {
   const history = new Map();
   const add = (key, text) => {
     if (key === null) return;
-    if (!history.has(key)) history.set(key, new Set());
-    const set = history.get(key);
-    for (const line of substantiveLines(stripFrontmatter(text))) set.add(line);
+    if (!history.has(key)) history.set(key, { lines: new Set(), fenceShapes: new Set() });
+    const entry = history.get(key);
+    const body = stripFrontmatter(text);
+    for (const line of substantiveLines(body)) entry.lines.add(line);
+    // Same walk, second collector. Pooling the shape here rather than in a third history
+    // builder is deliberate: #559 already objects to the two near-identical walkers this
+    // module and fences.js each carry, and a third would make that worse for one Set.
+    entry.fenceShapes.add(fenceShape(body));
   };
 
   if (specs.length) {

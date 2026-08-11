@@ -232,6 +232,31 @@ export function toLines(text) {
 }
 
 /**
+ * The document's fence structure as one comparable string: every fence's tag, in order.
+ *
+ * Info-string tags are never translated — they are the machine-readable part of the fence,
+ * and the keep-in-English rule freezes them in every locale. So a translated file's shape
+ * must equal its English source's shape at *some* revision, and a shape appearing in no
+ * revision means the mask cannot be trusted (#561).
+ *
+ * Shape rather than count, because the failure this detects leaves the count intact. A stray
+ * ```` ```bash ```` opener cannot close anything (a closer carries no trailing text), but it
+ * *opens*, so the real opener below it is swallowed into the body and the real closer closes
+ * the stray fence instead. Measured on a two-fence body: count 1 -> 1, shape `yaml` -> `bash`,
+ * and five lines of prose vanish from comparison. A count check sees nothing.
+ *
+ * Tags, not bodies: #477's backlog leaves 1,220+ translated fence *bodies* diverging from
+ * English, so gating on bodies would refuse to judge much of the corpus. Measured on the live
+ * corpus, gating on shape leaves 73 of 3,644 files (2.00%) matching no revision.
+ *
+ * @param {string} text
+ * @returns {string} e.g. `bash|yaml|markdown`; `''` for a file with no fences
+ */
+export function fenceShape(text) {
+  return extractFences(text).map((f) => f.lang || '').join('|');
+}
+
+/**
  * Extract every fenced block from `text`.
  * @param {string} text
  * @returns {Fence[]}
