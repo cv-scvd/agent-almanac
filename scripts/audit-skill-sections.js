@@ -21,6 +21,7 @@
 import { readFileSync, existsSync, readdirSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
+import { toLines } from './lib/fences.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -126,7 +127,10 @@ export function auditSkill(skillId) {
   if (!existsSync(path)) return { skill: skillId, error: 'SKILL.md not found' };
 
   const raw = readFileSync(path, 'utf8');
-  const lines = raw.split('\n');
+  // Normalised, not `split('\n')`: heading detection compares whole trimmed lines, so a
+  // working-tree CRLF copy would leave `## Common Pitfalls\r` matching nothing and report
+  // every required section missing (#532's audit of the other splitting sites).
+  const lines = toLines(raw);
   const missing = REQUIRED_SECTIONS.filter((heading) => sectionBody(lines, heading) === null);
   const pitfalls = countPitfalls(sectionBody(lines, 'Common Pitfalls'));
   const versionMatch = raw.match(/^\s+version:\s*"([^"]+)"/m);
