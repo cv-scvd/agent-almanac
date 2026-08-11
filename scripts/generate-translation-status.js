@@ -139,6 +139,7 @@ function countTranslations(locale, contentType) {
   let translated = 0;
   let stale = 0;
   let stubs = 0;
+  let unjudged = 0;
   // Every non-stub verdict's novel-line count, so `--margins` can report how close the
   // closest genuine translation came to the scaffold verdict. The module header's safety
   // case rests on that margin being 2 lines on the compressed tiers; an instruction to
@@ -146,7 +147,7 @@ function countTranslations(locale, contentType) {
   const margins = [];
 
   if (!existsSync(typeDir)) {
-    return { translated, stale, stubs, margins };
+    return { translated, stale, stubs, unjudged, margins };
   }
 
   const entries = readdirSync(typeDir);
@@ -177,7 +178,7 @@ function countTranslations(locale, contentType) {
     const verdict = classifyTranslation({
       translatedText: readFileSync(translatedFile, 'utf8'),
       locale,
-      englishLines: englishProse.get(key),
+      english: englishProse.get(key),
     });
     // `novel` is null when the comparison did not run. Printing `-` rather than `0` keeps
     // the distinction visible in the one list a maintainer reads before deleting files.
@@ -194,6 +195,20 @@ function countTranslations(locale, contentType) {
       stubs++;
       if (SHOW_VERDICTS) {
         console.log(`  STUB      ${shownPath}  (${verdict.reason}, ${measured}/${verdict.total} novel)`);
+      }
+      continue;
+    }
+
+    // Its own bucket, counted as neither translated nor stub. Both alternatives are wrong in
+    // a way that matters: counting it TRANSLATED is the coverage inflation #561 reports, and
+    // counting it a STUB routes a possibly fully-translated file into a remedy that deletes
+    // it. The file's fence structure matches no revision its English source ever had, so the
+    // frozen-region mask is untrustworthy and every measurement taken through it is void —
+    // the honest report is that this file was not judged.
+    if (verdict.reason === 'fence-mismatch') {
+      unjudged++;
+      if (SHOW_VERDICTS) {
+        console.log(`  UNJUDGED  ${shownPath}  (fence-mismatch — fence shape matches no English revision; not counted as translated)`);
       }
       continue;
     }
@@ -218,7 +233,7 @@ function countTranslations(locale, contentType) {
     }
   }
 
-  return { translated, stale, stubs, margins };
+  return { translated, stale, stubs, unjudged, margins };
 }
 
 // ── Main ─────────────────────────────────────────────────────────
@@ -241,20 +256,22 @@ for (const locale of locales) {
   let totalTranslated = 0;
   let totalStale = 0;
   let totalStubs = 0;
+  let totalUnjudged = 0;
   const totalSource = sourceCounts.total;
 
   const localeMargins = [];
   for (const contentType of contentTypes) {
     const startedAt = Date.now();
-    const { translated, stale, stubs, margins } = countTranslations(locale, contentType);
+    const { translated, stale, stubs, unjudged, margins } = countTranslations(locale, contentType);
     const total = sourceCounts[contentType];
     const pct = total > 0 ? Math.round((translated / total) * 1000) / 10 : 0;
-    coverage[contentType] = { translated, total, pct, stale, stubs };
+    coverage[contentType] = { translated, total, pct, stale, stubs, unjudged };
     totalTranslated += translated;
     totalStale += stale;
     totalStubs += stubs;
+    totalUnjudged += unjudged;
     localeMargins.push(...margins);
-    console.log(`  scan ${locale}/${contentType}: ${translated} translated, ${stale} stale, ${stubs} stubs (${Date.now() - startedAt}ms)`);
+    console.log(`  scan ${locale}/${contentType}: ${translated} translated, ${stale} stale, ${stubs} stubs, ${unjudged} unjudged (${Date.now() - startedAt}ms)`);
   }
 
   if (SHOW_MARGINS) {
@@ -274,6 +291,7 @@ for (const locale of locales) {
     pct: totalPct,
     stale: totalStale,
     stubs: totalStubs,
+    unjudged: totalUnjudged,
   };
 
   const status = {
@@ -289,7 +307,10 @@ for (const locale of locales) {
   } else {
     console.log(`INSPECTED: ${statusPath.replace(ROOT + '/', '')} (not written — pass --write to regenerate)`);
   }
-  console.log(`  Coverage: ${totalTranslated}/${totalSource} (${totalPct}%), ${totalStale} stale, ${totalStubs} stubs`);
+  console.log(`  Coverage: ${totalTranslated}/${totalSource} (${totalPct}%), ${totalStale} stale, ${totalStubs} stubs, ${totalUnjudged} unjudged`);
+  if (totalUnjudged > 0 && !SHOW_VERDICTS) {
+    console.log(`  ${totalUnjudged} unjudged — fence shape matches no English revision, so these were not measured at all. Re-run with --verdicts to list them.`);
+  }
   // Standing hint, not a footnote in a docstring. A stub verdict is remediated by deleting
   // the file, the detector's errors point strict, and `--verdicts` was discoverable only by
   // reading the source — which makes the containment documentation rather than a control.

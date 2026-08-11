@@ -28,11 +28,12 @@ import {
   substantiveLines,
   classifyTranslation,
   buildEnglishProseHistory,
+  hidesLines,
   translationKey,
   REQUIRED_SCRIPT,
   MIN_LINES_TO_JUDGE,
 } from '../lib/translation-status.js';
-import { TREES } from '../lib/fences.js';
+import { TREES, fenceShape, hasSwallowedOpener } from '../lib/fences.js';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -68,8 +69,34 @@ const withFrontmatter = (body, extra = '') => [
   body,
 ].filter((l) => l !== '').join('\n');
 
-/** Every substantive line of `body`, as the English pool would hold them. */
-const poolOf = (...bodies) => new Set(bodies.flatMap((b) => substantiveLines(b)));
+/** A pool that exists but holds nothing — distinct from having no English source at all. */
+const emptyPool = () => ({ lines: new Set(), fenceShapes: new Set() });
+
+/**
+ * The English pool for `bodies`: every substantive line, and every fence shape.
+ *
+ * Both halves together, because `classifyTranslation` takes one paired object rather than two
+ * parameters. While they were separate, a caller could pass prose and forget shapes, losing
+ * the #561 check with no symptom — the pairing makes that unrepresentable.
+ */
+const poolOf = (...bodies) => ({
+  lines: new Set(bodies.flatMap((b) => substantiveLines(b))),
+  // Every fixture body is a legitimate English revision, so its own shape is in the pool.
+  fenceShapes: new Set(bodies.map((b) => fenceShape(b))),
+});
+
+/**
+ * The pool, plus the fence-free shape.
+ *
+ * For fixtures that are bodies with NO fences: their English source must plausibly have had a
+ * fence-free revision too, or the shape check (#561) fires first and the rule under test never
+ * runs. Stating that assumption beats loosening the rule to suit the fixture.
+ */
+const poolAllowingNoFences = (...bodies) => {
+  const pool = poolOf(...bodies);
+  pool.fenceShapes.add(fenceShape(''));
+  return pool;
+};
 
 // ── stripFrontmatter ────────────────────────────────────────────────────────
 
@@ -130,7 +157,7 @@ test('a scaffold is a scaffold after English moves on (#473 — the window)', ()
   // Pool spans history: the old body AND the current one.
   const pool = poolOf(ENGLISH_BODY, englishNow);
 
-  const verdict = classifyTranslation({ translatedText: scaffold, locale: 'de', englishLines: pool });
+  const verdict = classifyTranslation({ translatedText: scaffold, locale: 'de', english: pool });
   assert.equal(verdict.stub, true);
   assert.equal(verdict.reason, 'no-novel-lines');
 
@@ -140,12 +167,12 @@ test('a scaffold is a scaffold after English moves on (#473 — the window)', ()
   const englishRewritten = ENGLISH_BODY
     .replace('Verify the package directory was created before continuing.', 'Confirm the directory exists.');
   assert.equal(
-    classifyTranslation({ translatedText: scaffold, locale: 'de', englishLines: poolOf(englishRewritten) }).stub,
+    classifyTranslation({ translatedText: scaffold, locale: 'de', english: poolOf(englishRewritten) }).stub,
     false,
     'sanity: a single-revision pool loses the scaffold, which is exactly defect #473',
   );
   assert.equal(
-    classifyTranslation({ translatedText: scaffold, locale: 'de', englishLines: poolOf(ENGLISH_BODY, englishRewritten) }).stub,
+    classifyTranslation({ translatedText: scaffold, locale: 'de', english: poolOf(ENGLISH_BODY, englishRewritten) }).stub,
     true,
     'the historical pool keeps it',
   );
@@ -153,7 +180,7 @@ test('a scaffold is a scaffold after English moves on (#473 — the window)', ()
 
 test('a CRLF scaffold is still a scaffold (#532)', () => {
   const scaffold = withFrontmatter(ENGLISH_BODY).replace(/\n/g, '\r\n');
-  const verdict = classifyTranslation({ translatedText: scaffold, locale: 'de', englishLines: poolOf(ENGLISH_BODY) });
+  const verdict = classifyTranslation({ translatedText: scaffold, locale: 'de', english: poolOf(ENGLISH_BODY) });
   assert.equal(verdict.stub, true, 'CRLF must not launder a scaffold into the translated count');
   assert.equal(verdict.novel, 0);
 });
@@ -171,10 +198,10 @@ test('a scaffold surgically patched from a later revision is still a scaffold', 
   );
 
   // Neither single revision explains it...
-  assert.equal(classifyTranslation({ translatedText: frankenstein, locale: 'de', englishLines: poolOf(ENGLISH_BODY) }).stub, false);
+  assert.equal(classifyTranslation({ translatedText: frankenstein, locale: 'de', english: poolOf(ENGLISH_BODY) }).stub, false);
   // ...but the union of revisions does.
   assert.equal(
-    classifyTranslation({ translatedText: frankenstein, locale: 'de', englishLines: poolOf(ENGLISH_BODY, englishNew) }).stub,
+    classifyTranslation({ translatedText: frankenstein, locale: 'de', english: poolOf(ENGLISH_BODY, englishNew) }).stub,
     true,
   );
 });
@@ -197,7 +224,7 @@ test('a genuine translation is not a scaffold', () => {
     'Pruefe, dass das Paketverzeichnis angelegt wurde, bevor du fortfaehrst.',
     'Die DESCRIPTION-Datei muss Autor und Betreuer nennen.',
   ].join('\n'));
-  const verdict = classifyTranslation({ translatedText: german, locale: 'de', englishLines: poolOf(ENGLISH_BODY) });
+  const verdict = classifyTranslation({ translatedText: german, locale: 'de', english: poolOf(ENGLISH_BODY) });
   assert.equal(verdict.stub, false);
   assert.equal(verdict.reason, 'has-novel-lines');
 });
@@ -210,7 +237,7 @@ test('a near-English compressed tier is not a scaffold on one differing line', (
     ENGLISH_BODY.replace('Use this skill when starting a new R package from scratch.',
       'Use skill when start new R package from scratch.'),
   );
-  const verdict = classifyTranslation({ translatedText: caveman, locale: 'caveman-lite', englishLines: poolOf(ENGLISH_BODY) });
+  const verdict = classifyTranslation({ translatedText: caveman, locale: 'caveman-lite', english: poolOf(ENGLISH_BODY) });
   assert.equal(verdict.stub, false);
   assert.equal(verdict.novel, 1);
 });
@@ -219,7 +246,7 @@ test('an identical body under a locale with no script rule still needs prose evi
   const verdict = classifyTranslation({
     translatedText: withFrontmatter(ENGLISH_BODY),
     locale: 'caveman',
-    englishLines: poolOf(ENGLISH_BODY),
+    english: poolOf(ENGLISH_BODY),
   });
   assert.equal(verdict.stub, true);
 });
@@ -232,7 +259,7 @@ test('a CJK-script locale with no CJK is a scaffold regardless of prose', () => 
   const verdict = classifyTranslation({
     translatedText: withFrontmatter(ENGLISH_BODY),
     locale: 'ja',
-    englishLines: new Set(),
+    english: emptyPool(),
   });
   assert.equal(verdict.stub, true);
   assert.equal(verdict.reason, 'no-script');
@@ -241,7 +268,7 @@ test('a CJK-script locale with no CJK is a scaffold regardless of prose', () => 
 test('the script rule reads the body, not the frontmatter', () => {
   // A scaffold whose frontmatter names the locale in its own script must not pass.
   const scaffold = withFrontmatter(ENGLISH_BODY, '  name_native: 日本語');
-  assert.equal(classifyTranslation({ translatedText: scaffold, locale: 'ja', englishLines: new Set() }).stub, true);
+  assert.equal(classifyTranslation({ translatedText: scaffold, locale: 'ja', english: emptyPool() }).stub, true);
 });
 
 test('a translated CJK file passes the script rule and then the prose rule', () => {
@@ -253,8 +280,14 @@ test('a translated CJK file passes the script rule and then the prose rule', () 
     'パッケージディレクトリが作成されたことを確認してから続行してください。',
     'DESCRIPTIONファイルには著者と管理者を記載する必要があります。',
     'この手順は一度だけ実行してください。',
+    '',
+    // A real translation keeps frozen fences byte-identical; dropping one is itself a defect
+    // (#480), so the fixture must not model a translation as fence-free.
+    '\`\`\`bash',
+    'usethis::create_package("mypkg")',
+    '\`\`\`',
   ].join('\n'));
-  const verdict = classifyTranslation({ translatedText: japanese, locale: 'ja', englishLines: poolOf(ENGLISH_BODY) });
+  const verdict = classifyTranslation({ translatedText: japanese, locale: 'ja', english: poolOf(ENGLISH_BODY) });
   assert.equal(verdict.stub, false);
   assert.equal(verdict.reason, 'has-novel-lines');
 });
@@ -262,8 +295,8 @@ test('a translated CJK file passes the script rule and then the prose rule', () 
 test('zh-CN does not accept kana as evidence of Chinese', () => {
   // Kana only — no han. `行` would be a Han character and would defeat the point.
   const kanaOnly = withFrontmatter(`${ENGLISH_BODY}\nこれはひらがなだけのぎょうです。\n`);
-  assert.equal(classifyTranslation({ translatedText: kanaOnly, locale: 'zh-CN', englishLines: poolOf(ENGLISH_BODY) }).reason, 'no-script');
-  assert.equal(classifyTranslation({ translatedText: kanaOnly, locale: 'ja', englishLines: poolOf(ENGLISH_BODY) }).reason, 'has-novel-lines');
+  assert.equal(classifyTranslation({ translatedText: kanaOnly, locale: 'zh-CN', english: poolOf(ENGLISH_BODY) }).reason, 'no-script');
+  assert.equal(classifyTranslation({ translatedText: kanaOnly, locale: 'ja', english: poolOf(ENGLISH_BODY) }).reason, 'has-novel-lines');
 });
 
 // ── the lenient residue, stated rather than hidden ──────────────────────────
@@ -288,7 +321,7 @@ test('a stray unterminated fence cannot hide a scaffold from comparison', () => 
   const pool = poolOf(plain);
 
   const clean = classifyTranslation({
-    translatedText: withFrontmatter(plain), locale: 'de', englishLines: pool,
+    translatedText: withFrontmatter(plain), locale: 'de', english: pool,
   });
   assert.equal(clean.reason, 'no-novel-lines');
   assert.equal(clean.total, 6);
@@ -297,7 +330,7 @@ test('a stray unterminated fence cannot hide a scaffold from comparison', () => 
   const withStray = classifyTranslation({
     translatedText: withFrontmatter(plain.replace('# Create R Package', '# Create R Package\n```bash')),
     locale: 'de',
-    englishLines: pool,
+    english: pool,
   });
   assert.equal(withStray.stub, true, 'a stray fence opener must not launder a scaffold');
   assert.equal(withStray.reason, 'no-novel-lines');
@@ -309,6 +342,217 @@ test('a stray unterminated fence cannot hide a scaffold from comparison', () => 
   // ...and an unterminated one does not.
   const open = openLines('prose line one here\n```bash\nvisible = 1\n');
   assert.ok(open.some((l) => l.includes('visible')));
+});
+
+test('a stray opener that PAIRS with a real fence cannot hide prose either', () => {
+  // #561, and deliberately a different fixture from the unterminated case above — #558's fix
+  // passes that one and did nothing for this one. Here the added ```bash is perfectly
+  // terminated: it cannot be closed by ```yaml (a closer carries no trailing text), so the
+  // real opener is swallowed into its body and the real CLOSER closes the stray fence. The
+  // document's fence phase inverts. Nothing is malformed in any way extractFences can see.
+  //
+  // Measured before the fix: total 5 -> 3, verdict `no-novel-lines` (stub) -> `insufficient`,
+  // which is counted as TRANSLATED. One added line launders a scaffold.
+  const body = [
+    '# Beispieltitel fuer die Pruefung',
+    '',
+    'Dies ist ein Satz mit genuegend Zeichen fuer die Zaehlung.',
+    'Und hier folgt ein zweiter Satz mit genuegend Zeichen.',
+    '',
+    '```yaml',
+    'name: keep-this-in-english',
+    'domain: testing',
+    '```',
+    '',
+    'Ein dritter Satz, ebenfalls lang genug fuer die Zaehlung.',
+    'Ein vierter Satz, ebenfalls lang genug fuer die Zaehlung.',
+    '',
+  ].join('\n');
+  const pool = poolOf(body);
+
+  const clean = classifyTranslation({ translatedText: body, locale: 'de', english: pool });
+  assert.equal(clean.reason, 'no-novel-lines');
+  assert.equal(clean.total, 5);
+
+  const strayed = body.replace(
+    '# Beispieltitel fuer die Pruefung\n',
+    '# Beispieltitel fuer die Pruefung\n```bash\n',
+  );
+  // The flip is real: prove the mask moved, so this test cannot pass for the wrong reason.
+  assert.equal(fenceShape(body), 'yaml');
+  assert.equal(fenceShape(strayed), 'bash', 'the stray opener must swallow the real one');
+  assert.equal(substantiveLines(strayed).length, 3, 'two prose lines must actually vanish');
+
+  const verdict = classifyTranslation({ translatedText: strayed, locale: 'de', english: pool });
+  assert.equal(verdict.reason, 'fence-mismatch');
+  assert.equal(verdict.stub, false, 'not a scaffold — the remedy for a stub is deletion');
+  assert.equal(verdict.total, null, 'a count taken through a broken mask is not a measurement');
+  assert.equal(verdict.novel, null);
+});
+
+test('an UNTERMINATED stray opener leaves the shape alone, so #558 keeps its verdict', () => {
+  // Why `fenceShape` counts terminated fences only. An unterminated fence is not frozen
+  // (#558) and so describes nothing about the mask; letting it perturb the shape would send
+  // #558's fixture to `fence-mismatch` and let a scaffold escape the stub verdict by growing
+  // one backtick line — the laundering both issues exist to stop, wearing a new name.
+  const plain = [
+    '# Create R Package',
+    'Use this skill when starting a new R package from scratch.',
+    'It covers the directory layout and the DESCRIPTION file.',
+    'Verify the package directory was created before continuing.',
+    'The DESCRIPTION file must name an author and a maintainer.',
+    'One further line of English prose to clear the floor.',
+  ].join('\n');
+  const strayed = plain.replace('# Create R Package', '# Create R Package\n```bash');
+
+  assert.equal(fenceShape(strayed), fenceShape(plain), 'an unterminated fence must not count');
+  assert.equal(hidesLines(strayed), false, 'and it hides nothing, which is why #558 works');
+
+  const verdict = classifyTranslation({ translatedText: strayed, locale: 'de', english: poolOf(plain) });
+  assert.equal(verdict.reason, 'no-novel-lines');
+  assert.equal(verdict.stub, true, 'a scaffold must not escape by mismatching the shape');
+});
+
+test('a stray LOCALISABLE opener is caught even though it hides nothing', () => {
+  // The hole that killed the first version of this fix, which required the mask to have
+  // HIDDEN lines. A ```text opener is localisable, so `hidesLines` is false — yet it still
+  // phase-flips, and instead of hiding prose it EXPOSES the real frozen body. Those
+  // keep-in-English lines are absent from the English prose pool by construction, so they
+  // counted as novel and the scaffold was reported `has-novel-lines`: a positive claim of
+  // translation, worse than the `insufficient` this issue started from. Mask corruption is
+  // symmetric, and a predicate that only looks at hiding sees half of it.
+  const body = [
+    '# Beispieltitel fuer die Pruefung',
+    '',
+    'Dies ist ein Satz mit genuegend Zeichen fuer die Zaehlung.',
+    'Und hier folgt ein zweiter Satz mit genuegend Zeichen.',
+    '',
+    '```yaml',
+    'name: keep-this-identifier-in-english',
+    'description: a frozen line long enough to compare',
+    '```',
+    '',
+    'Ein dritter Satz, ebenfalls lang genug fuer die Zaehlung.',
+    'Ein vierter Satz, ebenfalls lang genug fuer die Zaehlung.',
+    '',
+  ].join('\n');
+  const pool = poolOf(body);
+  const strayed = body.replace(
+    '# Beispieltitel fuer die Pruefung\n',
+    '# Beispieltitel fuer die Pruefung\n```text\n',
+  );
+
+  // The fixture must genuinely exhibit the evading shape, or it proves nothing.
+  assert.equal(hidesLines(strayed), false, 'a localisable fence hides nothing — the old predicate passed it');
+  assert.equal(fenceShape(strayed), 'text');
+  assert.ok(
+    substantiveLines(strayed).some((l) => l.startsWith('name: keep-this-identifier')),
+    'the frozen body must actually be exposed as comparable prose',
+  );
+
+  assert.equal(
+    classifyTranslation({ translatedText: strayed, locale: 'de', english: pool }).reason,
+    'fence-mismatch',
+  );
+});
+
+test('a SAME-TAG stray opener is caught, though the shape is byte-identical', () => {
+  // Found by adversarial review, not by this suite — and it is the case the shape comparison
+  // structurally CANNOT see. A stray opener carrying the same tag as the fence it swallows is
+  // closed by that fence's real closer and inherits its position in the shape string. Shape
+  // unchanged, count unchanged, mask completely wrong.
+  //
+  // It is not merely adversarial: a copy-paste that duplicates an existing opener line is
+  // same-tag by definition.
+  const body = [
+    '# Beispieltitel fuer die Pruefung',
+    '',
+    'Dies ist ein Satz mit genuegend Zeichen fuer die Zaehlung.',
+    'Und hier folgt ein zweiter Satz mit genuegend Zeichen.',
+    '',
+    '```yaml',
+    'name: keep-this-identifier-in-english',
+    'domain: testing',
+    '```',
+    '',
+    'Ein dritter Satz, ebenfalls lang genug fuer die Zaehlung.',
+    'Ein vierter Satz, ebenfalls lang genug fuer die Zaehlung.',
+    '',
+  ].join('\n');
+  const pool = poolOf(body);
+  const strayed = body.replace(
+    '# Beispieltitel fuer die Pruefung\n',
+    '# Beispieltitel fuer die Pruefung\n```yaml\n',
+  );
+
+  // The fixture must exhibit the property that defeats the shape check, or it proves nothing.
+  assert.equal(fenceShape(strayed), fenceShape(body), 'the shape MUST be identical here');
+  assert.ok(substantiveLines(strayed).length < substantiveLines(body).length,
+    'and the mask must genuinely have eaten prose');
+  assert.equal(hasSwallowedOpener(strayed), true);
+
+  assert.equal(
+    classifyTranslation({ translatedText: strayed, locale: 'de', english: pool }).reason,
+    'fence-mismatch',
+  );
+});
+
+test('legitimate fence-in-fence documentation is not a swallowed opener', () => {
+  // The false-positive risk of the swallowed-opener check. This corpus documents markdown by
+  // wrapping a longer outer run around a shorter inner one, and `extractFences`' own docstring
+  // says so. A four-backtick outer containing a three-backtick opener is well-formed: the
+  // inner run is shorter, so it could never have closed the outer fence.
+  const nested = [
+    '````markdown',
+    'A documented example that is long enough to compare.',
+    '```r',
+    'x <- 1',
+    '```',
+    '````',
+  ].join('\n');
+  assert.equal(hasSwallowedOpener(nested), false);
+
+  // And a backtick fence inside a tilde fence is ordinary content — different delimiter.
+  const tilde = ['~~~text', 'A line of prose that is long enough here.', '```yaml', 'name: x', '```', '~~~'].join('\n');
+  assert.equal(hasSwallowedOpener(tilde), false);
+});
+
+test('a tag containing a pipe cannot forge a multi-fence shape', () => {
+  // `lang` is the first token of the info string split on /[\s{,]/ — a comma can never occur
+  // inside a tag, but a PIPE can. Joining shapes on `|` let one fence tagged ```bash|yaml
+  // produce the shape of two fences, so a single gated fence wrapping an entire body could
+  // match a two-fence English shape, hide everything, and land `insufficient` — translated.
+  const oneForgedFence = '```bash|yaml\nname: everything is hidden in here\n```\n';
+  const twoRealFences = '```bash\necho hi\n```\n\n```yaml\nname: x\n```\n';
+  assert.notEqual(fenceShape(oneForgedFence), fenceShape(twoRealFences),
+    'a single fence must not be able to spell a two-fence shape');
+  assert.equal(fenceShape(twoRealFences), 'bash,yaml');
+});
+
+test('fence-mismatch outranks insufficient, because the flip drives the count down', () => {
+  // Ordering, asserted rather than assumed. The phase flip pushes `total` DOWN through
+  // MIN_LINES_TO_JUDGE — that is its mechanism — so if `insufficient` were tested first it
+  // would answer first, and `insufficient` is counted as translated. The corrupted count
+  // must never get to speak.
+  const body = [
+    '# Titel mit ausreichender Laenge hier',
+    'Ein Satz mit genuegend Zeichen fuer die Zaehlung hier.',
+    'Ein zweiter Satz mit genuegend Zeichen fuer die Zaehlung.',
+    '```yaml',
+    'name: frozen',
+    'domain: testing',
+    '```',
+    'Ein dritter Satz mit genuegend Zeichen fuer die Zaehlung.',
+    '',
+  ].join('\n');
+  const strayed = body.replace('# Titel mit ausreichender Laenge hier\n', '# Titel mit ausreichender Laenge hier\n```bash\n');
+
+  assert.ok(substantiveLines(strayed).length < MIN_LINES_TO_JUDGE,
+    'fixture must actually fall below the floor, or this asserts nothing');
+  assert.equal(
+    classifyTranslation({ translatedText: strayed, locale: 'de', english: poolOf(body) }).reason,
+    'fence-mismatch',
+  );
 });
 
 test('every CJK-script locale in the config is pinned in REQUIRED_SCRIPT', () => {
@@ -334,13 +578,13 @@ test('an orphaned CJK mirror is no-source, not a scaffold — the irreversible c
   // identical file under `de` returned `no-source` and was preserved — the disposition
   // differed by locale alone, and the destructive one went to the locale with no backup.
   const orphan = classifyTranslation({
-    translatedText: withFrontmatter(ENGLISH_BODY), locale: 'ja', englishLines: undefined,
+    translatedText: withFrontmatter(ENGLISH_BODY), locale: 'ja', english: undefined,
   });
   assert.equal(orphan.reason, 'no-source');
   assert.equal(orphan.stub, false, 'a file with no source must never be recommended for deletion');
 
   const orphanLatin = classifyTranslation({
-    translatedText: withFrontmatter(ENGLISH_BODY), locale: 'de', englishLines: undefined,
+    translatedText: withFrontmatter(ENGLISH_BODY), locale: 'de', english: undefined,
   });
   assert.equal(orphanLatin.reason, orphan.reason, 'the disposition must not depend on the locale');
 });
@@ -351,7 +595,7 @@ test('a CJK mirror too short to judge is insufficient, not a scaffold', () => {
   // han — so "decisive, no false positives available" is not earned at small totals. That is
   // exactly what MIN_LINES_TO_JUDGE encodes, and the script rule used to jump it.
   const tiny = classifyTranslation({
-    translatedText: withFrontmatter('# タイトル\n'), locale: 'ja', englishLines: poolOf(ENGLISH_BODY),
+    translatedText: withFrontmatter('# タイトル\n'), locale: 'ja', english: poolAllowingNoFences(ENGLISH_BODY),
   });
   assert.equal(tiny.reason, 'insufficient');
   assert.equal(tiny.stub, false);
@@ -359,7 +603,7 @@ test('a CJK mirror too short to judge is insufficient, not a scaffold', () => {
 
   // The rule still fires on a file with enough text to judge.
   assert.equal(classifyTranslation({
-    translatedText: withFrontmatter(ENGLISH_BODY), locale: 'ja', englishLines: poolOf(ENGLISH_BODY),
+    translatedText: withFrontmatter(ENGLISH_BODY), locale: 'ja', english: poolOf(ENGLISH_BODY),
   }).reason, 'no-script');
 });
 
@@ -377,7 +621,7 @@ test('long letterless lines are not comparable evidence', () => {
   const english = [...Array.from({ length: 6 }, (_, i) => `English prose line number ${i}.`), ...shared].join('\n');
   const german = [...Array.from({ length: 6 }, (_, i) => `Deutsche Prosazeile Nummer ${i}.`), ...shared].join('\n');
   const verdict = classifyTranslation({
-    translatedText: withFrontmatter(german), locale: 'de', englishLines: poolOf(english),
+    translatedText: withFrontmatter(german), locale: 'de', english: poolOf(english),
   });
   assert.equal(verdict.reason, 'has-novel-lines');
   assert.equal(verdict.novel, 6, 'only the prose counts; the shared scaffolding is not evidence either way');
@@ -396,7 +640,7 @@ test('novel counts every unmatched line, not merely whether one exists', () => {
   const verdict = classifyTranslation({
     translatedText: withFrontmatter(`${ENGLISH_BODY}\n${german}\n`),
     locale: 'de',
-    englishLines: poolOf(ENGLISH_BODY),
+    english: poolOf(ENGLISH_BODY),
   });
   assert.equal(verdict.novel, 3);
 });
@@ -406,16 +650,17 @@ test('a verdict that did not measure reports novel as null, never 0', () => {
   // means "compared, nothing novel". These three paths return BEFORE the comparison runs,
   // and reporting 0 fabricates a measurement in the one place it does the most damage:
   // `(no-script, 0/57)` reads open-and-shut for a file that may carry forty novel lines.
-  const english = poolOf(ENGLISH_BODY);
+  // The short fixture below carries no fences, so the pool must allow the fence-free shape.
+  const english = poolAllowingNoFences(ENGLISH_BODY);
 
   const noScript = classifyTranslation({
-    translatedText: withFrontmatter(ENGLISH_BODY), locale: 'ja', englishLines: english,
+    translatedText: withFrontmatter(ENGLISH_BODY), locale: 'ja', english: english,
   });
   assert.equal(noScript.reason, 'no-script');
   assert.equal(noScript.novel, null);
 
   const noSource = classifyTranslation({
-    translatedText: withFrontmatter(ENGLISH_BODY), locale: 'de', englishLines: undefined,
+    translatedText: withFrontmatter(ENGLISH_BODY), locale: 'de', english: undefined,
   });
   assert.equal(noSource.reason, 'no-source');
   assert.equal(noSource.novel, null);
@@ -423,20 +668,20 @@ test('a verdict that did not measure reports novel as null, never 0', () => {
   const short = classifyTranslation({
     translatedText: withFrontmatter('# Title\n\nOne single line of prose here.\n'),
     locale: 'de',
-    englishLines: english,
+    english: english,
   });
   assert.equal(short.reason, 'insufficient');
   assert.equal(short.novel, null);
 
   // And the paths that DO measure still report a number, including zero.
   assert.equal(classifyTranslation({
-    translatedText: withFrontmatter(ENGLISH_BODY), locale: 'de', englishLines: english,
+    translatedText: withFrontmatter(ENGLISH_BODY), locale: 'de', english: english,
   }).novel, 0);
 });
 
 test('a file too short to judge is reported insufficient, not a scaffold', () => {
   const tiny = withFrontmatter('# Title\n\nOne single line of prose here.\n');
-  const verdict = classifyTranslation({ translatedText: tiny, locale: 'de', englishLines: poolOf(ENGLISH_BODY) });
+  const verdict = classifyTranslation({ translatedText: tiny, locale: 'de', english: poolAllowingNoFences(ENGLISH_BODY) });
   assert.equal(verdict.stub, false);
   assert.equal(verdict.reason, 'insufficient');
   assert.ok(verdict.total < MIN_LINES_TO_JUDGE);
@@ -451,7 +696,7 @@ const lineOfLength = (n, i) => `Fixture prose line ${i}`.padEnd(n, 'x');
 test('exactly MIN_LINES_TO_JUDGE substantive lines is enough to judge', () => {
   const body = Array.from({ length: 5 }, (_, i) => lineOfLength(20, i)).join('\n\n');
   const verdict = classifyTranslation({
-    translatedText: withFrontmatter(body), locale: 'de', englishLines: poolOf(body),
+    translatedText: withFrontmatter(body), locale: 'de', english: poolOf(body),
   });
   assert.equal(verdict.total, 5, 'fixture must sit exactly on the boundary');
   assert.equal(verdict.reason, 'no-novel-lines');
@@ -461,7 +706,7 @@ test('exactly MIN_LINES_TO_JUDGE substantive lines is enough to judge', () => {
 test('one line below the boundary is not judged', () => {
   const body = Array.from({ length: 4 }, (_, i) => lineOfLength(20, i)).join('\n\n');
   const verdict = classifyTranslation({
-    translatedText: withFrontmatter(body), locale: 'de', englishLines: poolOf(body),
+    translatedText: withFrontmatter(body), locale: 'de', english: poolOf(body),
   });
   assert.equal(verdict.total, 4);
   assert.equal(verdict.reason, 'insufficient');
@@ -481,7 +726,7 @@ test('a translation whose English source is gone is reported no-source', () => {
   const verdict = classifyTranslation({
     translatedText: withFrontmatter(ENGLISH_BODY),
     locale: 'de',
-    englishLines: undefined,
+    english: undefined,
   });
   assert.equal(verdict.stub, false);
   assert.equal(verdict.reason, 'no-source');
@@ -546,7 +791,7 @@ test('buildEnglishProseHistory pools every revision a source has had', () => {
     git('commit', '-qm', 'second');
 
     const history = buildEnglishProseHistory(repo);
-    const lines = history.get('skills/demo-skill');
+    const lines = history.get('skills/demo-skill').lines;
     assert.ok(lines, 'the skill must be keyed by contentKey');
     assert.ok(lines.has('The first revision said something specific here.'),
       'a line deleted from English is still English — this is what makes the detector survive surgical propagation');
@@ -572,7 +817,7 @@ test('buildEnglishProseHistory includes uncommitted English edits', () => {
 
     writeFileSync(join(skillDir, 'SKILL.md'), withFrontmatter('# Demo\n\nUncommitted prose line in the working tree.\n'));
 
-    const lines = buildEnglishProseHistory(repo).get('skills/demo-skill');
+    const lines = buildEnglishProseHistory(repo).get('skills/demo-skill').lines;
     assert.ok(lines.has('Uncommitted prose line in the working tree.'),
       'an uncommitted English edit is a legal basis, or every local scaffold reads as translated');
     assert.ok(lines.has('Committed prose line for the base.'));
@@ -608,9 +853,9 @@ test('a missing blob does not shift the batch parser onto the wrong key', () => 
     git('commit', '-qm', 'delete alpha');
 
     const history = buildEnglishProseHistory(repo);
-    assert.ok(history.get('skills/alpha-skill')?.has('Alpha prose line, unique to alpha.'));
-    assert.ok(history.get('skills/beta-skill')?.has('Beta prose line, unique to beta.'));
-    assert.equal(history.get('skills/beta-skill')?.has('Alpha prose line, unique to alpha.'), false,
+    assert.ok(history.get('skills/alpha-skill')?.lines.has('Alpha prose line, unique to alpha.'));
+    assert.ok(history.get('skills/beta-skill')?.lines.has('Beta prose line, unique to beta.'));
+    assert.equal(history.get('skills/beta-skill')?.lines.has('Alpha prose line, unique to alpha.'), false,
       'a misaligned batch parse would cross-pollinate the two bases');
   } finally {
     rmSync(repo, { recursive: true, force: true });

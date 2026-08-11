@@ -164,14 +164,32 @@ what a quick read suggests:
 | `translated` | files that show evidence of translation |
 | `stubs` | files that show **none** — scaffolds, still word-for-word English |
 | `stale` | translated files whose English source changed after their `source_commit` |
+| `unjudged` | files whose fence structure matches no English revision — the frozen-region mask is wrong, so every count taken through it is void |
 
-Two things follow, and both have misled readers before:
+Three things follow, and all have misled readers before:
 
 - **`stale` is measured only over `translated`.** A stub is never also stale, because the
   scaffold verdict is reached first. So recognising a scaffold *lowers* `stale` with nothing
   translated — a falling `stale` number is not by itself progress.
 - **`translated + stubs` is not `total`.** A locale that has never scaffolded an item has
   neither, so the remainder is untouched content.
+- **`unjudged` is neither `translated` nor `stubs`, deliberately.** Both alternatives are
+  wrong in a way that costs something: counting such a file translated inflates coverage,
+  and calling it a stub routes a possibly fully-translated file into a remedy that *deletes*
+  it. The honest report is that it was not measured. `--verdicts` lists them.
+
+A file becomes `unjudged` when a stray fence opener inverts the document's fence phase: an
+added ```` ```bash ```` cannot close anything, but it opens, so the real opener is swallowed
+into its body and the real closer closes the stray fence. Prose silently becomes fence body.
+The fence *count* is unchanged, which is why the check compares the **shape** — the ordered
+list of info-string tags, which are keep-in-English in every locale and so must match some
+English revision. Fix the fence and the file is judged normally again.
+
+The shape counts **terminated** fences only. An unterminated fence is not frozen, so it
+describes nothing about the mask and must not perturb the shape. That is also why the check
+does not ask whether the mask *hid* anything: a stray ```` ```text ```` opener is localisable
+and hides nothing, yet it still flips the phase and **exposes** the real frozen body — whose
+keep-in-English lines then read as newly-translated prose. Corruption runs both ways.
 
 The root `README.md` coverage table renders these same numbers, and only these — it reads the
 status files rather than counting what exists on disk (#560). Its cells use two markers:

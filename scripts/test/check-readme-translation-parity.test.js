@@ -54,30 +54,35 @@ coverage:
     pct: 92.1
     stale: 166
     stubs: 26
+    unjudged: 2
   agents:
     translated: 3
     total: 75
     pct: 4
     stale: 3
     stubs: 3
+    unjudged: 0
   teams:
     translated: 1
     total: 22
     pct: 4.5
     stale: 1
     stubs: 5
+    unjudged: 0
   guides:
     translated: 3
     total: 34
     pct: 8.8
     stale: 2
     stubs: 2
+    unjudged: 1
   total:
     translated: 347
     total: 500
     pct: 69.4
     stale: 172
     stubs: 36
+    unjudged: 3
 `;
 
 const JA_STATUS = DE_STATUS.replace("locale: de", "locale: ja");
@@ -85,18 +90,18 @@ const JA_STATUS = DE_STATUS.replace("locale: de", "locale: ja");
 function table(rows) {
   return [
     '<!-- AUTO:START:translations -->',
-    '| Locale | Language | Skills | Agents | Teams | Guides | Total | Stubs |',
-    '|---|---|---|---|---|---|---|---|',
+    '| Locale | Language | Skills | Agents | Teams | Guides | Total | Stubs | Unjudged |',
+    '|---|---|---|---|---|---|---|---|---|',
     ...rows,
     '<!-- AUTO:END:translations -->'
   ].join('\n');
 }
 
 /** The corrected `de` row: translated-only, with stubs broken out. */
-const DE_ROW_CORRECT = '| de | Deutsch | 340/369 | 3/75 | 1/22 | 3/34 | 347/500 (69.4%) | 36 |';
+const DE_ROW_CORRECT = '| de | Deutsch | 340/369 | 3/75 | 1/22 | 3/34 | 347/500 (69.4%) | 36 | 3 |';
 /** The row as the pre-#560 generator actually rendered it (existence counts). */
-const DE_ROW_PREFIX = '| de | Deutsch | 366/369 | 6/75 | 6/22 | 5/34 | 383/500 (76.6%) | 36 |';
-const JA_ROW_CORRECT = '| ja | 日本語 | 340/369 | 3/75 | 1/22 | 3/34 | 347/500 (69.4%) | 36 |';
+const DE_ROW_PREFIX = '| de | Deutsch | 366/369 | 6/75 | 6/22 | 5/34 | 383/500 (76.6%) | 36 | 3 |';
+const JA_ROW_CORRECT = '| ja | 日本語 | 340/369 | 3/75 | 1/22 | 3/34 | 347/500 (69.4%) | 36 | 3 |';
 
 function compare(rows, { statuses } = {}) {
   const locales = parseLocales(CONFIG);
@@ -154,7 +159,7 @@ test('parseStatus throws on a missing block or field', () => {
   assert.throws(() => parseStatus('locale: de\n'), /no `coverage:` block/);
   const noStubs = DE_STATUS.replace('    stubs: 26\n', '');
   assert.throws(() => parseStatus(noStubs), /coverage\.skills\.stubs missing/);
-  const noTotal = DE_STATUS.replace(/  total:\n(?:.*\n){5}/, '');
+  const noTotal = DE_STATUS.replace(/  total:\n(?:.*\n){6}/, '');
   assert.throws(() => parseStatus(noTotal), /coverage\.total missing/);
 });
 
@@ -182,7 +187,7 @@ test('parseReadmeTable refuses a row it cannot compare', () => {
   // A malformed row must be an error, not a skip: skipping reports agreement
   // that was never established. The 7-cell case is the literal pre-fix table.
   const sevenCell = '| de | Deutsch | 366/369 | 6/75 | 6/22 | 5/34 | 383/500 (76.6%) |';
-  assert.throws(() => parseReadmeTable(table([sevenCell])), /7 cells, expected 8/);
+  assert.throws(() => parseReadmeTable(table([sevenCell])), /7 cells, expected 9/);
 });
 
 test('parseReadmeTable rejects duplicate and empty tables', () => {
@@ -228,7 +233,7 @@ test('a deleted row is caught (iteration is over locales, not rows)', () => {
 });
 
 test('a row for an unsupported locale is caught', () => {
-  const stray = '| xx | Klingon | 1/369 | 0/75 | 0/22 | 0/34 | 1/500 (0.2%) | 0 |';
+  const stray = '| xx | Klingon | 1/369 | 0/75 | 0/22 | 0/34 | 1/500 (0.2%) | 0 | 0 |';
   const statuses = [['de', DE_STATUS], ['ja', JA_STATUS], ['xx', null]];
   const { failures } = compare([DE_ROW_CORRECT, JA_ROW_CORRECT, stray], { statuses });
   assert.equal(failures.length, 1);
@@ -237,10 +242,10 @@ test('a row for an unsupported locale is caught', () => {
 
 test('a mismatched denominator, pct, stub count, or language is caught', () => {
   const cases = [
-    ['| de | Deutsch | 340/999 | 3/75 | 1/22 | 3/34 | 347/500 (69.4%) | 36 |', /denominator 999 != status total 369/],
-    ['| de | Deutsch | 340/369 | 3/75 | 1/22 | 3/34 | 347/500 (70.0%) | 36 |', /pct 70\.0% != status pct 69\.4%/],
-    ['| de | Deutsch | 340/369 | 3/75 | 1/22 | 3/34 | 347/500 (69.4%) | 0 |', /stubs column 0 != status stubs 36/],
-    ['| de | Deutsched | 340/369 | 3/75 | 1/22 | 3/34 | 347/500 (69.4%) | 36 |', /language 'Deutsched' != .* 'Deutsch'/]
+    ['| de | Deutsch | 340/999 | 3/75 | 1/22 | 3/34 | 347/500 (69.4%) | 36 | 3 |', /denominator 999 != status total 369/],
+    ['| de | Deutsch | 340/369 | 3/75 | 1/22 | 3/34 | 347/500 (70.0%) | 36 | 3 |', /pct 70\.0% != status pct 69\.4%/],
+    ['| de | Deutsch | 340/369 | 3/75 | 1/22 | 3/34 | 347/500 (69.4%) | 0 | 3 |', /stubs column 0 != status stubs 36/],
+    ['| de | Deutsched | 340/369 | 3/75 | 1/22 | 3/34 | 347/500 (69.4%) | 36 | 3 |', /language 'Deutsched' != .* 'Deutsch'/]
   ];
   for (const [row, expected] of cases) {
     const { failures } = compare([row, JA_ROW_CORRECT]);
@@ -250,7 +255,7 @@ test('a mismatched denominator, pct, stub count, or language is caught', () => {
 });
 
 test('an unparseable cell fails rather than being skipped', () => {
-  const bad = '| de | Deutsch | many | 3/75 | 1/22 | 3/34 | 347/500 (69.4%) | 36 |';
+  const bad = '| de | Deutsch | many | 3/75 | 1/22 | 3/34 | 347/500 (69.4%) | 36 | 3 |';
   const { failures } = compare([bad, JA_ROW_CORRECT]);
   assert.match(failures.join('\n'), /de\.skills' is not N\/M/);
 });
@@ -266,7 +271,7 @@ test('a malformed status file fails rather than being skipped', () => {
 // these. Without fixtures the fallback branch would ship untested.
 
 test('a locale with no status file must be marked, and its stubs unmeasured', () => {
-  const marked = `| ja | 日本語 | 366/369${FALLBACK_MARK} | 6/75${FALLBACK_MARK} | 6/22${FALLBACK_MARK} | 5/34${FALLBACK_MARK} | 383/500 (76.6%)${FALLBACK_MARK} | ${UNMEASURED} |`;
+  const marked = `| ja | 日本語 | 366/369${FALLBACK_MARK} | 6/75${FALLBACK_MARK} | 6/22${FALLBACK_MARK} | 5/34${FALLBACK_MARK} | 383/500 (76.6%)${FALLBACK_MARK} | ${UNMEASURED} | ${UNMEASURED} |`;
   const statuses = [['de', DE_STATUS], ['ja', null]];
   const { failures } = compare([DE_ROW_CORRECT, marked], { statuses });
   assert.deepEqual(failures, []);
@@ -281,7 +286,7 @@ test('an unmarked row with no status file is caught', () => {
 test('a fallback marker while a status file exists is caught', () => {
   // This is the generator silently falling back with real data on disk --
   // the number would be an existence count again, wearing an excuse.
-  const marked = `| ja | 日本語 | 366/369${FALLBACK_MARK} | 6/75 | 6/22 | 5/34 | 383/500 (76.6%) | 36 |`;
+  const marked = `| ja | 日本語 | 366/369${FALLBACK_MARK} | 6/75 | 6/22 | 5/34 | 383/500 (76.6%) | 36 | 3 |`;
   const { failures } = compare([DE_ROW_CORRECT, marked]);
   assert.equal(failures.length, 1);
   assert.match(failures[0], /has a translation_status\.yml but its README row is marked/);
@@ -291,7 +296,7 @@ test('a PARTIALLY marked status-less row is caught', () => {
   // Was a live fail-open: the marked test used `some`, so one marked cell
   // excused four unmarked ones carrying arbitrary numbers -- precisely the
   // "unmeasured number presented as measured" this branch rejects. (#562 F2)
-  const mixed = `| ja | 日本語 | 366/369${FALLBACK_MARK} | 6/75 | 6/22 | 5/34 | 383/500 (76.6%) | ${UNMEASURED} |`;
+  const mixed = `| ja | 日本語 | 366/369${FALLBACK_MARK} | 6/75 | 6/22 | 5/34 | 383/500 (76.6%) | ${UNMEASURED} | ${UNMEASURED} |`;
   const statuses = [['de', DE_STATUS], ['ja', null]];
   const { failures } = compare([DE_ROW_CORRECT, mixed], { statuses });
   assert.equal(failures.length, 1);
@@ -301,7 +306,7 @@ test('a PARTIALLY marked status-less row is caught', () => {
 test('a status-less row still has its language checked', () => {
   // The name check sat below the fallback branch's `continue`, so a fallback
   // row's language was compared to nothing. (#562 F2)
-  const wrongName = `| ja | Japanisch | 366/369${FALLBACK_MARK} | 6/75${FALLBACK_MARK} | 6/22${FALLBACK_MARK} | 5/34${FALLBACK_MARK} | 383/500 (76.6%)${FALLBACK_MARK} | ${UNMEASURED} |`;
+  const wrongName = `| ja | Japanisch | 366/369${FALLBACK_MARK} | 6/75${FALLBACK_MARK} | 6/22${FALLBACK_MARK} | 5/34${FALLBACK_MARK} | 383/500 (76.6%)${FALLBACK_MARK} | ${UNMEASURED} | ${UNMEASURED} |`;
   const statuses = [['de', DE_STATUS], ['ja', null]];
   const { failures } = compare([DE_ROW_CORRECT, wrongName], { statuses });
   assert.equal(failures.length, 1);
@@ -341,7 +346,7 @@ test('a trailing comment is not captured as part of the value', () => {
 });
 
 test('a status-less locale reporting a stub count is caught', () => {
-  const marked = `| ja | 日本語 | 366/369${FALLBACK_MARK} | 6/75${FALLBACK_MARK} | 6/22${FALLBACK_MARK} | 5/34${FALLBACK_MARK} | 383/500 (76.6%)${FALLBACK_MARK} | 0 |`;
+  const marked = `| ja | 日本語 | 366/369${FALLBACK_MARK} | 6/75${FALLBACK_MARK} | 6/22${FALLBACK_MARK} | 5/34${FALLBACK_MARK} | 383/500 (76.6%)${FALLBACK_MARK} | 0 | ${UNMEASURED} |`;
   const statuses = [['de', DE_STATUS], ['ja', null]];
   const { failures } = compare([DE_ROW_CORRECT, marked], { statuses });
   assert.equal(failures.length, 1);

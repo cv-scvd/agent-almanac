@@ -605,8 +605,8 @@ function generateTranslationsSection() {
   }
 
   const rows = [];
-  rows.push('| Locale | Language | Skills | Agents | Teams | Guides | Total | Stubs |');
-  rows.push('|---|---|---|---|---|---|---|---|');
+  rows.push('| Locale | Language | Skills | Agents | Teams | Guides | Total | Stubs | Unjudged |');
+  rows.push('|---|---|---|---|---|---|---|---|---|');
 
   let anyFallback = false;
 
@@ -622,7 +622,7 @@ function generateTranslationsSection() {
       const t = coverage.total;
       rows.push(
         `| ${locale.code} | ${locale.name} | ${cell('skills')} | ${cell('agents')} | ` +
-        `${cell('teams')} | ${cell('guides')} | ${t.translated}/${t.total} (${t.pct}%) | ${t.stubs} |`
+        `${cell('teams')} | ${cell('guides')} | ${t.translated}/${t.total} (${t.pct}%) | ${t.stubs} | ${t.unjudged} |`
       );
       continue;
     }
@@ -634,7 +634,7 @@ function generateTranslationsSection() {
     rows.push(
       `| ${locale.code} | ${locale.name} | ${counts.skills}/${sourceCounts.skills}${m} | ` +
       `${counts.agents}/${sourceCounts.agents}${m} | ${counts.teams}/${sourceCounts.teams}${m} | ` +
-      `${counts.guides}/${sourceCounts.guides}${m} | ${total}/${sourceCounts.total} (${pct}%)${m} | ${UNMEASURED} |`
+      `${counts.guides}/${sourceCounts.guides}${m} | ${total}/${sourceCounts.total} (${pct}%)${m} | ${UNMEASURED} | ${UNMEASURED} |`
     );
   }
 

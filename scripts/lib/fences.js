@@ -232,6 +232,88 @@ export function toLines(text) {
 }
 
 /**
+ * The document's fence structure as one comparable string: every fence's tag, in order.
+ *
+ * Info-string tags are never translated — they are the machine-readable part of the fence,
+ * and the keep-in-English rule freezes them in every locale. So a translated file's shape
+ * must equal its English source's shape at *some* revision, and a shape appearing in no
+ * revision means the mask cannot be trusted (#561).
+ *
+ * Shape rather than count, because the failure this detects leaves the count intact. A stray
+ * ```` ```bash ```` opener cannot close anything (a closer carries no trailing text), but it
+ * *opens*, so the real opener below it is swallowed into the body and the real closer closes
+ * the stray fence instead. Measured on a two-fence body: count 1 -> 1, shape `yaml` -> `bash`,
+ * and five lines of prose vanish from comparison. A count check sees nothing.
+ *
+ * Tags, not bodies: #477's backlog leaves 1,220+ translated fence *bodies* diverging from
+ * English, so gating on bodies would refuse to judge much of the corpus.
+ *
+ * **Terminated fences only.** An unterminated fence is not frozen (#558) — it masks nothing —
+ * so it does not describe the mask and must not perturb the shape. Excluding it here is what
+ * lets the shape comparison stand alone: #558's stray *unterminated* opener leaves the shape
+ * unchanged and its file stays judgeable, while a stray *terminated* opener changes the shape
+ * and is caught. An earlier attempt kept unterminated fences in the shape and paid for it with
+ * a second condition ("did the mask hide lines?"), which left a worse bypass open: a stray
+ * ```` ```text ```` opener is localisable, so it hides nothing, yet it still phase-flips and
+ * EXPOSES the real frozen body — whose keep-in-English lines are absent from the English prose
+ * pool and therefore read as novel. That turned a scaffold into `has-novel-lines`, a positive
+ * claim of translation. Mask corruption is symmetric; hiding is only half of it.
+ *
+ * Joined on `,` rather than `|`, and that is not cosmetic. `lang` is the first token of the
+ * info string split on `/[\s{,]/`, so a comma can never occur inside a tag — but a pipe can.
+ * A single fence tagged ```` ```bash|yaml ```` produced the shape `bash|yaml`, colliding with
+ * the shape of two fences `bash` and `yaml`. That let one gated fence wrapping an entire body
+ * match a two-fence English shape, hide everything, and land `insufficient` — translated.
+ *
+ * @param {string} text
+ * @returns {string} e.g. `bash,yaml,markdown`; `''` for a file with no terminated fences
+ */
+export function fenceShape(text) {
+  return extractFences(text)
+    .filter((f) => !f.unterminated)
+    .map((f) => f.lang || '')
+    .join(',');
+}
+
+/**
+ * Does any fence body contain a line that would itself have opened a fence?
+ *
+ * The phase flip's invariant fingerprint, and the half `fenceShape` structurally cannot see.
+ * A stray opener carrying the SAME tag as the fence below it is terminated by that fence's
+ * real closer and takes over its position in the shape string — so the shape stays
+ * byte-identical while the mask is completely wrong. Shape equality cannot close this,
+ * because the attack preserves shape by construction. Measured: a 5-line body drops to 3,
+ * lands `insufficient`, and is counted as translated, with one added line.
+ *
+ * What it looks for is the swallowed opener itself: inside a fence body, a line with the same
+ * delimiter character, a run at least as long as the enclosing fence's, and a non-empty info
+ * string. Such a line is unreachable in a well-formed document — it would have closed the
+ * fence if its info string were empty, and it cannot appear as content because the parser
+ * would have ended the fence before reaching it.
+ *
+ * Deliberately not fooled by legitimate fence-in-fence documentation, which this corpus writes
+ * with a longer outer run (a ````` ````markdown ````` wrapping ```` ```r ````): the inner run
+ * is SHORTER than the enclosing one, so it fails the length test. Nor by a ```` ``` ```` line
+ * inside a `~~~` fence, which is ordinary content — the delimiter characters differ.
+ *
+ * @param {string} text
+ * @returns {boolean}
+ */
+export function hasSwallowedOpener(text) {
+  return extractFences(text).some((fence) => {
+    return toLines(fence.body).some((line) => {
+      const match = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+      return Boolean(
+        match
+        && match[1][0] === fence.delim
+        && match[1].length >= fence.len
+        && match[2].trim() !== '',
+      );
+    });
+  });
+}
+
+/**
  * Extract every fenced block from `text`.
  * @param {string} text
  * @returns {Fence[]}
@@ -269,6 +351,10 @@ export function extractFences(text) {
         lang: open.lang,
         info: open.info,
         body: lines.slice(open.bodyStart, i).join('\n'),
+        // Exposed for hasSwallowedOpener, which must apply CommonMark's own closer rule
+        // (same character, run at least as long) to lines INSIDE the body.
+        delim: open.delim,
+        len: open.len,
         line: open.line,
         bodyStart: open.bodyStart,
         bodyEnd: i,
@@ -282,6 +368,8 @@ export function extractFences(text) {
       lang: open.lang,
       info: open.info,
       body: lines.slice(open.bodyStart).join('\n'),
+      delim: open.delim,
+      len: open.len,
       line: open.line,
       bodyStart: open.bodyStart,
       bodyEnd: lines.length,
