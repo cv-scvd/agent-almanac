@@ -213,16 +213,29 @@ export function classifyTranslation({ translatedText, locale, englishLines }) {
   const body = stripFrontmatter(translatedText);
   const lines = substantiveLines(body);
 
-  const script = REQUIRED_SCRIPT.get(locale);
-  if (script && !script.test(body)) {
-    return { stub: true, reason: 'no-script', novel: null, total: lines.length };
-  }
-
+  // ORDER MATTERS, and it is not the obvious one. The two "we cannot judge this" checks run
+  // BEFORE the decisive script rule, because a decisive rule must not outrank an admission
+  // of ignorance. Running the script rule first produced two wrong verdicts:
+  //
+  //   - An orphaned CJK mirror — the file exists, its English source was deleted or its id
+  //     renamed — was called `no-script`, i.e. a scaffold, i.e. delete-and-re-scaffold. With
+  //     no source left to re-scaffold from, that is permanent loss of the only surviving
+  //     artifact. The identical file under `de` returned `no-source` and was preserved, so
+  //     the disposition differed by locale alone.
+  //   - A near-empty or all-fenced CJK mirror yielded `{stub: true, total: 0}`. A one-line
+  //     file has essentially no opportunity to contain han, so "decisive, with no false
+  //     positives available to it" is simply not earned at small `total` — which is the very
+  //     reasoning `MIN_LINES_TO_JUDGE` exists to encode.
   if (!englishLines) {
     return { stub: false, reason: 'no-source', novel: null, total: lines.length };
   }
   if (lines.length < MIN_LINES_TO_JUDGE) {
     return { stub: false, reason: 'insufficient', novel: null, total: lines.length };
+  }
+
+  const script = REQUIRED_SCRIPT.get(locale);
+  if (script && !script.test(body)) {
+    return { stub: true, reason: 'no-script', novel: null, total: lines.length };
   }
 
   let novel = 0;

@@ -267,6 +267,80 @@ test('zh-CN does not accept kana as evidence of Chinese', () => {
 
 // ── the lenient residue, stated rather than hidden ──────────────────────────
 
+test('an orphaned CJK mirror is no-source, not a scaffold — the irreversible case', () => {
+  // The file exists; its English source was deleted or its id renamed, so there is nothing
+  // to re-scaffold FROM. Calling it a scaffold recommends deleting the only surviving copy.
+  // Before the reorder the script rule ran first and returned `no-script` here, while the
+  // identical file under `de` returned `no-source` and was preserved — the disposition
+  // differed by locale alone, and the destructive one went to the locale with no backup.
+  const orphan = classifyTranslation({
+    translatedText: withFrontmatter(ENGLISH_BODY), locale: 'ja', englishLines: undefined,
+  });
+  assert.equal(orphan.reason, 'no-source');
+  assert.equal(orphan.stub, false, 'a file with no source must never be recommended for deletion');
+
+  const orphanLatin = classifyTranslation({
+    translatedText: withFrontmatter(ENGLISH_BODY), locale: 'de', englishLines: undefined,
+  });
+  assert.equal(orphanLatin.reason, orphan.reason, 'the disposition must not depend on the locale');
+});
+
+test('a CJK mirror too short to judge is insufficient, not a scaffold', () => {
+  // `{stub: true, total: 0}` was reachable: an empty, frontmatter-only, or all-fenced mirror
+  // has no substantive lines, and a one-line file has essentially no opportunity to contain
+  // han — so "decisive, no false positives available" is not earned at small totals. That is
+  // exactly what MIN_LINES_TO_JUDGE encodes, and the script rule used to jump it.
+  const tiny = classifyTranslation({
+    translatedText: withFrontmatter('# タイトル\n'), locale: 'ja', englishLines: poolOf(ENGLISH_BODY),
+  });
+  assert.equal(tiny.reason, 'insufficient');
+  assert.equal(tiny.stub, false);
+  assert.equal(tiny.total, 0);
+
+  // The rule still fires on a file with enough text to judge.
+  assert.equal(classifyTranslation({
+    translatedText: withFrontmatter(ENGLISH_BODY), locale: 'ja', englishLines: poolOf(ENGLISH_BODY),
+  }).reason, 'no-script');
+});
+
+test('long letterless lines are not comparable evidence', () => {
+  // Mutating away the `/\p{L}/u` filter survived every other test, and it is the most
+  // dangerous unconstrained line in the module: table rules, digit rows and separator bars
+  // match English in EVERY locale, so admitting them adds agreement only — pushing files
+  // toward `no-novel-lines`, which is the delete verdict.
+  const noise = '| --- | --- | --- | --- |\n====================\n1234567890123456\n';
+  assert.deepEqual(substantiveLines(noise), []);
+
+  // A genuine translation whose only differing lines are prose must not be pushed over by
+  // shared table scaffolding.
+  const shared = ['| --- | --- | --- |', '====================', '1234567890123456'];
+  const english = [...Array.from({ length: 6 }, (_, i) => `English prose line number ${i}.`), ...shared].join('\n');
+  const german = [...Array.from({ length: 6 }, (_, i) => `Deutsche Prosazeile Nummer ${i}.`), ...shared].join('\n');
+  const verdict = classifyTranslation({
+    translatedText: withFrontmatter(german), locale: 'de', englishLines: poolOf(english),
+  });
+  assert.equal(verdict.reason, 'has-novel-lines');
+  assert.equal(verdict.novel, 6, 'only the prose counts; the shared scaffolding is not evidence either way');
+  assert.equal(verdict.total, 6);
+});
+
+test('novel counts every unmatched line, not merely whether one exists', () => {
+  // `novel += 1` mutated to `novel = 1` survived every other assertion — one expects 0 (the
+  // statement never runs) and one expects exactly 1. That silently destroys the only
+  // quantitative field in `--verdicts` and every margin measurement built on it.
+  const german = [
+    'Erste deutsche Zeile hier drin.',
+    'Zweite deutsche Zeile hier drin.',
+    'Dritte deutsche Zeile hier drin.',
+  ].join('\n');
+  const verdict = classifyTranslation({
+    translatedText: withFrontmatter(`${ENGLISH_BODY}\n${german}\n`),
+    locale: 'de',
+    englishLines: poolOf(ENGLISH_BODY),
+  });
+  assert.equal(verdict.novel, 3);
+});
+
 test('a verdict that did not measure reports novel as null, never 0', () => {
   // The `--verdicts` list is what a maintainer reads before deleting files. A `0` there
   // means "compared, nothing novel". These three paths return BEFORE the comparison runs,
