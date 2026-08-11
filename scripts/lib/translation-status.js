@@ -180,11 +180,11 @@ export function openLines(text) {
 /**
  * Does any frozen region of `text` actually remove content from comparison?
  *
- * The second half of the `fence-mismatch` test (#561). A fence shape that matches no English
- * revision is only *dangerous* when the mask built from it swallowed something; when it hid
- * nothing, the count is sound whatever the shape says. Mirrors `openLines`' own conditions
- * exactly — gated, terminated, non-empty body — so the two cannot drift into disagreeing
- * about what "hidden" means.
+ * Not used by the verdict — `fence-mismatch` deliberately does NOT require hiding, because a
+ * stray *localisable* opener hides nothing and still corrupts the mask (it exposes the real
+ * frozen body instead). Kept and exported because the tests assert exactly that distinction,
+ * and because it states `openLines`' masking conditions — gated, terminated, non-empty — in
+ * one place where they can be checked rather than re-derived.
  *
  * @param {string} text body text, frontmatter already stripped
  * @returns {boolean}
@@ -279,18 +279,21 @@ export function classifyTranslation({ translatedText, locale, english }) {
   // the phase flip drives `total` DOWN, straight through MIN_LINES_TO_JUDGE, and
   // `insufficient` is counted as translated (#561).
   //
-  // Two conditions, and the second is what keeps this narrow. A shape mismatch alone is not
-  // enough: #558's unterminated stray opener also mismatches, but an unterminated fence is no
-  // longer treated as frozen, so it hides nothing and the count through the mask is sound —
-  // that file must stay judgeable, and its scaffold must still be called a scaffold. What
-  // makes a measurement void is a mask that BOTH disagrees with every English revision AND
-  // actually removed lines. The phase flip does both; the unterminated case does neither.
+  // One condition, because `fenceShape` counts terminated fences only. #558's unterminated
+  // stray opener therefore leaves the shape untouched and its file stays judgeable — which is
+  // what an earlier draft bought with a second "did the mask hide lines?" test, at the cost of
+  // a worse hole: a stray ```` ```text ```` opener is localisable, so it hides nothing and
+  // passed that test, yet it still phase-flips and EXPOSES the real frozen body. Those
+  // keep-in-English lines are absent from the English prose pool (which excludes gated fences
+  // by construction), so they counted as NOVEL and the scaffold was reported
+  // `has-novel-lines` — a positive claim of translation, worse than the `insufficient` this
+  // issue started from. Mask corruption is symmetric; hiding is half of it.
   //
   // `fenceShapes` is empty only for a key with no pooled revisions, which cannot happen once
   // `englishLines` is non-empty; the guard keeps a hand-built pool from silently disabling
   // the check.
   const shapes = english.fenceShapes;
-  if (shapes && shapes.size && !shapes.has(fenceShape(body)) && hidesLines(body)) {
+  if (shapes && shapes.size && !shapes.has(fenceShape(body))) {
     return { stub: false, reason: 'fence-mismatch', novel: null, total: null };
   }
 

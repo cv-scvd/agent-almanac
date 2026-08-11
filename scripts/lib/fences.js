@@ -246,14 +246,27 @@ export function toLines(text) {
  * and five lines of prose vanish from comparison. A count check sees nothing.
  *
  * Tags, not bodies: #477's backlog leaves 1,220+ translated fence *bodies* diverging from
- * English, so gating on bodies would refuse to judge much of the corpus. Measured on the live
- * corpus, gating on shape leaves 73 of 3,644 files (2.00%) matching no revision.
+ * English, so gating on bodies would refuse to judge much of the corpus.
+ *
+ * **Terminated fences only.** An unterminated fence is not frozen (#558) — it masks nothing —
+ * so it does not describe the mask and must not perturb the shape. Excluding it here is what
+ * lets the shape comparison stand alone: #558's stray *unterminated* opener leaves the shape
+ * unchanged and its file stays judgeable, while a stray *terminated* opener changes the shape
+ * and is caught. An earlier attempt kept unterminated fences in the shape and paid for it with
+ * a second condition ("did the mask hide lines?"), which left a worse bypass open: a stray
+ * ```` ```text ```` opener is localisable, so it hides nothing, yet it still phase-flips and
+ * EXPOSES the real frozen body — whose keep-in-English lines are absent from the English prose
+ * pool and therefore read as novel. That turned a scaffold into `has-novel-lines`, a positive
+ * claim of translation. Mask corruption is symmetric; hiding is only half of it.
  *
  * @param {string} text
- * @returns {string} e.g. `bash|yaml|markdown`; `''` for a file with no fences
+ * @returns {string} e.g. `bash|yaml|markdown`; `''` for a file with no terminated fences
  */
 export function fenceShape(text) {
-  return extractFences(text).map((f) => f.lang || '').join('|');
+  return extractFences(text)
+    .filter((f) => !f.unterminated)
+    .map((f) => f.lang || '')
+    .join('|');
 }
 
 /**

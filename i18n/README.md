@@ -164,7 +164,7 @@ what a quick read suggests:
 | `translated` | files that show evidence of translation |
 | `stubs` | files that show **none** — scaffolds, still word-for-word English |
 | `stale` | translated files whose English source changed after their `source_commit` |
-| `unjudged` | files whose fence structure matches no English revision *and* whose frozen fences hide content — the mask is wrong, so every count taken through it is void |
+| `unjudged` | files whose fence structure matches no English revision — the frozen-region mask is wrong, so every count taken through it is void |
 
 Three things follow, and all have misled readers before:
 
@@ -184,6 +184,12 @@ into its body and the real closer closes the stray fence. Prose silently becomes
 The fence *count* is unchanged, which is why the check compares the **shape** — the ordered
 list of info-string tags, which are keep-in-English in every locale and so must match some
 English revision. Fix the fence and the file is judged normally again.
+
+The shape counts **terminated** fences only. An unterminated fence is not frozen, so it
+describes nothing about the mask and must not perturb the shape. That is also why the check
+does not ask whether the mask *hid* anything: a stray ```` ```text ```` opener is localisable
+and hides nothing, yet it still flips the phase and **exposes** the real frozen body — whose
+keep-in-English lines then read as newly-translated prose. Corruption runs both ways.
 
 The root `README.md` coverage table renders these same numbers, and only these — it reads the
 status files rather than counting what exists on disk (#560). Its cells use two markers:
