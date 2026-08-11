@@ -85,6 +85,19 @@ function hash(str) {
   return h >>> 0;
 }
 
+/**
+ * Serialise for embedding inside a `<script>` element. `JSON.stringify` alone is unsafe
+ * there: the HTML parser ends the element at the first literal `</script>`, so a title
+ * containing that sequence would break out of the data block and into markup. Escaping `<`
+ * closes it, and U+2028/U+2029 are escaped because they are JS line terminators.
+ */
+function scriptJson(value) {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
 function escapeHtml(s) {
   return String(s)
     .replace(/&/g, '&amp;')
@@ -520,18 +533,29 @@ const JS = `
     });
   }
 
+  // Built with textContent rather than innerHTML: these strings come from author-written
+  // frontmatter, and a title containing markup would otherwise be parsed as markup.
+  function span(cls, text, colour) {
+    var el = document.createElement('span');
+    el.className = cls;
+    el.textContent = text;
+    if (colour) el.style.color = colour;
+    return el;
+  }
+
   function setReadout(i) {
+    readout.textContent = '';
     if (i < 0) {
       readout.setAttribute('data-empty', 'true');
-      readout.innerHTML = '<span class="t">' + DATA.nodes.length + ' dreams, placed by golden angle at root-n</span>';
+      readout.appendChild(span('t', DATA.nodes.length + ' dreams, placed by golden angle at root-n'));
       return;
     }
     var d = DATA.nodes[i];
     readout.setAttribute('data-empty', 'false');
-    readout.innerHTML = '<span class="t">' + d.title + '</span>'
-      + '<span class="m">' + d.date + '</span>'
-      + '<span class="m">' + d.motifs.join(' &middot; ') + '</span>'
-      + (d.intact ? '' : '<span class="m" style="color:var(--madder)">' + d.recovered + '</span>');
+    readout.appendChild(span('t', d.title));
+    readout.appendChild(span('m', d.date));
+    readout.appendChild(span('m', d.motifs.join(' \\u00b7 ')));
+    if (!d.intact) readout.appendChild(span('m', d.recovered, 'var(--madder)'));
   }
 
   function pick(ev) {
@@ -681,7 +705,7 @@ function page(dreams, data) {
     <p>Latest: <em>${escapeHtml(newest.title)}</em>, ${escapeHtml(newest.date)}.</p>
   </div>
 </div>
-<script>window.__ATLAS__ = ${JSON.stringify(data)};</script>
+<script>window.__ATLAS__ = ${scriptJson(data)};</script>
 <script>${JS}</script>
 `;
 }

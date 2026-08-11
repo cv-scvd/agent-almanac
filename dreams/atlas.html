@@ -615,18 +615,29 @@ a:focus-visible, [tabindex]:focus-visible, canvas:focus-visible { outline: 2px s
     });
   }
 
+  // Built with textContent rather than innerHTML: these strings come from author-written
+  // frontmatter, and a title containing markup would otherwise be parsed as markup.
+  function span(cls, text, colour) {
+    var el = document.createElement('span');
+    el.className = cls;
+    el.textContent = text;
+    if (colour) el.style.color = colour;
+    return el;
+  }
+
   function setReadout(i) {
+    readout.textContent = '';
     if (i < 0) {
       readout.setAttribute('data-empty', 'true');
-      readout.innerHTML = '<span class="t">' + DATA.nodes.length + ' dreams, placed by golden angle at root-n</span>';
+      readout.appendChild(span('t', DATA.nodes.length + ' dreams, placed by golden angle at root-n'));
       return;
     }
     var d = DATA.nodes[i];
     readout.setAttribute('data-empty', 'false');
-    readout.innerHTML = '<span class="t">' + d.title + '</span>'
-      + '<span class="m">' + d.date + '</span>'
-      + '<span class="m">' + d.motifs.join(' &middot; ') + '</span>'
-      + (d.intact ? '' : '<span class="m" style="color:var(--madder)">' + d.recovered + '</span>');
+    readout.appendChild(span('t', d.title));
+    readout.appendChild(span('m', d.date));
+    readout.appendChild(span('m', d.motifs.join(' \u00b7 ')));
+    if (!d.intact) readout.appendChild(span('m', d.recovered, 'var(--madder)'));
   }
 
   function pick(ev) {
