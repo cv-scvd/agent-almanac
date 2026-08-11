@@ -47,6 +47,8 @@
   "scripts": {
     "update-readmes": "node scripts/generate-readmes.js",
     "check-readmes": "node scripts/generate-readmes.js --check",
+    "build-dreams": "node scripts/build-dreams.js",
+    "check-dreams": "node scripts/build-dreams.js --check",
     "validate:integrity": "bash scripts/validate-integrity.sh",
     "validate:translations": "node scripts/check-translation-freshness.js",
     "validate:i18n-parity": "node scripts/check-i18n-frontmatter-parity.js",
