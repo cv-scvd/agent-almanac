@@ -684,7 +684,7 @@ Escalate **proactively** if:
 
 ## Step 5: Complete Communication Templates
 
-### Communication Templates (All Variants)
+### Communication Templates (Internal and External)
 
 ````markdown
 ## Communication Templates
