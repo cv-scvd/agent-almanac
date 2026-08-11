@@ -11,6 +11,13 @@ on:
       - 'scripts/**'
       - '.claude/**'
       - '.github/workflows/update-readmes.yml'
+      # B13 compares root README.md against i18n/*/translation_status.yml, and
+      # this job is its only PR-level caller. Without README.md here, a hand
+      # edit to the very table the gate guards merges with every check green.
+      # Self-listed for the same reason: a PR that drops this job's setup-node
+      # step (or its own paths) must not be able to bypass the job.
+      - 'README.md'
+      - '.github/workflows/validate-integrity.yml'
       # A8 derives its expected translation_status set from i18n/_config.yml and
       # B6 reads i18n/*/ — without this, a new-locale PR bypasses both (#362).
       - 'i18n/**'
@@ -31,6 +38,8 @@ on:
       - 'scripts/**'
       - '.claude/**'
       - '.github/workflows/update-readmes.yml'
+      - 'README.md'
+      - '.github/workflows/validate-integrity.yml'
       - 'i18n/**'
       - 'viz/R/glyphs.R'
       - 'viz/R/agent_glyphs.R'

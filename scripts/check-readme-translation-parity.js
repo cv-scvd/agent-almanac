@@ -45,12 +45,33 @@ export const FALLBACK_MARK = '*';
 export const UNMEASURED = '-';
 
 /**
+ * One YAML scalar: strips matching outer quotes and an unquoted trailing
+ * comment. `- code: "zh-CN"` and `name: Deutsch # German` are both legal YAML
+ * that js-yaml reads correctly, and capturing them verbatim produced a red
+ * gate whose message blamed the README for a quoting choice in _config.yml.
+ */
+function scalar(raw) {
+  const value = raw.trim();
+  const quote = value[0];
+  if ((quote === '"' || quote === "'") && value.length >= 2 && value.endsWith(quote)) {
+    return value.slice(1, -1);
+  }
+  const comment = value.indexOf(' #');
+  return comment === -1 ? value : value.slice(0, comment).trim();
+}
+
+/**
  * Locale codes and display names from i18n/_config.yml.
  *
  * Shape-restricted to the `supported_locales:` block's `- code:` / `name:`
  * pairs. Anything else throws rather than returning a short list -- a
  * silently-truncated locale list would make the row-set comparison below
  * pass by not looking.
+ *
+ * Duplicate keys throw, because js-yaml (which every other consumer of this
+ * file uses) throws `duplicated mapping key`. A parser advertising that it
+ * fails closed rather than guessing must not quietly resolve a duplicate to
+ * first-wins while the generator beside it crashes on the same bytes.
  */
 export function parseLocales(configText) {
   const lines = configText.split('\n');
@@ -62,16 +83,18 @@ export function parseLocales(configText) {
     const line = lines[i].replace(/\r$/, '');
     if (/^\S/.test(line)) break; // dedented out of the block
     if (/^\s*$/.test(line)) continue;
-    const code = line.match(/^\s*-\s+code:\s*(\S+)\s*$/);
+    const code = line.match(/^\s*-\s+code:\s*(.+?)\s*$/);
     if (code) {
-      locales.push({ code: code[1], name: null });
+      locales.push({ code: scalar(code[1]), name: null });
       continue;
     }
     const name = line.match(/^\s*name:\s*(.+?)\s*$/);
     if (name && locales.length) {
-      if (locales[locales.length - 1].name === null) {
-        locales[locales.length - 1].name = name[1];
+      const current = locales[locales.length - 1];
+      if (current.name !== null) {
+        throw new Error(`i18n/_config.yml: locale '${current.code}' has a duplicate name: key (js-yaml would throw)`);
       }
+      current.name = scalar(name[1]);
       continue;
     }
     if (/^\s*(name_en|status):/.test(line)) continue;
@@ -106,11 +129,19 @@ export function parseStatus(statusText) {
     const section = line.match(/^ {2}(\w[\w-]*):\s*$/);
     if (section) {
       current = section[1];
+      // Duplicates throw rather than resolving last-wins: js-yaml rejects a
+      // `duplicated mapping key`, so a silently-accepted duplicate would let
+      // a doctored pair sit green under this gate while every generator that
+      // reads the same file crashes.
+      if (coverage[current]) throw new Error(`translation_status.yml: duplicate coverage.${current} section (js-yaml would throw)`);
       coverage[current] = {};
       continue;
     }
     const field = line.match(/^ {4}(\w+):\s*(\S+)\s*$/);
     if (field && current) {
+      if (coverage[current][field[1]] !== undefined) {
+        throw new Error(`translation_status.yml: duplicate coverage.${current}.${field[1]} key (js-yaml would throw)`);
+      }
       coverage[current][field[1]] = field[2];
       continue;
     }
@@ -228,15 +259,30 @@ export function compareSurfaces({ locales, readmeRows, statusTexts }) {
       continue;
     }
 
-    const marked = Object.values(cells).some((c) => c.fallback);
+    // Checked for every row, measured or not. This used to sit below the
+    // fallback branch's `continue`, so a fallback row's language was never
+    // compared to anything.
+    if (row.name !== locale.name) {
+      failures.push(`${code}: README language '${row.name}' != i18n/_config.yml name '${locale.name}'`);
+    }
+
+    const numberCells = Object.values(cells);
+    const markedCount = numberCells.filter((c) => c.fallback).length;
+    const marked = markedCount > 0;
 
     if (coverage === null) {
       // No status file: the fallback count is the only number available, and
-      // the table must say so rather than presenting it as measured.
-      if (!marked) {
+      // the table must say so rather than presenting it as measured. EVERY
+      // cell must carry the mark -- `some` let a row with one marked cell and
+      // four arbitrary unmarked ones pass, which is exactly the "unmeasured
+      // number presented as measured" this branch exists to reject.
+      if (markedCount !== numberCells.length) {
+        const how = markedCount === 0
+          ? 'the row is not marked'
+          : `only ${markedCount} of its ${numberCells.length} number cells are marked`;
         failures.push(
           `locale '${code}' has no i18n/${code}/translation_status.yml, so its README numbers are a file count, ` +
-          `but the row is not marked '${FALLBACK_MARK}' -- an unmeasured number is presented as measured`
+          `but ${how} '${FALLBACK_MARK}' -- an unmeasured number is presented as measured`
         );
       }
       if (row.stubs !== UNMEASURED) {
@@ -286,9 +332,6 @@ export function compareSurfaces({ locales, readmeRows, statusTexts }) {
     }
     if (row.stubs !== String(expectedTotal.stubs)) {
       failures.push(`${code}: README stubs column ${row.stubs} != status stubs ${expectedTotal.stubs}`);
-    }
-    if (row.name !== locale.name) {
-      failures.push(`${code}: README language '${row.name}' != i18n/_config.yml name '${locale.name}'`);
     }
   }
 

@@ -287,6 +287,59 @@ test('a fallback marker while a status file exists is caught', () => {
   assert.match(failures[0], /has a translation_status\.yml but its README row is marked/);
 });
 
+test('a PARTIALLY marked status-less row is caught', () => {
+  // Was a live fail-open: the marked test used `some`, so one marked cell
+  // excused four unmarked ones carrying arbitrary numbers -- precisely the
+  // "unmeasured number presented as measured" this branch rejects. (#562 F2)
+  const mixed = `| ja | 日本語 | 366/369${FALLBACK_MARK} | 6/75 | 6/22 | 5/34 | 383/500 (76.6%) | ${UNMEASURED} |`;
+  const statuses = [['de', DE_STATUS], ['ja', null]];
+  const { failures } = compare([DE_ROW_CORRECT, mixed], { statuses });
+  assert.equal(failures.length, 1);
+  assert.match(failures[0], /only 1 of its 5 number cells are marked/);
+});
+
+test('a status-less row still has its language checked', () => {
+  // The name check sat below the fallback branch's `continue`, so a fallback
+  // row's language was compared to nothing. (#562 F2)
+  const wrongName = `| ja | Japanisch | 366/369${FALLBACK_MARK} | 6/75${FALLBACK_MARK} | 6/22${FALLBACK_MARK} | 5/34${FALLBACK_MARK} | 383/500 (76.6%)${FALLBACK_MARK} | ${UNMEASURED} |`;
+  const statuses = [['de', DE_STATUS], ['ja', null]];
+  const { failures } = compare([DE_ROW_CORRECT, wrongName], { statuses });
+  assert.equal(failures.length, 1);
+  assert.match(failures[0], /README language 'Japanisch' != .* '日本語'/);
+});
+
+// ── Duplicate keys: the fail-closed promise ──────────────────────
+// js-yaml throws `duplicated mapping key`, so every other consumer of these
+// files crashes on a duplicate. A parser that advertises fail-closed must not
+// resolve one to last-wins and report OK. (#562 F3)
+
+test('a duplicate coverage section throws instead of taking last-wins', () => {
+  const doctored = `${DE_STATUS}  skills:\n    translated: 999\n    total: 369\n    pct: 99\n    stale: 0\n    stubs: 0\n`;
+  assert.throws(() => parseStatus(doctored), /duplicate coverage\.skills section/);
+});
+
+test('a duplicate coverage field throws', () => {
+  const doctored = DE_STATUS.replace('    stubs: 26\n', '    stubs: 26\n    translated: 999\n');
+  assert.throws(() => parseStatus(doctored), /duplicate coverage\.skills\.translated key/);
+});
+
+test('a duplicate locale name throws instead of taking first-wins', () => {
+  const doctored = CONFIG.replace('    name: Deutsch\n', '    name: Deutsch\n    name: Klingon\n');
+  assert.throws(() => parseLocales(doctored), /locale 'de' has a duplicate name/);
+});
+
+// ── Legal YAML the verbatim parser used to mangle (#562 F6) ──────
+
+test('quoted codes and names are read as YAML reads them', () => {
+  const quoted = `supported_locales:\n  - code: "zh-CN"\n    name: '简体中文'\n    status: active\n`;
+  assert.deepEqual(parseLocales(quoted), [{ code: 'zh-CN', name: '简体中文' }]);
+});
+
+test('a trailing comment is not captured as part of the value', () => {
+  const commented = 'supported_locales:\n  - code: de # the German locale\n    name: Deutsch # German\n';
+  assert.deepEqual(parseLocales(commented), [{ code: 'de', name: 'Deutsch' }]);
+});
+
 test('a status-less locale reporting a stub count is caught', () => {
   const marked = `| ja | 日本語 | 366/369${FALLBACK_MARK} | 6/75${FALLBACK_MARK} | 6/22${FALLBACK_MARK} | 5/34${FALLBACK_MARK} | 383/500 (76.6%)${FALLBACK_MARK} | 0 |`;
   const statuses = [['de', DE_STATUS], ['ja', null]];
