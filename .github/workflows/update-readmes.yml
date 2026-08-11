@@ -35,6 +35,13 @@ on:
       # regenerate the counts it decides. Load-bearing since #560, because the
       # README table now derives from those counts too.
       - 'scripts/lib/translation-status.js'
+      # The toolchain is an input too. generate-readmes.js parses YAML with js-yaml, so a
+      # Dependabot bump that changes `yaml.load` behaviour changes generated output while
+      # touching no content file and no generator -- nothing here matched, so the healer never
+      # ran, and the drift sat until an unrelated push healed it or a release went red. Same
+      # rationale as #362 listing the generators: heal at the causing commit.
+      - 'package.json'
+      - 'package-lock.json'
   workflow_dispatch:
 
 jobs:

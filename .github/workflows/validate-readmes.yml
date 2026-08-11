@@ -60,6 +60,16 @@ on:
       - 'viz/README.md'
       - 'tests/README.md'
       - '.github/workflows/validate-readmes.yml'
+  # Path filters do not apply to `schedule`, which is the point. Everything above is
+  # commit-triggered, so all of it is blind to HEALER FAILURE: if update-readmes.yml goes red
+  # — rotated deploy key, npm ci failure, a non-fast-forward race against a human merge — main
+  # is left stale, no output file was touched by the failure, and nothing re-checks until the
+  # next tag. That is precisely the #563 symptom, still reachable after this gate lands.
+  # A daily unconditional run turns "surfaces at the next release" into "surfaces within 24h",
+  # for that case, for a dependency bump that changes generator output, and for a generator
+  # change that never triggered a regeneration. One read-only job per day.
+  schedule:
+    - cron: '17 6 * * *'
   workflow_dispatch:
 
 permissions:

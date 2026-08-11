@@ -258,7 +258,41 @@ else
       failed=1; a8_fail=1
     fi
   done <<< "$a8_negations"
-  [ "$a8_fail" -eq 0 ] && echo "OK: all $a8_count auto-generated files (readmes + per-locale translation_status) are in the auto-commit file_pattern; no dead tokens; negations in sync"
+  # A8c: the PR-level staleness gate's path list must cover every MANAGED output, and its two
+  # event blocks must agree (#563 review M1). Without this the gate degrades exactly the way
+  # it was built to prevent, one file at a time and with nothing red anywhere: add a tenth
+  # MANAGED entry, and A8 above forces it into update-readmes.yml's file_pattern, but nothing
+  # forces it into validate-readmes.yml's paths — so hand edits to the new file stop being
+  # gated. GitHub Actions cannot resolve a YAML anchor across event blocks, so the list is
+  # necessarily duplicated in the workflow; this is what keeps the duplicate honest.
+  a8_vr='.github/workflows/validate-readmes.yml'
+  if [ ! -f "$a8_vr" ]; then
+    echo "FAIL: $a8_vr is missing, so the generated-README staleness gate cannot run (#563)"
+    failed=1; a8_fail=1
+  else
+    # Each `paths:` block, flattened to its quoted entries, one block per line.
+    a8_vr_push=$(sed -n "/^  push:/,/^  pull_request:/p" "$a8_vr" | grep -oE "^      - '[^']+'" | sed -E "s/^      - '//; s/'$//" | sort -u)
+    a8_vr_pr=$(sed -n "/^  pull_request:/,/^  schedule:/p" "$a8_vr" | grep -oE "^      - '[^']+'" | sed -E "s/^      - '//; s/'$//" | sort -u)
+    if [ -z "$a8_vr_push" ] || [ -z "$a8_vr_pr" ]; then
+      echo "FAIL: A8c could not parse the paths blocks of $a8_vr (parse broke, not a pass)"
+      failed=1; a8_fail=1
+    else
+      if [ "$a8_vr_push" != "$a8_vr_pr" ]; then
+        echo "FAIL: $a8_vr push and pull_request paths differ -- the gate would fire on one event and not the other:"
+        diff <(printf '%s\n' "$a8_vr_push") <(printf '%s\n' "$a8_vr_pr") | sed 's/^/  /' || true
+        failed=1; a8_fail=1
+      fi
+      while IFS= read -r f; do
+        [ -z "$f" ] && continue
+        if ! printf '%s\n' "$a8_vr_push" | grep -Fxq "$f"; then
+          echo "FAIL: MANAGED output '$f' is missing from $a8_vr paths (hand edits to it would not be gated -- #563)"
+          failed=1; a8_fail=1
+        fi
+      done <<< "$a8_readmes"
+    fi
+  fi
+
+  [ "$a8_fail" -eq 0 ] && echo "OK: all $a8_count auto-generated files (readmes + per-locale translation_status) are in the auto-commit file_pattern; no dead tokens; negations in sync; staleness-gate paths cover every MANAGED output"
 fi
 
 # A9: Invocation-phrase allowed-tools coverage (#356, warn-only)
