@@ -607,3 +607,45 @@ test('a template or README inside a tree is not a target', async (t) => {
   assert.doesNotMatch(r.stdout, /_template\.md/, 'a template reached the skipped list');
   assert.doesNotMatch(r.stdout, /README\.md/, 'a README reached the skipped list');
 });
+
+test('a template in the skills tree is not a target either', async (t) => {
+  // The arm above proves the property for the FLAT trees only, while its comment claims
+  // it generally. It did not hold for `skills/`, which is the tree holding most of the
+  // corpus: `contentKey` applied the `_`-prefix exclusion in the flat branch alone, so
+  // `skills/_template/SKILL.md` keyed to `skills/_template` and the English history index
+  // carried it. Unreachable in the real corpus only because no locale happens to carry a
+  // translated template — which is ambient state, not a guarantee (#519).
+  const { dir } = makeFixture(t);
+
+  const english = [
+    '---', 'name: skill-name', 'description: Template.', '---', '',
+    '# Template', '', '## Procedure', '',
+    '```bash', 'echo english', '```', '',
+  ].join('\n');
+  mkdirSync(join(dir, 'skills', '_template'), { recursive: true });
+  writeFileSync(join(dir, 'skills', '_template', 'SKILL.md'), english, 'utf8');
+  git(dir, ['add', '-A']);
+  git(dir, ['commit', '-m', 'add a template to the skills tree']);
+
+  const translated = join(dir, 'i18n', 'de', 'skills', '_template', 'SKILL.md');
+  mkdirSync(dirname(translated), { recursive: true });
+  writeFileSync(
+    translated,
+    ['---', 'name: skill-name', 'locale: de', '---', '', '# Vorlage', '',
+      '```bash', 'echo uebersetzt', '```', ''].join('\n'),
+    'utf8',
+  );
+  git(dir, ['add', '-A']);
+  git(dir, ['commit', '-m', 'add a translated template']);
+
+  const r = run(dir, ['--tree', 'skills', '--write']);
+
+  assert.equal(r.status, 0, r.stderr);
+  // Positive control, as the flat arm has: without it both assertions below pass vacuously
+  // if `--write` stopped writing at all. `demo-skill` is divergent and must still be repaired.
+  assert.match(r.stdout, /files changed: 1/);
+  const after = readFileSync(translated, 'utf8');
+  assert.ok(after.includes('echo uebersetzt'), 'the skills template was treated as content');
+  // Not a target, not merely unwritten — same distinction the flat arm asserts.
+  assert.doesNotMatch(r.stdout, /_template/, 'the skills template reached the skipped list');
+});
