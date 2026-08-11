@@ -553,6 +553,34 @@ else
   echo "SKIP: ~/.claude/skills not present (e.g. CI)"
 fi
 
+# B13: README / translation-status parity (#560)
+# The README translations table and i18n/*/translation_status.yml are the two
+# reader-facing statements of the same fact, and were independent derivations
+# until #560: the table counted files, so every cell was `translated + stubs`
+# (`de 383/500 (76.6%)` vs a measured `347/500 (69.4%)`). check-readmes could
+# not see it -- it regenerates the table with the same generator and compares
+# it against itself, so it agrees with any generator bug, and it runs only in
+# release.yml anyway. This check parses both COMMITTED artifacts instead, and
+# lives here because this workflow triggers on i18n/** and scripts/** for both
+# pushes and PRs.
+# Dependency-free by design (see A8): node only, no npm ci, no js-yaml.
+echo "--- B13: README / translation-status parity ---"
+if ! command -v node >/dev/null 2>&1; then
+  # Fail, never skip: "no interpreter" is an unevaluated check, and an
+  # unevaluated check reported as OK is the failure mode this whole issue is
+  # about.
+  echo "FAIL: node not available, so B13 could not be evaluated (this is not a pass)"
+  failed=1
+else
+  b13_out=$(node scripts/check-readme-translation-parity.js 2>&1)
+  b13_rc=$?
+  echo "$b13_out"
+  # 0 = agree, 1 = disagree, 2 = could not evaluate. Anything non-zero fails.
+  if [ "$b13_rc" -ne 0 ]; then
+    failed=1
+  fi
+fi
+
 echo ""
 echo "=== Summary ==="
 if [ "$failed" -ne 0 ]; then

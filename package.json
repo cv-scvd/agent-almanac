@@ -52,6 +52,7 @@
     "validate:integrity": "bash scripts/validate-integrity.sh",
     "validate:translations": "node scripts/check-translation-freshness.js",
     "validate:i18n-parity": "node scripts/check-i18n-frontmatter-parity.js",
+    "validate:readme-parity": "node scripts/check-readme-translation-parity.js",
     "validate:i18n-fences": "node scripts/check-i18n-fence-parity.js",
     "validate:yaml-fences": "node scripts/check-yaml-fences.js",
     "check:placeholder-drift": "node scripts/check-placeholder-drift.js",

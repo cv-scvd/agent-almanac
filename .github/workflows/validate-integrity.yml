@@ -50,5 +50,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # B13 shells out to node. The runner image ships one, but relying on
+      # that implicitly means a future image change turns the gate red (or,
+      # worse, makes it skippable) for reasons unrelated to the repo. No
+      # `npm ci`: every script this job runs is dependency-free, which is the
+      # constraint A8 documents and B13 was written to respect.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
       - name: Run integrity checks
         run: bash scripts/validate-integrity.sh
