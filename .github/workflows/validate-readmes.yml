@@ -1,0 +1,88 @@
+name: Validate READMEs
+
+# `scripts/generate-readmes.js` writes nine committed files, and until now the only
+# thing that checked them was `npm run check-readmes` inside `npm test` — which runs
+# in `release.yml` alone, on a tag. So a stale generated README could land on a PR,
+# sit on main, and first surface as a RED RELEASE, blaming the tag rather than the
+# commit that caused it (#563).
+#
+# `update-readmes.yml` does auto-commit regenerated output on push to main, so drift
+# is usually transient — but that job is path-triggered, and a hand edit to a
+# generated file matches none of its content-tree paths. Nothing repaired those.
+#
+# Why `paths` is the OUTPUT set and not the read-set:
+#
+#   The inputs (five registries, `i18n/_config.yml`, the per-locale
+#   `translation_status.yml`, the `i18n/<locale>/<type>/` listings,
+#   `generate-readmes.js` itself) are deliberately NOT listed. Contributors are not
+#   expected to regenerate — CLAUDE.md tells them "run `npm run update-readmes` (or
+#   let CI auto-commit on push to main)" in four places, and update-readmes.yml is
+#   what makes that true. Triggering on inputs would fail every ordinary content PR
+#   for not having run a generator the docs say CI runs for you, which is a contract
+#   change wearing a bug fix's clothes.
+#
+#   Scoping to outputs closes the whole release-blocking defect with no contract
+#   change: it catches a generated file that was hand-edited or committed stale,
+#   which is the only case nothing else covers. The translations slice of the same
+#   table is additionally gated on every PR by integrity check B13 (#560).
+#
+# Not wired into `validate-integrity.sh` on purpose: that job runs with
+# `setup-node` and deliberately NO `npm ci` (integrity check A8 documents the
+# constraint), while `generate-readmes.js` imports js-yaml. It would die at module
+# resolution in CI while passing locally.
+
+on:
+  push:
+    branches: [main]
+    # GitHub Actions does not resolve YAML anchors across event blocks, so this list
+    # is written out twice. Keep the two identical or push and pull_request diverge
+    # silently — the shape integrity check A8 exists to catch elsewhere.
+    paths:
+      - 'README.md'
+      - 'CLAUDE.md'
+      - 'skills/README.md'
+      - 'agents/README.md'
+      - 'teams/README.md'
+      - 'guides/README.md'
+      - 'guides/quick-reference.md'
+      - 'viz/README.md'
+      - 'tests/README.md'
+      - '.github/workflows/validate-readmes.yml'
+  pull_request:
+    paths:
+      - 'README.md'
+      - 'CLAUDE.md'
+      - 'skills/README.md'
+      - 'agents/README.md'
+      - 'teams/README.md'
+      - 'guides/README.md'
+      - 'guides/quick-reference.md'
+      - 'viz/README.md'
+      - 'tests/README.md'
+      - '.github/workflows/validate-readmes.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  readmes:
+    runs-on: ubuntu-latest
+    steps:
+      # No `fetch-depth: 0`: unlike generate-translation-status.js, this generator
+      # makes no git calls, so full history buys nothing and costs ~90s here.
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          # Matches update-readmes.yml, the job that WRITES these files. If the two
+          # ever disagree, this gate could fail on output the writer considers correct.
+          node-version: '24'
+          cache: 'npm'
+
+      - run: npm ci
+
+      # Regenerates every managed file in memory and byte-compares it against the
+      # committed copy, so this is exhaustive over the output rather than a
+      # heuristic. Exits 1 listing each stale file.
+      - run: npm run check-readmes
