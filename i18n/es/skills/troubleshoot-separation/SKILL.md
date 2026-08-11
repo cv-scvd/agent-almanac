@@ -21,7 +21,7 @@ metadata:
   domain: chromatography
   complexity: intermediate
   language: natural
-  tags: chromatography, troubleshooting, peak-shape, resolution, column, HPLC, GC
+  tags: chromatography, troubleshooting, peak-shape, resolution, matrix-effects
 ---
 
 # Resolver Problemas de Separación

@@ -20,9 +20,9 @@ metadata:
   author: Philipp Thoss
   version: "1.0"
   domain: spectroscopy
-  complexity: intermediate
+  complexity: advanced
   language: natural
-  tags: spectroscopy, mass-spectrometry, fragmentation, molecular-formula, HRMS
+  tags: spectroscopy, mass-spectrometry, fragmentation, molecular-ion, isotope
 ---
 
 # Interpretar Espectro de Masas

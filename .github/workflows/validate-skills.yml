@@ -125,12 +125,25 @@ jobs:
       - name: Check translation freshness (warn only)
         run: node scripts/check-translation-freshness.js --warn
 
-      # Keep-in-English frontmatter parity (#371). Ships BLOCKING, not warn-only:
-      # the corpus was verified clean at introduction (39-file catch-up in the
-      # same PR), so the issue's promotion precondition was already met, and a
-      # warn stream nobody watches would reproduce the root cause (#371 = two
-      # months of silent drift). Deterministic exact comparison, unlike the
-      # heuristic warn-only A9. Local `npm run validate:i18n-parity` matches.
+      # Keep-in-English frontmatter parity (#371, widened by #485). Ships BLOCKING,
+      # not warn-only: the corpus is verified clean at introduction — a 39-file
+      # catch-up in #371's PR, and an 88-field catch-up across 61 files in #485's —
+      # so the promotion precondition is met each time, and a warn stream nobody
+      # watches would reproduce the root cause (#371 = two months of silent drift;
+      # #485 = four). Deterministic exact comparison, unlike the heuristic
+      # warn-only A9. Local `npm run validate:i18n-parity` matches.
+      #
+      # #485 widened it from allowed-tools alone to every keep-in-English field.
+      # `version` is compared on DIRECTION rather than equality: a translation pins
+      # the English version it was made from, so all 317 of its divergences lag and
+      # are correct — but 0 run ahead, and a translation claiming a version its
+      # source never reached can only have authored it, so that case blocks.
+      #
+      # The step prints a field-comparison count (21,456 today). Read it: a
+      # column-anchored implementation compares only the one top-level field and
+      # still reports OK, and the count is the only thing that distinguishes the
+      # two. NOTE it is printed, not asserted — nothing here fails on a low count,
+      # so it is a diagnostic for a human, not a gate. See the follow-up issue.
       - name: Check i18n frontmatter parity
         run: node scripts/check-i18n-frontmatter-parity.js
 

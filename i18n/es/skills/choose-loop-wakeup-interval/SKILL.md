@@ -17,7 +17,7 @@ metadata:
   domain: general
   complexity: intermediate
   language: multi
-  tags: loop, wakeup, cache, scheduling, delay, decision
+  tags: loop, wakeup, cache, scheduling, delay, general
   locale: es
   source_locale: en
   source_commit: 9c546edf
