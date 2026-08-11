@@ -338,14 +338,19 @@ replicaCount: 1
 resources:
   limits: {cpu: 500m, memory: 256Mi}
 ingress:
-  hosts: [my-app-dev.example.com]
+  hosts:
+  - host: my-app-dev.example.com
+    paths: [{path: /, pathType: Prefix}]
 
 ---
 # values-prod.yaml (excerpt)
 replicaCount: 5
 autoscaling: {enabled: true, minReplicas: 3, maxReplicas: 10}
 ingress:
-  hosts: [my-app.example.com]
+  hosts:
+  - host: my-app.example.com
+    paths: [{path: /, pathType: Prefix}]
+  # tls[].hosts IS a list of strings; ingress.hosts is not. Both match the template.
   tls:
   - secretName: my-app-tls
     hosts:
