@@ -7,8 +7,15 @@
  *
  * Usage:
  *   node scripts/generate-translation-status.js
- *   node scripts/generate-translation-status.js --verdicts   # also list every stub, with
- *                                                            # the reason and line counts
+ *   node scripts/generate-translation-status.js --verdicts   # list every stub with its
+ *                                                            # reason and line counts, plus
+ *                                                            # any orphaned mirror
+ *   node scripts/generate-translation-status.js --margins     # per locale, the genuine
+ *                                                            # translations that came
+ *                                                            # closest to a stub verdict
+ *
+ * `--verdicts` and `--margins` are INSPECTION modes and do not write. Add `--write` to
+ * regenerate the status files in the same run. Unknown arguments exit 2.
  */
 
 import { readFileSync, writeFileSync, readdirSync, existsSync, statSync } from 'fs';
@@ -17,11 +24,41 @@ import { fileURLToPath } from 'url';
 import * as yaml from 'js-yaml';
 import { assertNotShallow, createFreshnessChecker } from './lib/git-freshness.js';
 import { buildEnglishProseHistory, classifyTranslation, translationKey } from './lib/translation-status.js';
+import { TREES } from './lib/fences.js';
+
+// Validated against an accept-list, not sniffed with `includes`. `--verdict`, `--verdicts=1`
+// and `-verdicts` all used to parse as "flag absent": the scan ran, ten files were written,
+// no verdict list printed, exit 0 — and the reader concluded there were no stubs to review
+// before starting a bulk delete. `audit-skill-sections.js` already does this correctly.
+const KNOWN_FLAGS = new Set(['--verdicts', '--margins', '--write']);
+const UNKNOWN_FLAGS = process.argv.slice(2).filter((arg) => !KNOWN_FLAGS.has(arg));
+if (UNKNOWN_FLAGS.length) {
+  console.error(`ERROR: unknown argument(s): ${UNKNOWN_FLAGS.join(' ')}`);
+  console.error(`Known flags: ${[...KNOWN_FLAGS].join(', ')}`);
+  process.exit(2);
+}
 
 // A stub verdict is acted on by deleting and re-scaffolding the file (#478), so a wrong one
 // destroys work. The aggregate counts cannot be reviewed; this prints the per-file list that
-// can. Use it before any bulk remediation.
+// can, with the real path of each file. Use it before any bulk remediation.
 const SHOW_VERDICTS = process.argv.includes('--verdicts');
+
+// The detector's safety case is a MARGIN — how many novel lines the closest genuine
+// translation carries above the scaffold verdict. That was measured once and written into a
+// comment, where it rots. This re-measures it on demand, and doubles as the drift alarm the
+// comment's "re-measure before lowering the floor" instruction otherwise lacks.
+const SHOW_MARGINS = process.argv.includes('--margins');
+const MARGIN_COUNT = 5;
+
+// The inspection flags do NOT write. The header tells a maintainer to run `--verdicts`
+// before a destructive batch; if that command also rewrites ten tracked YAML files — each
+// stamped `last_updated: <today>`, so it dirties the tree even when no count moved — then
+// the prescribed safety step defeats `npm run guard:verify` and produces a diff out of
+// nothing. This repo has already paid for that shape once: `normalize:i18n-fences` previews
+// by default because a read-only probe agent typed the bare command and rewrote 281 files
+// (#486). `--write` forces a regeneration alongside an inspection run.
+const WRITE_STATUS = process.argv.includes('--write')
+  || (!SHOW_VERDICTS && !SHOW_MARGINS);
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -102,9 +139,14 @@ function countTranslations(locale, contentType) {
   let translated = 0;
   let stale = 0;
   let stubs = 0;
+  // Every non-stub verdict's novel-line count, so `--margins` can report how close the
+  // closest genuine translation came to the scaffold verdict. The module header's safety
+  // case rests on that margin being 2 lines on the compressed tiers; an instruction to
+  // "re-measure before lowering the floor" needs something to re-measure with.
+  const margins = [];
 
   if (!existsSync(typeDir)) {
-    return { translated, stale, stubs };
+    return { translated, stale, stubs, margins };
   }
 
   const entries = readdirSync(typeDir);
@@ -137,13 +179,32 @@ function countTranslations(locale, contentType) {
       locale,
       englishLines: englishProse.get(key),
     });
+    // `novel` is null when the comparison did not run. Printing `-` rather than `0` keeps
+    // the distinction visible in the one list a maintainer reads before deleting files.
+    const measured = verdict.novel === null ? '-' : String(verdict.novel);
+
+    // The real, `rm`-able path — not `<locale>/<tree>/<id>`, which is not a path at all: it
+    // lacks the `i18n/` prefix and the suffix, and the suffix RULE DIFFERS BY TREE
+    // (`/SKILL.md` for skills, `.md` elsewhere). Someone scripting a remediation from the
+    // key gets a working delete for skills and a silent no-op for agents, teams and guides,
+    // and the batch half-applies with no error.
+    const shownPath = toRelPath(translatedFile);
+
     if (verdict.stub) {
       stubs++;
       if (SHOW_VERDICTS) {
-        console.log(`  STUB ${locale}/${key}  (${verdict.reason}, ${verdict.foreign}/${verdict.total} foreign)`);
+        console.log(`  STUB      ${shownPath}  (${verdict.reason}, ${measured}/${verdict.total} novel)`);
       }
       continue;
     }
+
+    // Surfaced because it is a lenient hole with no counter of its own: a mirror whose id
+    // matches no English content in history OR the working tree is counted as translated,
+    // and it most likely indicates an orphaned or misspelt directory, which is actionable.
+    if (verdict.reason === 'no-source' && SHOW_VERDICTS) {
+      console.log(`  NO-SOURCE ${shownPath}  (counted as translated — orphaned mirror?)`);
+    }
+    if (verdict.novel !== null) margins.push({ path: shownPath, novel: verdict.novel });
 
     translated++;
 
@@ -157,12 +218,15 @@ function countTranslations(locale, contentType) {
     }
   }
 
-  return { translated, stale, stubs };
+  return { translated, stale, stubs, margins };
 }
 
 // ── Main ─────────────────────────────────────────────────────────
 
-const contentTypes = ['skills', 'agents', 'teams', 'guides'];
+// `TREES`, not a second literal list: `buildEnglishProseHistory` pools from `TREES`, so a
+// fifth tree added there but not here would be pooled and never scanned — coverage for it
+// silently absent from the YAML, with no error. Same drift class as #519.
+const contentTypes = TREES;
 const locales = config.supported_locales.map(l => l.code);
 const today = new Date().toISOString().split('T')[0];
 
@@ -179,16 +243,26 @@ for (const locale of locales) {
   let totalStubs = 0;
   const totalSource = sourceCounts.total;
 
+  const localeMargins = [];
   for (const contentType of contentTypes) {
     const startedAt = Date.now();
-    const { translated, stale, stubs } = countTranslations(locale, contentType);
+    const { translated, stale, stubs, margins } = countTranslations(locale, contentType);
     const total = sourceCounts[contentType];
     const pct = total > 0 ? Math.round((translated / total) * 1000) / 10 : 0;
     coverage[contentType] = { translated, total, pct, stale, stubs };
     totalTranslated += translated;
     totalStale += stale;
     totalStubs += stubs;
+    localeMargins.push(...margins);
     console.log(`  scan ${locale}/${contentType}: ${translated} translated, ${stale} stale, ${stubs} stubs (${Date.now() - startedAt}ms)`);
+  }
+
+  if (SHOW_MARGINS) {
+    const closest = localeMargins.sort((a, b) => a.novel - b.novel).slice(0, MARGIN_COUNT);
+    console.log(`  margin ${locale}: closest genuine translations to the scaffold verdict — `
+      + (closest.length
+        ? closest.map((m) => `${m.path}=${m.novel}`).join('  ')
+        : 'none (no judged translations)'));
   }
 
   const totalPct = totalSource > 0
@@ -209,7 +283,17 @@ for (const locale of locales) {
   };
 
   const statusPath = resolve(localeDir, 'translation_status.yml');
-  writeFileSync(statusPath, yaml.dump(status, { flowLevel: 3 }));
-  console.log(`GENERATED: ${statusPath.replace(ROOT + '/', '')}`);
+  if (WRITE_STATUS) {
+    writeFileSync(statusPath, yaml.dump(status, { flowLevel: 3 }));
+    console.log(`GENERATED: ${statusPath.replace(ROOT + '/', '')}`);
+  } else {
+    console.log(`INSPECTED: ${statusPath.replace(ROOT + '/', '')} (not written — pass --write to regenerate)`);
+  }
   console.log(`  Coverage: ${totalTranslated}/${totalSource} (${totalPct}%), ${totalStale} stale, ${totalStubs} stubs`);
+  // Standing hint, not a footnote in a docstring. A stub verdict is remediated by deleting
+  // the file, the detector's errors point strict, and `--verdicts` was discoverable only by
+  // reading the source — which makes the containment documentation rather than a control.
+  if (totalStubs > 0 && !SHOW_VERDICTS) {
+    console.log(`  ${totalStubs} stubs — re-run with --verdicts and read the per-file list before any re-scaffold.`);
+  }
 }

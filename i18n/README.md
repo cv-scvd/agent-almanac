@@ -155,7 +155,39 @@ Per-locale status files are auto-generated:
 npm run translation:status
 ```
 
-Each `translation_status.yml` shows coverage percentages and stale counts per content type.
+Each `translation_status.yml` reports four numbers per content type, and they do not mean
+what a quick read suggests:
+
+| field | meaning |
+|---|---|
+| `total` | English sources of that type, from the registry |
+| `translated` | files that show evidence of translation |
+| `stubs` | files that show **none** — scaffolds, still word-for-word English |
+| `stale` | translated files whose English source changed after their `source_commit` |
+
+Two things follow, and both have misled readers before:
+
+- **`stale` is measured only over `translated`.** A stub is never also stale, because the
+  scaffold verdict is reached first. So recognising a scaffold *lowers* `stale` with nothing
+  translated — a falling `stale` number is not by itself progress.
+- **`translated + stubs` is not `total`.** A locale that has never scaffolded an item has
+  neither, so the remainder is untouched content.
+
+A file counts as a stub when every substantive prose line in it appeared verbatim in English
+at some point, or when its locale is written in a script the file contains none of. Frozen
+code fences are excluded from that comparison — they are keep-in-English in every locale by
+design, so counting them would make every genuine translation look like a scaffold.
+
+```bash
+# The per-file list behind the stub count -- read this before deleting anything
+npm run translation:status -- --verdicts
+
+# How close the closest genuine translations came to being called scaffolds
+npm run translation:status -- --margins
+```
+
+Use `--verdicts` before any bulk re-scaffold. A stub verdict is remediated by deleting the
+file, so a wrong one destroys real work, and an aggregate count cannot be reviewed.
 
 ## See Also
 

@@ -301,13 +301,28 @@ console.log('      green.\n');
 
 const original = readFileSync(absFile, 'utf8');
 
-// CRLF is safe here, and that was checked rather than assumed (#532's audit). Splitting on
-// '\n' leaves the '\r' attached to the END of each line, so rejoining on '\n' reproduces
-// every untouched line byte-for-byte — `"a\r\nX\r\nb\r\n"` deletes to `"a\r\nb\r\n"`. And
-// the --replace branch never splits lines at all. An earlier revision of this file added a
-// guard refusing carriage returns on the theory that rejoining rewrote line endings; the
-// theory was wrong and the guard only refused valid input.
+// CRLF is safe, a LONE CR is not, and the difference took three passes to get right.
 //
+// CRLF: splitting on '\n' leaves the '\r' at the END of each line, so rejoining reproduces
+// every untouched line byte-for-byte — `"a\r\nX\r\nb\r\n"` deletes to `"a\r\nb\r\n"`. A
+// guard refusing all carriage returns was added here on the theory that rejoining rewrote
+// line endings; the theory was wrong and the guard only refused valid input.
+//
+// Lone CR (Classic-Mac line endings) is a different failure and a much worse one:
+// `"a\rTARGET\rb\r".split('\n')` is ONE line, so --delete-matching deletes the entire file.
+// `sites` still reports 1, which looks like a precise single-site mutation; the empty file
+// parses fine as JS; and the suite then fails because the module is gone. That is reported
+// as MUTANT KILLED — a fabricated kill, the exact false confidence this tool exists to
+// prevent. Refuse it rather than answer dishonestly.
+if (/\r(?!\n)/.test(original)) {
+  fail(
+    `${opts.file} contains a carriage return that is not part of a CRLF pair.\n` +
+    'Splitting on LF would treat the file as a single line, so a line-oriented mutation\n' +
+    'deletes everything and the resulting failure would be reported as a kill.\n' +
+    'Repair with `git add --renormalize` and re-run.'
+  );
+}
+
 // Build the mutant in memory. Comparing strings is how "did it land" is decided:
 // asking git would be blind to exactly the cases guarded against above.
 let mutated;
