@@ -270,6 +270,41 @@ test('a file too short to judge is reported insufficient, not a scaffold', () =>
   assert.ok(verdict.total < MIN_SUBSTANTIVE_LINES);
 });
 
+// The boundary, pinned on BOTH sides with literal counts. Asserting
+// `total < MIN_SUBSTANTIVE_LINES` against the imported constant is self-referential and
+// cannot fix a value: mutating 5 to 2, 3 or 4 survives it. These two do not — the fixtures
+// are built to have exactly 5 and exactly 4 substantive lines by construction.
+const lineOfLength = (n, i) => `Fixture prose line ${i}`.padEnd(n, 'x');
+
+test('exactly MIN_SUBSTANTIVE_LINES substantive lines is enough to judge', () => {
+  const body = Array.from({ length: 5 }, (_, i) => lineOfLength(20, i)).join('\n\n');
+  const verdict = classifyTranslation({
+    translatedText: withFrontmatter(body), locale: 'de', englishLines: poolOf(body),
+  });
+  assert.equal(verdict.total, 5, 'fixture must sit exactly on the boundary');
+  assert.equal(verdict.reason, 'no-foreign-lines');
+  assert.equal(verdict.stub, true);
+});
+
+test('one line below the boundary is not judged', () => {
+  const body = Array.from({ length: 4 }, (_, i) => lineOfLength(20, i)).join('\n\n');
+  const verdict = classifyTranslation({
+    translatedText: withFrontmatter(body), locale: 'de', englishLines: poolOf(body),
+  });
+  assert.equal(verdict.total, 4);
+  assert.equal(verdict.reason, 'insufficient');
+  assert.equal(verdict.stub, false);
+});
+
+test('MIN_LINE_LENGTH is pinned at both ends too', () => {
+  // A 12-character line counts; an 11-character one does not. Without this, `>=` mutates to
+  // `>` and nothing notices.
+  const twelve = 'abcdefghijkl';
+  const eleven = 'abcdefghijk';
+  assert.equal(twelve.length, 12);
+  assert.deepEqual(substantiveLines(`${twelve}\n${eleven}\n`), [twelve]);
+});
+
 test('a translation whose English source is gone is reported no-source', () => {
   const verdict = classifyTranslation({
     translatedText: withFrontmatter(ENGLISH_BODY),
@@ -335,6 +370,42 @@ test('buildEnglishProseHistory includes uncommitted English edits', () => {
     assert.ok(lines.has('Uncommitted prose line in the working tree.'),
       'an uncommitted English edit is a legal basis, or every local scaffold reads as translated');
     assert.ok(lines.has('Committed prose line for the base.'));
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test('a missing blob does not shift the batch parser onto the wrong key', () => {
+  // The batch loop walks `git cat-file --batch` output positionally: each `missing` header
+  // must advance the spec index WITHOUT consuming a payload. If that skip is wrong, every
+  // subsequent blob is attributed to the previous spec's key, and the pools are silently
+  // wrong rather than empty — the worst available failure. Two skills are used so a
+  // misalignment lands prose in the other one's basis, where it is visible.
+  const repo = mkdtempSync(join(tmpdir(), 'aa-tstatus-missing-'));
+  try {
+    const git = (...args) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q', '-b', 'main');
+    git('config', 'user.email', 'test@example.invalid');
+    git('config', 'user.name', 'Test');
+
+    for (const [id, line] of [['alpha-skill', 'Alpha prose line, unique to alpha.'], ['beta-skill', 'Beta prose line, unique to beta.']]) {
+      mkdirSync(join(repo, 'skills', id), { recursive: true });
+      writeFileSync(join(repo, 'skills', id, 'SKILL.md'), withFrontmatter(`# ${id}\n\n${line}\n`));
+    }
+    git('add', '-A');
+    git('commit', '-qm', 'two skills');
+
+    // Delete one and commit: its path now appears in history at a commit where the OTHER
+    // skill's blob is absent, so the walk emits specs that resolve to `missing`.
+    rmSync(join(repo, 'skills', 'alpha-skill'), { recursive: true, force: true });
+    git('add', '-A');
+    git('commit', '-qm', 'delete alpha');
+
+    const history = buildEnglishProseHistory(repo);
+    assert.ok(history.get('skills/alpha-skill')?.has('Alpha prose line, unique to alpha.'));
+    assert.ok(history.get('skills/beta-skill')?.has('Beta prose line, unique to beta.'));
+    assert.equal(history.get('skills/beta-skill')?.has('Alpha prose line, unique to alpha.'), false,
+      'a misaligned batch parse would cross-pollinate the two bases');
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }

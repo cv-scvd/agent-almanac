@@ -1,15 +1,25 @@
 /**
  * Tests for `auditSkillText()` in `scripts/audit-skill-sections.js`.
  *
- * Written to test a code comment claiming a carriage return "would report every required
- * section missing" — and the claim turned out to be **false**. `sectionBody` compares
- * `line.trim()`, which eats the trailing '\r', and every other test in the module is
- * start-anchored, so `raw.split('\n')` and `toLines(raw)` behave identically. The mutant
- * reverting the normalisation SURVIVES, and that is the correct result, recorded here so
- * nobody re-derives the wrong conclusion from the surviving mutant.
+ * Two wrong claims were made about this module before the right one, and the sequence is
+ * worth keeping because it is entirely about which fixture was used.
  *
- * The tests are kept because the module had none at all, and because the CRLF case is now
- * a characterisation test: if a future end-anchored comparison is added below, it breaks.
+ *   1. "A CRLF copy would report every required section missing." **False.** `sectionBody`
+ *      compares `line.trim()`, and `\r` is a LineTerminator that `trim()` strips.
+ *   2. "So the site was safe all along, and the surviving mutant is correct." **Also false**,
+ *      and only looked true because the first fixture here contained no fenced block.
+ *
+ * The real defect is one function down. `fenceMask` matches an opener with
+ * `/^ {0,3}(`{3,}|~{3,})(.*)$/` — the exact shape `lib/fences.js` documents as CRLF-fragile:
+ * `.` does not match `\r` and an unanchored `$` asserts end of input, so ```` ```markdown\r ````
+ * matches nothing, no fence is ever detected, and the mask stays uniformly `true`. Skills
+ * such as `create-skill` embed a ```` ```markdown ```` fence containing a literal
+ * `## Common Pitfalls` template, so with a blind mask the audit locks onto the template
+ * instead of the real section and counts the wrong bullets — the precise failure
+ * `fenceMask`'s own docstring exists to prevent.
+ *
+ * `FENCED_TEMPLATE_SKILL` below is that fixture. It is what makes the mutant reverting
+ * `toLines(raw)` to `raw.split('\n')` die instead of survive.
  */
 
 import { test } from 'node:test';
@@ -56,6 +66,33 @@ const SKILL = [
   '',
 ].join('\n');
 
+/**
+ * A skill that documents skill-authoring, so it carries a fenced template containing a
+ * literal `## Common Pitfalls` with a different number of bullets than the real section.
+ * `create-skill` and `evolve-skill` are both shaped like this.
+ */
+const FENCED_TEMPLATE_SKILL = SKILL.replace(
+  '## Common Pitfalls\n',
+  [
+    '## Procedure Template',
+    '',
+    'Copy this into the new skill:',
+    '',
+    '```markdown',
+    '## Common Pitfalls',
+    '',
+    '- **Template pitfall A**: replace this',
+    '- **Template pitfall B**: and this',
+    '- **Template pitfall C**: and this',
+    '- **Template pitfall D**: and this',
+    '- **Template pitfall E**: and this',
+    '```',
+    '',
+    '## Common Pitfalls',
+    '',
+  ].join('\n'),
+);
+
 test('a well-formed skill reports no missing sections', () => {
   const result = auditSkillText(SKILL, 'demo-skill');
   assert.deepEqual(result.missing, []);
@@ -64,12 +101,28 @@ test('a well-formed skill reports no missing sections', () => {
 });
 
 test('a CRLF copy audits identically (#532)', () => {
-  // True of BOTH implementations — see the header. This pins the behaviour rather than the
-  // mechanism, so it stays meaningful if the parsing changes.
+  // True of both implementations on a fence-free file — see the header. Kept because it pins
+  // behaviour rather than mechanism, and because it is the half that reads as obvious.
   const crlf = SKILL.replace(/\n/g, '\r\n');
   const result = auditSkillText(crlf, 'demo-skill');
   assert.deepEqual(result.missing, [], 'a carriage return must not empty the section list');
   assert.deepEqual(result, auditSkillText(SKILL, 'demo-skill'));
+});
+
+test('a fenced Common Pitfalls template is not mistaken for the real section', () => {
+  // The pre-existing guarantee, restated as a test: fence-blind parsing locks onto the
+  // template. Three real bullets follow the real heading; the template has five.
+  assert.equal(auditSkillText(FENCED_TEMPLATE_SKILL, 'demo-skill').pitfalls, 3);
+});
+
+test('and it is still not mistaken for it under CRLF (#532 — the real defect)', () => {
+  // THE test. `fenceMask`'s opener regex is `/^ {0,3}(`{3,}|~{3,})(.*)$/`: `.` does not match
+  // `\r` and `$` asserts end of input, so "```markdown\r" matches nothing, no fence is
+  // detected, the mask stays all-true, and the audit counts the template's five bullets.
+  // Reverting `toLines(raw)` to `raw.split('\n')` fails exactly here.
+  const crlf = FENCED_TEMPLATE_SKILL.replace(/\n/g, '\r\n');
+  assert.equal(auditSkillText(crlf, 'demo-skill').pitfalls, 3);
+  assert.deepEqual(auditSkillText(crlf, 'demo-skill'), auditSkillText(FENCED_TEMPLATE_SKILL, 'demo-skill'));
 });
 
 test('a genuinely incomplete skill still reports what is missing', () => {

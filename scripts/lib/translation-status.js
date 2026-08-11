@@ -38,12 +38,26 @@
  * locales are *specified* to stay close to English — `caveman-lite` keeps grammar, articles
  * and full sentences, and measures ~90% verbatim English lines by design. Any similarity
  * threshold that catches a scaffold also condemns that tier for meeting its own spec. The
- * zero-evidence rule does not: measured across the corpus, `caveman-lite`'s genuine
- * translations all carry at least one line English never had, and its scaffolds carry none.
+ * zero-evidence rule does not: measured on the corpus of 2026-08-11, every genuine
+ * `caveman-lite` translation carries at least one line English never had — the closest
+ * carrying exactly one — and its scaffolds carry none. That is a measurement, not an
+ * invariant. Nothing in the spec forbids a short, heavily fenced skill from compressing to
+ * zero novel lines.
  *
  * Frozen fences are excluded from both sides. A fence whose tag is not `text`/`markdown`/`md`
  * is keep-in-English by design in every locale, so counting it as agreement would push every
  * genuine translation toward the scaffold verdict.
+ *
+ * ## Which way the errors point, and why it changed
+ *
+ * The old detector's failures were all **lenient**: a scaffold read as a translation, and
+ * the cost was an inflated percentage. This one can fail **strict** — a genuine translation
+ * read as a scaffold — and that cost is different in kind, because the established
+ * remediation for a scaffold in this repo is #478's delete-and-re-scaffold. A false stub
+ * therefore destroys real work.
+ *
+ * So: before acting on a verdict in bulk, read the per-file list rather than the aggregate
+ * count. `generate-translation-status.js --verdicts` prints it. A number cannot be reviewed.
  */
 
 import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
@@ -51,6 +65,9 @@ import { join } from 'path';
 import { execFileSync, spawnSync } from 'child_process';
 import { toLines, extractFences, isGated, contentKey, TREES } from './fences.js';
 
+// Deliberately smaller than `lib/fences.js`'s 2 GiB: this pool holds trimmed prose lines,
+// not whole fence bodies. On overflow `execFileSync` throws ENOBUFS, so the difference fails
+// loud rather than producing a short pool. Raise both together if either is ever hit.
 const GIT_BUFFER = 512 * 1024 * 1024;
 
 /**
@@ -81,7 +98,12 @@ export const MIN_SUBSTANTIVE_LINES = 5;
  *
  * Listed explicitly rather than derived from the locale code: adding a locale here is a
  * claim about its writing system and should be made deliberately. A locale absent from this
- * map is simply judged by prose alone.
+ * map is simply judged by prose alone, which is the primary rule anyway — a new locale is
+ * less redundantly guarded, not unguarded.
+ *
+ * The test runs against the whole body, frozen fences included, so a CJK literal inside a
+ * keep-in-English code fence satisfies it. Deliberate: that errs lenient, the prose rule
+ * still catches such a file, and per the header the strict direction is the expensive one.
  */
 export const REQUIRED_SCRIPT = new Map([
   ['ja', /[぀-ヿ㐀-䶿一-鿿豈-﫿]/u],
@@ -193,6 +215,17 @@ export function classifyTranslation({ translatedText, locale, englishLines }) {
  * Costs two git processes for the whole corpus — one `git log --name-only`, one
  * `git cat-file --batch` — rather than one per file (#305). The working tree is added last
  * so an uncommitted English edit counts as English too.
+ *
+ * Two known gaps in the walk, shared with `buildEnglishFenceHistory` and pointing opposite
+ * ways in the two consumers, which is why neither should be "fixed" without checking both:
+ * `git log` lists no paths for a merge commit and applies default history simplification, so
+ * a body existing only as conflict-resolution output never enters the pool; and `--name-only`
+ * without `--follow` loses pre-rename paths (harmless for the skills flatten, which
+ * `contentKey` normalises, but not for an id rename). **Here** both shrink the pool, so a
+ * scaffold shows foreign lines and reads as translated — lenient. In `fences.js`, where the
+ * same pool is a *violation* basis, a missing revision manufactures a false violation —
+ * strict. Measured on this repo: adding `--diff-merges=separate` changes the pool by 0 lines
+ * and the verdict set by 0 files.
  *
  * @param {string} root repository root
  * @returns {Map<string, Set<string>>}

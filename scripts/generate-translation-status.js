@@ -7,6 +7,8 @@
  *
  * Usage:
  *   node scripts/generate-translation-status.js
+ *   node scripts/generate-translation-status.js --verdicts   # also list every stub, with
+ *                                                            # the reason and line counts
  */
 
 import { readFileSync, writeFileSync, readdirSync, existsSync, statSync } from 'fs';
@@ -15,6 +17,12 @@ import { fileURLToPath } from 'url';
 import * as yaml from 'js-yaml';
 import { assertNotShallow, createFreshnessChecker } from './lib/git-freshness.js';
 import { buildEnglishProseHistory, classifyTranslation } from './lib/translation-status.js';
+import { contentKey } from './lib/fences.js';
+
+// A stub verdict is acted on by deleting and re-scaffolding the file (#478), so a wrong one
+// destroys work. The aggregate counts cannot be reviewed; this prints the per-file list that
+// can. Use it before any bulk remediation.
+const SHOW_VERDICTS = process.argv.includes('--verdicts');
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -117,20 +125,33 @@ function countTranslations(locale, contentType) {
       itemId = basename(entry, '.md');
     }
 
-    const sourcePath = resolveSourcePath(contentType, translatedFile);
+    // Keyed through `contentKey` rather than by re-deriving `<tree>/<id>` here, so this
+    // cannot drift from the pool's own idea of what an id is — the exact drift #519 was.
+    // It also skips `_`-prefixed and README entries, which would otherwise key to nothing,
+    // report `no-source`, and be counted as translated.
+    const relSourcePath = contentType === 'skills'
+      ? `${contentType}/${itemId}/SKILL.md`
+      : `${contentType}/${itemId}.md`;
+    const key = contentKey(relSourcePath);
+    if (key === null) continue;
 
     const verdict = classifyTranslation({
       translatedText: readFileSync(translatedFile, 'utf8'),
       locale,
-      englishLines: englishProse.get(`${contentType}/${itemId}`),
+      englishLines: englishProse.get(key),
     });
     if (verdict.stub) {
       stubs++;
+      if (SHOW_VERDICTS) {
+        console.log(`  STUB ${locale}/${key}  (${verdict.reason}, ${verdict.foreign}/${verdict.total} foreign)`);
+      }
       continue;
     }
 
     translated++;
 
+    // Computed here rather than above the verdict: the stub path discards it.
+    const sourcePath = resolveSourcePath(contentType, translatedFile);
     const sourceCommit = extractSourceCommit(translatedFile);
     if (existsSync(sourcePath) && sourceCommit) {
       if (freshness.isStale(sourceCommit, toRelPath(sourcePath))) {

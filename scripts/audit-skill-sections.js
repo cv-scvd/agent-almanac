@@ -131,12 +131,14 @@ export function countPitfalls(body) {
  * @param {string} skillId id to report back
  */
 export function auditSkillText(raw, skillId) {
-  // Normalising is defence in depth, not a repaired defect, and the difference matters.
-  // #532's audit first recorded this site as broken — "a CRLF copy would report every
-  // required section missing". That was wrong: heading detection compares `line.trim()`,
-  // which eats the trailing '\r', and every other test here is start-anchored. Mutating
-  // this back to `raw.split('\n')` leaves the suite green, correctly. It stays normalised
-  // so the next end-anchored or equality comparison added below is safe by default.
+  // Normalised, and the reason is `fenceMask`, not the heading match. Heading detection is
+  // safe on its own — it compares `line.trim()`, and `\r` is a LineTerminator that `trim()`
+  // strips. What breaks is the fence opener at :77, `/^ {0,3}(`{3,}|~{3,})(.*)$/`: the shape
+  // `lib/fences.js` documents as CRLF-fragile, since `.` does not match `\r` and an
+  // unanchored `$` asserts end of input. On a CRLF copy no fence is ever detected, the mask
+  // stays uniformly true, and the audit locks onto the ```markdown-fenced
+  // "## Common Pitfalls" template that `create-skill` and `evolve-skill` embed — the exact
+  // failure `fenceMask`'s own docstring exists to prevent (#532).
   const lines = toLines(raw);
   const missing = REQUIRED_SECTIONS.filter((heading) => sectionBody(lines, heading) === null);
   const pitfalls = countPitfalls(sectionBody(lines, 'Common Pitfalls'));
