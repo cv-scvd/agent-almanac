@@ -186,18 +186,18 @@ New here? Start with [Understanding the System](guides/understanding-the-system.
 ## Translations
 
 <!-- AUTO:START:translations -->
-| Locale | Language | Skills | Agents | Teams | Guides | Total |
-|---|---|---|---|---|---|---|
-| de | Deutsch | 366/369 | 6/75 | 6/22 | 5/34 | 383/500 (76.6%) |
-| zh-CN | 简体中文 | 366/369 | 6/75 | 6/22 | 5/34 | 383/500 (76.6%) |
-| ja | 日本語 | 366/369 | 6/75 | 6/22 | 5/34 | 383/500 (76.6%) |
-| es | Español | 366/369 | 6/75 | 6/22 | 5/34 | 383/500 (76.6%) |
-| caveman-lite | Caveman Lite | 352/369 | 0/75 | 0/22 | 0/34 | 352/500 (70.4%) |
-| caveman | Caveman | 352/369 | 0/75 | 0/22 | 0/34 | 352/500 (70.4%) |
-| caveman-ultra | Caveman Ultra | 352/369 | 0/75 | 0/22 | 0/34 | 352/500 (70.4%) |
-| wenyan-lite | 文言文輕 | 352/369 | 0/75 | 0/22 | 0/34 | 352/500 (70.4%) |
-| wenyan | 文言文 | 352/369 | 0/75 | 0/22 | 0/34 | 352/500 (70.4%) |
-| wenyan-ultra | 文言文極 | 352/369 | 0/75 | 0/22 | 0/34 | 352/500 (70.4%) |
+| Locale | Language | Skills | Agents | Teams | Guides | Total | Stubs |
+|---|---|---|---|---|---|---|---|
+| de | Deutsch | 340/369 | 3/75 | 1/22 | 3/34 | 347/500 (69.4%) | 36 |
+| zh-CN | 简体中文 | 349/369 | 3/75 | 1/22 | 2/34 | 355/500 (71%) | 28 |
+| ja | 日本語 | 349/369 | 3/75 | 1/22 | 2/34 | 355/500 (71%) | 28 |
+| es | Español | 335/369 | 3/75 | 1/22 | 3/34 | 342/500 (68.4%) | 41 |
+| caveman-lite | Caveman Lite | 346/369 | 0/75 | 0/22 | 0/34 | 346/500 (69.2%) | 6 |
+| caveman | Caveman | 346/369 | 0/75 | 0/22 | 0/34 | 346/500 (69.2%) | 6 |
+| caveman-ultra | Caveman Ultra | 346/369 | 0/75 | 0/22 | 0/34 | 346/500 (69.2%) | 6 |
+| wenyan-lite | 文言文輕 | 346/369 | 0/75 | 0/22 | 0/34 | 346/500 (69.2%) | 6 |
+| wenyan | 文言文 | 346/369 | 0/75 | 0/22 | 0/34 | 346/500 (69.2%) | 6 |
+| wenyan-ultra | 文言文極 | 346/369 | 0/75 | 0/22 | 0/34 | 346/500 (69.2%) | 6 |
 <!-- AUTO:END:translations -->
 
 See [i18n/README.md](i18n/README.md) for the translation contributor guide.

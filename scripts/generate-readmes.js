@@ -531,6 +531,54 @@ function generateTestsReadme() {
 
 // ── Translation coverage ─────────────────────────────────────────
 
+// A file existing under i18n/<locale>/ says a scaffold was created, not that
+// anyone translated it. Counting files is what made this table read
+// `de 383/500 (76.6%)` while i18n/de/translation_status.yml said
+// `347/500 (69.4%)` -- every cell was exactly `translated + stubs` (#560).
+// So the numbers below come from the status files, which judge content, and
+// `stubs` gets its own column: the point is not a smaller number, it is an
+// honest split. Existence counting survives only as the fallback for a locale
+// with no status file, and such a cell is marked so an unmeasured number is
+// never presented as measured.
+//
+// Every figure is rendered VERBATIM from the YAML, including denominators and
+// pct. Recomputing pct here with different rounding than
+// generate-translation-status.js would be the same two-derivations defect
+// rebuilt inside a single cell. scripts/check-readme-translation-parity.js
+// gates the result by parsing both committed artifacts -- it never calls this
+// function, or it would agree with any bug in it.
+//
+// Ordering matters in .github/workflows/update-readmes.yml: `npm run
+// translation:status` must run BEFORE this generator, or the table renders
+// last cycle's numbers and the same commit overwrites the file it read.
+
+/** Marker on a cell whose number is a file count, not a measurement. */
+const FALLBACK_MARK = '*';
+/** Rendered where a number was not measured. Never `0`, which reads as "none". */
+const UNMEASURED = '-';
+
+function countExistingTranslations(localeDir, contentTypes) {
+  const counts = {};
+  let total = 0;
+  for (const ct of contentTypes) {
+    const typeDir = resolve(localeDir, ct);
+    let count = 0;
+    if (existsSync(typeDir)) {
+      for (const entry of readdirSync(typeDir)) {
+        const entryPath = resolve(typeDir, entry);
+        if (ct === 'skills') {
+          if (statSync(entryPath).isDirectory() && existsSync(resolve(entryPath, 'SKILL.md'))) count++;
+        } else if (entry.endsWith('.md')) {
+          count++;
+        }
+      }
+    }
+    counts[ct] = count;
+    total += count;
+  }
+  return { counts, total };
+}
+
 function generateTranslationsSection() {
   const i18nDir = resolve(ROOT, 'i18n');
   const configPath = resolve(i18nDir, '_config.yml');
@@ -541,8 +589,9 @@ function generateTranslationsSection() {
   const i18nConfig = yaml.load(readFileSync(configPath, 'utf8'));
   const locales = i18nConfig.supported_locales || [];
   const contentTypes = ['skills', 'agents', 'teams', 'guides'];
-  // Derive source counts from registries (single source of truth)
-  // instead of manually-maintained i18n/_config.yml source_counts
+  // Fallback denominators only. Measured rows take theirs from the status
+  // file, so the two surfaces cannot disagree about the denominator either.
+  // Registry drift stays guarded by integrity checks A4/A5.
   const sourceCounts = {
     skills: totalSkills,
     agents: totalAgents,
@@ -556,38 +605,44 @@ function generateTranslationsSection() {
   }
 
   const rows = [];
-  rows.push('| Locale | Language | Skills | Agents | Teams | Guides | Total |');
-  rows.push('|---|---|---|---|---|---|---|');
+  rows.push('| Locale | Language | Skills | Agents | Teams | Guides | Total | Stubs |');
+  rows.push('|---|---|---|---|---|---|---|---|');
+
+  let anyFallback = false;
 
   for (const locale of locales) {
     const localeDir = resolve(i18nDir, locale.code);
-    const counts = {};
-    let total = 0;
+    const statusPath = resolve(localeDir, 'translation_status.yml');
+    const coverage = existsSync(statusPath)
+      ? (yaml.load(readFileSync(statusPath, 'utf8')) || {}).coverage
+      : null;
 
-    for (const ct of contentTypes) {
-      const typeDir = resolve(localeDir, ct);
-      let count = 0;
-      if (existsSync(typeDir)) {
-        const entries = readdirSync(typeDir);
-        for (const entry of entries) {
-          const entryPath = resolve(typeDir, entry);
-          if (ct === 'skills') {
-            if (statSync(entryPath).isDirectory() && existsSync(resolve(entryPath, 'SKILL.md'))) {
-              count++;
-            }
-          } else {
-            if (entry.endsWith('.md')) count++;
-          }
-        }
-      }
-      counts[ct] = count;
-      total += count;
+    if (coverage && contentTypes.every((ct) => coverage[ct]) && coverage.total) {
+      const cell = (ct) => `${coverage[ct].translated}/${coverage[ct].total}`;
+      const t = coverage.total;
+      rows.push(
+        `| ${locale.code} | ${locale.name} | ${cell('skills')} | ${cell('agents')} | ` +
+        `${cell('teams')} | ${cell('guides')} | ${t.translated}/${t.total} (${t.pct}%) | ${t.stubs} |`
+      );
+      continue;
     }
 
-    const totalSource = sourceCounts.total || 409;
-    const pct = totalSource > 0 ? Math.round((total / totalSource) * 1000) / 10 : 0;
+    anyFallback = true;
+    const { counts, total } = countExistingTranslations(localeDir, contentTypes);
+    const m = FALLBACK_MARK;
+    const pct = sourceCounts.total > 0 ? Math.round((total / sourceCounts.total) * 1000) / 10 : 0;
     rows.push(
-      `| ${locale.code} | ${locale.name} | ${counts.skills}/${sourceCounts.skills || 0} | ${counts.agents}/${sourceCounts.agents || 0} | ${counts.teams}/${sourceCounts.teams || 0} | ${counts.guides}/${sourceCounts.guides || 0} | ${total}/${totalSource} (${pct}%) |`
+      `| ${locale.code} | ${locale.name} | ${counts.skills}/${sourceCounts.skills}${m} | ` +
+      `${counts.agents}/${sourceCounts.agents}${m} | ${counts.teams}/${sourceCounts.teams}${m} | ` +
+      `${counts.guides}/${sourceCounts.guides}${m} | ${total}/${sourceCounts.total} (${pct}%)${m} | ${UNMEASURED} |`
+    );
+  }
+
+  if (anyFallback) {
+    rows.push('');
+    rows.push(
+      `${FALLBACK_MARK} File count, not a measurement -- this locale has no ` +
+      '`translation_status.yml`. Run `npm run translation:status` to measure it.'
     );
   }
 

@@ -5,6 +5,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- `scripts/generate-readmes.js` — the published README translations table counted files, not translations, so every cell was `translated + stubs`: it read `de 383/500 (76.6%)` where `i18n/de/translation_status.yml` measured `347/500 (69.4%)`. The table now renders the status files' figures verbatim (denominators and `pct` included, so the two surfaces cannot disagree by rounding) and breaks `stubs` out as its own column. Existence counting survives only for a locale with no status file, and such a cell is marked `*`. (#560)
+
+### Added
+- `scripts/check-readme-translation-parity.js` + integrity check B13 — gates the README table against `i18n/*/translation_status.yml`. It parses both committed artifacts and never calls the generator: a regenerate-and-compare gate agrees with any generator bug, which is why `check-readmes` passed throughout (it also runs only in `release.yml`). Iterates locales rather than table rows, so a deleted row is visible. (#560)
+
+### Changed
+- CI: `update-readmes.yml` now runs `translation:status` **before** `generate-readmes.js`. With the table deriving from the status files, the old order rendered last cycle's numbers while the same commit overwrote the file it read. The job also asserts parity before auto-committing, and `scripts/lib/translation-status.js` was added to its trigger paths — the #553 lib extraction meant a change to what counts as an untranslated scaffold did not regenerate the counts it decides. (#560)
+
 ## [1.3.0] - 2026-05-03
 
 ### Added
@@ -24,7 +33,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - i18n: cleared 140 stale translations across de/zh-CN/ja/es (issue #243)
 - i18n: normalized ~970 source_commit values to 8-char short hashes; resolved ~647 false-positive stale warnings
 - i18n: fixed scaffold-before-creation source_commit race (source_commit now captured at scaffold time, not at source creation)
-- `scripts/generate-translation-status.js` — was counting file existence as "translated", masking 70 caveman/wenyan stubs per locale + 3 stubs per original locale. Now uses body-equality vs English source to discriminate translated files from scaffolded stubs; emits separate `stubs` count.
+- `scripts/generate-translation-status.js` — was counting file existence as "translated", masking 70 caveman/wenyan stubs per locale + 3 stubs per original locale. Now uses body-equality vs English source to discriminate translated files from scaffolded stubs; emits separate `stubs` count. **Scope correction (see #560):** this fixed that one script. `scripts/generate-readmes.js` kept counting file existence for the published README table until #560, so the front-page number stayed wrong — and body-equality itself was replaced in #553, because a surgically-patched mirror equals no English revision.
 - `scripts/translate-content.sh` — skills branch sed `/^  tags:/a\\` was injecting locale fields between `tags:` and the first list item, breaking the YAML list. Now uses end-of-frontmatter insertion (matches agents/teams/guides pattern). Surfaced when zh-CN translator hit 5 broken stubs in coverage-closure wave.
 - `.gitignore` — added `.claude/settings*.json` (per-user dev config); fixed missing newline that merged `*.knit.md` and `CONTINUE_HERE.md` rules
 

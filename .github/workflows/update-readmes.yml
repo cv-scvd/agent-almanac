@@ -30,6 +30,11 @@ on:
       - 'scripts/generate-readmes.js'
       - 'scripts/generate-translation-status.js'
       - 'scripts/lib/git-freshness.js'
+      # The stub verdict itself. Extracted to a lib in #553, but never added
+      # here -- so a change to what counts as an untranslated scaffold did not
+      # regenerate the counts it decides. Load-bearing since #560, because the
+      # README table now derives from those counts too.
+      - 'scripts/lib/translation-status.js'
   workflow_dispatch:
 
 jobs:
@@ -56,8 +61,17 @@ jobs:
           node-version: '24'
           cache: 'npm'
       - run: npm ci
-      - run: node scripts/generate-readmes.js
+      # Order is load-bearing (#560): the README translations table now reads
+      # i18n/*/translation_status.yml, so the status files must be regenerated
+      # FIRST. Run the other way round and the table renders last cycle's
+      # numbers while the same commit overwrites the file it read -- the two
+      # surfaces disagree again, one cycle behind, and both land in one commit.
       - run: npm run translation:status
+      - run: node scripts/generate-readmes.js
+      # Fails the job if the two committed surfaces disagree, rather than
+      # auto-committing a contradiction. Parses both artifacts independently;
+      # it never calls the generator.
+      - run: npm run validate:readme-parity
       # SHA-pinned: https://github.com/stefanzweifel/git-auto-commit-action/releases/tag/v7
       - uses: stefanzweifel/git-auto-commit-action@4a55954c782fc1ea30b9056cd3e7a2b40ca8887d
         with:

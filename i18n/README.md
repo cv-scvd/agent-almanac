@@ -173,6 +173,18 @@ Two things follow, and both have misled readers before:
 - **`translated + stubs` is not `total`.** A locale that has never scaffolded an item has
   neither, so the remainder is untouched content.
 
+The root `README.md` coverage table renders these same numbers, and only these — it reads the
+status files rather than counting what exists on disk (#560). Its cells use two markers:
+
+| marker | meaning |
+|---|---|
+| `*` | file count, not a measurement — that locale has no `translation_status.yml` yet |
+| `-` | not measured (the `Stubs` column of a locale with no status file). Never `0`, which would read as "no stubs found" |
+
+`scripts/check-readme-translation-parity.js` (integrity check B13) fails if the two ever
+disagree. It parses both committed files rather than regenerating the table, so it still sees
+a generator that goes back to counting files.
+
 A file counts as a stub when every substantive prose line in it appeared verbatim in English
 at some point, or when its locale is written in a script the file contains none of. Frozen
 code fences are excluded from that comparison — they are keep-in-English in every locale by
