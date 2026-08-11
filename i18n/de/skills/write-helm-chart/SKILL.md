@@ -338,6 +338,7 @@ replicaCount: 1
 resources:
   limits: {cpu: 500m, memory: 256Mi}
 ingress:
+  enabled: true          # base values.yaml ships enabled: false
   hosts:
   - host: my-app-dev.example.com
     paths: [{path: /, pathType: Prefix}]
@@ -347,6 +348,7 @@ ingress:
 replicaCount: 5
 autoscaling: {enabled: true, minReplicas: 3, maxReplicas: 10}
 ingress:
+  enabled: true
   hosts:
   - host: my-app.example.com
     paths: [{path: /, pathType: Prefix}]
