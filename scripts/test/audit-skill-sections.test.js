@@ -1,9 +1,15 @@
 /**
  * Tests for `auditSkillText()` in `scripts/audit-skill-sections.js`.
  *
- * The CRLF fix that #532's audit produced arrived as a code comment saying a carriage return
- * "would report every required section missing." That is an assertion nobody ran — the class
- * of claim this repo has been burned by before. It is asserted here instead.
+ * Written to test a code comment claiming a carriage return "would report every required
+ * section missing" — and the claim turned out to be **false**. `sectionBody` compares
+ * `line.trim()`, which eats the trailing '\r', and every other test in the module is
+ * start-anchored, so `raw.split('\n')` and `toLines(raw)` behave identically. The mutant
+ * reverting the normalisation SURVIVES, and that is the correct result, recorded here so
+ * nobody re-derives the wrong conclusion from the surviving mutant.
+ *
+ * The tests are kept because the module had none at all, and because the CRLF case is now
+ * a characterisation test: if a future end-anchored comparison is added below, it breaks.
  */
 
 import { test } from 'node:test';
@@ -58,8 +64,8 @@ test('a well-formed skill reports no missing sections', () => {
 });
 
 test('a CRLF copy audits identically (#532)', () => {
-  // The defect the fix exists to prevent: with `split('\n')`, every heading line ends `\r`,
-  // so no whole-line comparison matches and all six required sections read as missing.
+  // True of BOTH implementations — see the header. This pins the behaviour rather than the
+  // mechanism, so it stays meaningful if the parsing changes.
   const crlf = SKILL.replace(/\n/g, '\r\n');
   const result = auditSkillText(crlf, 'demo-skill');
   assert.deepEqual(result.missing, [], 'a carriage return must not empty the section list');

@@ -131,9 +131,12 @@ export function countPitfalls(body) {
  * @param {string} skillId id to report back
  */
 export function auditSkillText(raw, skillId) {
-  // Normalised, not `split('\n')`: heading detection compares whole trimmed lines, so a
-  // working-tree CRLF copy would leave `## Common Pitfalls\r` matching nothing and report
-  // every required section missing (#532's audit of the other splitting sites).
+  // Normalising is defence in depth, not a repaired defect, and the difference matters.
+  // #532's audit first recorded this site as broken — "a CRLF copy would report every
+  // required section missing". That was wrong: heading detection compares `line.trim()`,
+  // which eats the trailing '\r', and every other test here is start-anchored. Mutating
+  // this back to `raw.split('\n')` leaves the suite green, correctly. It stays normalised
+  // so the next end-anchored or equality comparison added below is safe by default.
   const lines = toLines(raw);
   const missing = REQUIRED_SECTIONS.filter((heading) => sectionBody(lines, heading) === null);
   const pitfalls = countPitfalls(sectionBody(lines, 'Common Pitfalls'));
