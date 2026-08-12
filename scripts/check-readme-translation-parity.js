@@ -160,7 +160,11 @@ export function parseStatus(statusText) {
 
   for (const key of [...CONTENT_TYPES, 'total']) {
     if (!coverage[key]) throw new Error(`translation_status.yml: coverage.${key} missing`);
-    for (const field of ['translated', 'total', 'pct', 'stubs', 'unjudged']) {
+    // `stale` became reader-facing in #569 — it is rendered in i18n/README.md's locale table
+    // and nowhere else, so it was the one number in the status file with no parity partner.
+    // Required here so a status file missing it fails the parse instead of rendering the
+    // literal string `undefined` into a committed table that every gate then agrees with.
+    for (const field of ['translated', 'total', 'pct', 'stubs', 'unjudged', 'stale']) {
       if (coverage[key][field] === undefined) {
         throw new Error(`translation_status.yml: coverage.${key}.${field} missing`);
       }
@@ -176,31 +180,39 @@ export function parseStatus(statusText) {
  * row it cannot compare, and skipping it would report agreement it never
  * established.
  */
-export function parseReadmeTable(readmeText, markerName = 'translations') {
+export function parseTableRows(text, markerName, expectedCells, headerFirstCell) {
   const open = `<!-- AUTO:START:${markerName} -->`;
   const close = `<!-- AUTO:END:${markerName} -->`;
-  const from = readmeText.indexOf(open);
-  const to = readmeText.indexOf(close);
+  const from = text.indexOf(open);
+  const to = text.indexOf(close);
   if (from === -1 || to === -1 || to < from) {
     throw new Error(`README: AUTO:${markerName} markers missing or inverted`);
   }
 
-  const block = readmeText.slice(from + open.length, to);
+  const block = text.slice(from + open.length, to);
   const rows = new Map();
   for (const raw of block.split('\n')) {
     const line = raw.replace(/\r$/, '').trim();
     if (!line.startsWith('|')) continue;
     const cells = line.split('|').slice(1, -1).map((c) => c.trim());
     if (!cells.length) continue;
-    if (/^-+$/.test(cells[0]) || cells[0] === 'Locale') continue; // header / separator
-    if (cells.length !== 9) {
-      throw new Error(`README: translations row has ${cells.length} cells, expected 9: ${JSON.stringify(line)}`);
+    if (/^-+$/.test(cells[0]) || cells[0] === headerFirstCell) continue; // header / separator
+    if (cells.length !== expectedCells) {
+      throw new Error(`README: ${markerName} row has ${cells.length} cells, expected ${expectedCells}: ${JSON.stringify(line)}`);
     }
-    const [code, name, skills, agents, teams, guides, total, stubs, unjudged] = cells;
-    if (rows.has(code)) throw new Error(`README: duplicate translations row for locale '${code}'`);
+    if (rows.has(cells[0])) throw new Error(`README: duplicate ${markerName} row for locale '${cells[0]}'`);
+    rows.set(cells[0], cells);
+  }
+  if (!rows.size) throw new Error(`README: AUTO:${markerName} block contains no data rows`);
+  return rows;
+}
+
+export function parseReadmeTable(readmeText, markerName = 'translations') {
+  const rows = new Map();
+  for (const [code, cells] of parseTableRows(readmeText, markerName, 9, 'Locale')) {
+    const [, name, skills, agents, teams, guides, total, stubs, unjudged] = cells;
     rows.set(code, { code, name, skills, agents, teams, guides, total, stubs, unjudged });
   }
-  if (!rows.size) throw new Error('README: AUTO:translations block contains no data rows');
   return rows;
 }
 
@@ -362,13 +374,88 @@ export function compareSurfaces({ locales, readmeRows, statusTexts }) {
   return { failures, checked: locales.length };
 }
 
+/**
+ * Compare `i18n/README.md`'s locale table against the status files (#569).
+ *
+ * The second reader-facing table. Without this it had NO independent check: `check-readmes`
+ * regenerates it with the same generator and — in this file's own words — "agrees with any
+ * generator bug". The specific gap that matters is the one #569 exists to close: the old
+ * hand-maintained table listed 4 of 10 locales, and iterating LOCALES rather than rows is what
+ * makes a missing one visible. Generated or not, a `loadLocaleCoverage` that quietly filtered
+ * the list would otherwise leave every gate green.
+ *
+ * @returns {string[]} failures
+ */
+export function compareLocaleTable({ locales, rows, statusTexts }) {
+  const failures = [];
+  const seen = new Set();
+
+  for (const locale of locales) {
+    const { code } = locale;
+    seen.add(code);
+    const row = rows.get(code);
+    if (!row) {
+      failures.push(`locale '${code}' is in i18n/_config.yml but has no row in the i18n/README.md locale table`);
+      continue;
+    }
+    if (row.name !== locale.name) {
+      failures.push(`${code}: i18n/README.md language '${row.name}' != i18n/_config.yml name '${locale.name}'`);
+    }
+
+    const statusText = statusTexts.get(code);
+    if (statusText == null) continue; // unmeasured rows are rendered as '-' by design
+    let coverage;
+    try {
+      coverage = parseStatus(statusText);
+    } catch (err) {
+      failures.push(`locale '${code}': ${err.message}`);
+      continue;
+    }
+
+    for (const ct of CONTENT_TYPES) {
+      const expected = `${coverage[ct].translated}/${coverage[ct].total}`;
+      if (row[ct] !== expected) {
+        failures.push(`${code}.${ct}: i18n/README.md says ${row[ct]}, status file says ${expected}`);
+      }
+    }
+    const t = coverage.total;
+    const expectedTotal = `${t.translated}/${t.total} (${t.pct}%)`;
+    if (row.translated !== expectedTotal) {
+      failures.push(`${code}.total: i18n/README.md says ${row.translated}, status file says ${expectedTotal}`);
+    }
+    // The whole reason this comparison exists: `stale` appears in no other table.
+    if (row.stale !== String(t.stale)) {
+      failures.push(`${code}: i18n/README.md stale ${row.stale} != status stale ${t.stale}`);
+    }
+  }
+
+  for (const code of rows.keys()) {
+    if (!seen.has(code)) {
+      failures.push(`i18n/README.md locale table has a row for '${code}', which is not a supported locale`);
+    }
+  }
+  return failures;
+}
+
+/** Parse `i18n/README.md`'s `i18n-locales` table into rows keyed by locale code. */
+export function parseLocaleTable(text) {
+  const rows = new Map();
+  for (const [code, cells] of parseTableRows(text, 'i18n-locales', 8, 'Code')) {
+    const [, name, skills, agents, teams, guides, translated, stale] = cells;
+    rows.set(code, { code, name, skills, agents, teams, guides, translated, stale });
+  }
+  return rows;
+}
+
 function main() {
   let locales;
   let readmeRows;
+  let localeRows;
   const statusTexts = new Map();
   try {
     locales = parseLocales(readFileSync(resolve(ROOT, 'i18n/_config.yml'), 'utf8'));
     readmeRows = parseReadmeTable(readFileSync(resolve(ROOT, 'README.md'), 'utf8'));
+    localeRows = parseLocaleTable(readFileSync(resolve(ROOT, 'i18n/README.md'), 'utf8'));
     for (const { code } of locales) {
       const p = resolve(ROOT, `i18n/${code}/translation_status.yml`);
       statusTexts.set(code, existsSync(p) ? readFileSync(p, 'utf8') : null);
@@ -380,13 +467,15 @@ function main() {
   }
 
   const { failures, checked } = compareSurfaces({ locales, readmeRows, statusTexts });
-  if (failures.length) {
-    console.error(`FAIL: README translations table disagrees with i18n/*/translation_status.yml (${failures.length} discrepancies across ${checked} locales)`);
-    for (const f of failures) console.error(`  - ${f}`);
+  const localeFailures = compareLocaleTable({ locales, rows: localeRows, statusTexts });
+  const all = [...failures, ...localeFailures];
+  if (all.length) {
+    console.error(`FAIL: a published translation table disagrees with i18n/*/translation_status.yml (${all.length} discrepancies across ${checked} locales)`);
+    for (const f of all) console.error(`  - ${f}`);
     console.error('  Fix: npm run update-readmes (after npm run translation:status), then commit both.');
     process.exit(1);
   }
-  console.log(`OK: README translations table matches i18n/*/translation_status.yml for all ${checked} locales`);
+  console.log(`OK: README.md and i18n/README.md both match i18n/*/translation_status.yml for all ${checked} locales`);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
