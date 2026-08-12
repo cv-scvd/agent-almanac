@@ -45,7 +45,12 @@ function specifiersOf(source) {
   const found = [];
   const patterns = [
     /(?:^|\n)\s*(?:import|export)\s[\s\S]*?\sfrom\s*['"]([^'"]+)['"]/g,
-    /(?:^|\n)\s*import\s*['"]([^'"]+)['"]/g,
+    // Deliberately NOT anchored to line start. It was, and a mutation appending
+    // `import 'js-yaml';` to the END of an existing import line sailed past the gate —
+    // syntactically valid, and invisible to a line-anchored pattern. `import` followed by
+    // whitespace and a quote cannot be a `from` clause (that form has a binding in between),
+    // so this stays specific without the anchor.
+    /\bimport\s+['"]([^'"]+)['"]/g,
     /\b(?:import|require)\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
   ];
   for (const re of patterns) {
@@ -107,6 +112,19 @@ test('the walker actually detects a package import (non-vacuity control)', () =>
     external.some((e) => e.endsWith('-> js-yaml')),
     `expected generate-readmes.js -> js-yaml, saw:\n  ${external.join('\n  ') || '(nothing)'}`,
   );
+});
+
+test('a bare import appended mid-line is still seen', () => {
+  // The mutation that exposed the gate's own hole. `import 'js-yaml';` tacked onto the end of
+  // an existing import line is valid JavaScript, and a line-anchored pattern misses it —
+  // mutation-check reported SURVIVED against the first version of this walker.
+  const midLine = "import { readFileSync } from 'fs'; import 'js-yaml';\n";
+  assert.ok(specifiersOf(midLine).includes('js-yaml'), 'a mid-line bare import must be found');
+  assert.ok(specifiersOf(midLine).includes('fs'));
+
+  // And the shapes that must NOT be mistaken for a bare import.
+  assert.deepEqual(specifiersOf("import yaml from 'js-yaml';\n"), ['js-yaml']);
+  assert.deepEqual(specifiersOf("export { x } from './lib/a.js';\n"), ['./lib/a.js']);
 });
 
 test('the walker follows relative edges to find a transitive package import', () => {
