@@ -47,12 +47,46 @@ export function replaceSection(content, sectionName, newInner) {
   const endTag = `<!-- AUTO:END:${sectionName} -->`;
   const startIdx = content.indexOf(startTag);
   const endIdx = content.indexOf(endTag);
-  if (startIdx === -1 || endIdx === -1) {
+  // `endIdx < startIdx` is an END tag sitting ABOVE its START — malformed, and it used to
+  // report success while corrupting the file: the slices overlap, so the output duplicated
+  // essentially the whole document, and grew again on every subsequent run. A miss is the
+  // honest answer, and it routes to the same fatal path as a deleted marker.
+  if (startIdx === -1 || endIdx === -1 || endIdx < startIdx) {
     return { content, matched: false };
   }
   const before = content.slice(0, startIdx + startTag.length);
   const after = content.slice(endIdx);
   return { content: `${before}\n${newInner}\n${after}`, matched: true };
+}
+
+/**
+ * Apply every section in `sections` to `content`, collecting the misses.
+ *
+ * The POLICY, not just the mechanism, and it lives here for one reason: after `replaceSection`
+ * moved to this lib, the "a miss is fatal" wiring sat in `generate-readmes.js` — the file this
+ * whole extraction exists because nobody can import. Deleting the single line
+ * `if (!result.matched) missingMarkers.push(name)` left every gate in the repo green, which is
+ * the permanent-silent-drift defect recreated one level up.
+ *
+ * The old `replaceSection` applied the miss policy internally, so every caller inherited it.
+ * Making callers opt in via `matched` was a regression in the API's DEFAULT safety even though
+ * it was not a regression in behaviour. This function restores the safe default and puts it
+ * where a test can reach it.
+ *
+ * @param {string} content
+ * @param {Record<string, () => string>} sections marker name -> body generator
+ * @returns {{content: string, missing: string[]}} `missing` names every section whose markers
+ *   were absent or inverted, in the order encountered
+ */
+export function applySections(content, sections) {
+  let next = content;
+  const missing = [];
+  for (const [name, generate] of Object.entries(sections)) {
+    const result = replaceSection(next, name, generate());
+    if (!result.matched) missing.push(name);
+    next = result.content;
+  }
+  return { content: next, missing };
 }
 
 /**

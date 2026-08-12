@@ -18,7 +18,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  replaceSection, renderTranslationsTable, FALLBACK_MARK, UNMEASURED,
+  replaceSection, applySections, renderTranslationsTable, FALLBACK_MARK, UNMEASURED,
 } from '../lib/readme-sections.js';
 
 const doc = (inner) => [
@@ -68,6 +68,54 @@ test('replaceSection reports a miss instead of silently returning the input', ()
   // Half a pair is still a miss — an END without a START, and vice versa.
   assert.equal(replaceSection('<!-- AUTO:START:stats -->\nx\n', 'stats', 'y').matched, false);
   assert.equal(replaceSection('<!-- AUTO:END:stats -->\n', 'stats', 'y').matched, false);
+});
+
+test('an INVERTED marker pair is a miss, not a silent corruption', () => {
+  // Pre-existing logic, faithfully moved — and wrong. With END above START the slices
+  // overlap, so the function reported success while the output duplicated essentially the
+  // whole document, and grew again on every run. Half-pairs were tested; this third
+  // malformed case was not.
+  const inverted = '<!-- AUTO:END:stats -->\nmid\n<!-- AUTO:START:stats -->\n';
+  const { content, matched } = replaceSection(inverted, 'stats', 'y');
+  assert.equal(matched, false, 'an inverted pair must not report success');
+  assert.equal(content, inverted, 'and must not be rewritten');
+
+  // The property that actually matters: it cannot grow the document.
+  const once = replaceSection(inverted, 'stats', 'y').content;
+  const twice = replaceSection(once, 'stats', 'y').content;
+  assert.equal(once.length, inverted.length);
+  assert.equal(twice, once);
+});
+
+// ── applySections: the policy, where a test can reach it ────────────────────
+
+test('applySections reports every missing section, so the caller can be fatal', () => {
+  // MAJOR finding of the #579 review. After replaceSection moved to this lib, the
+  // "a miss is fatal" wiring sat in generate-readmes.js — the file this extraction exists
+  // because nobody can import. Deleting one line there left every gate green: the permanent
+  // silent drift defect, recreated one level up.
+  const { content, missing } = applySections(doc('old'), {
+    stats: () => 'new',
+    absent: () => 'never placed',
+  });
+  assert.deepEqual(missing, ['absent']);
+  assert.ok(content.includes('\nnew\n'), 'the section that DID match is still applied');
+});
+
+test('applySections reports nothing missing when every marker is present', () => {
+  const { missing } = applySections(doc('old'), { stats: () => 'new' });
+  assert.deepEqual(missing, []);
+});
+
+test('applySections threads content through several sections in order', () => {
+  const two = [
+    '<!-- AUTO:START:alpha -->', 'A', '<!-- AUTO:END:alpha -->',
+    '<!-- AUTO:START:beta -->', 'B', '<!-- AUTO:END:beta -->', '',
+  ].join('\n');
+  const { content, missing } = applySections(two, { alpha: () => 'A2', beta: () => 'B2' });
+  assert.deepEqual(missing, []);
+  assert.ok(content.includes('\nA2\n') && content.includes('\nB2\n'),
+    'a fold that dropped earlier results would lose one of these');
 });
 
 test('replaceSection touches only the named section', () => {

@@ -83,6 +83,18 @@ test('the parity checker resolves with no node_modules anywhere above it', () =>
   );
 });
 
+test('readme-sections.js keeps the zero-import property it claims', () => {
+  // Its header asserts "zero imports, a property to preserve, not an accident" — and nothing
+  // enforced it. `generate-readmes.js` runs under `npm ci` in every job that invokes it, so
+  // adding `import * as yaml from 'js-yaml'` there would leave every gate green. This repo
+  // names that shape: a docstring guarantee is an untested assertion.
+  const { stderr } = importFromBareTree('lib/readme-sections.js');
+  assert.ok(
+    !RESOLUTION_FAILURE.test(stderr),
+    `readme-sections.js acquired a package dependency:\n${stderr.split('\n').slice(0, 6).join('\n')}`,
+  );
+});
+
 test('a package import anywhere in that closure is detected (non-vacuity control)', () => {
   // Without this, the test above proves nothing: a probe that silently failed to run the
   // import at all would also produce no resolution error. `generate-readmes.js` imports

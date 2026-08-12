@@ -17,9 +17,7 @@ import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import * as yaml from 'js-yaml';
 import { CONTENT_TYPES } from './lib/content-types.js';
-import {
-  replaceSection, renderTranslationsTable, FALLBACK_MARK, UNMEASURED,
-} from './lib/readme-sections.js';
+import { applySections, renderTranslationsTable } from './lib/readme-sections.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -99,12 +97,11 @@ const missingMarkers = [];
  */
 function processFile(filePath, sections) {
   const original = readFileSync(filePath, 'utf8');
-  let content = original;
-  for (const [name, generator] of Object.entries(sections)) {
-    const result = replaceSection(content, name, generator());
-    if (!result.matched) missingMarkers.push(name);
-    content = result.content;
-  }
+  // The fold AND the miss policy both live in the lib. Keeping the policy here meant the
+  // "a missing marker is fatal" wiring sat in a file no test can import: deleting one line
+  // left every gate green, which is the defect this file's own comments narrate.
+  const { content, missing } = applySections(original, sections);
+  missingMarkers.push(...missing);
   const changed = content !== original;
   if (changed && !CHECK_MODE) {
     writeFileSync(filePath, content);
