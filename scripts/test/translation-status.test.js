@@ -29,11 +29,15 @@ import {
   classifyTranslation,
   buildEnglishProseHistory,
   hidesLines,
+  hidesKnownProse,
+  rawComparableLines,
+  frontmatterUnparsed,
+  UNJUDGED_REASONS,
   translationKey,
   REQUIRED_SCRIPT,
   MIN_LINES_TO_JUDGE,
 } from '../lib/translation-status.js';
-import { TREES, fenceShape, hasSwallowedOpener } from '../lib/fences.js';
+import { TREES, fenceShape, hasSwallowedOpener, extractFences, isGated } from '../lib/fences.js';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -83,6 +87,12 @@ const poolOf = (...bodies) => ({
   lines: new Set(bodies.flatMap((b) => substantiveLines(b))),
   // Every fixture body is a legitimate English revision, so its own shape is in the pool.
   fenceShapes: new Set(bodies.map((b) => fenceShape(b))),
+  // Mirrors buildEnglishProseHistory's third collector. A fixture pool missing this cannot
+  // distinguish the cross-pool fix from its absence -- the reviewer's own proof file predated
+  // the field, and its regression test could only ever fail for that reason.
+  fenceLines: new Set(bodies.flatMap((body) => extractFences(body)
+    .filter((f) => isGated(f) && !f.unterminated)
+    .flatMap((f) => rawComparableLines(f.body)))),
 });
 
 /**
@@ -497,6 +507,254 @@ test('a SAME-TAG stray opener is caught, though the shape is byte-identical', ()
   );
 });
 
+// ── cross-pool membership: the rule the fingerprints kept failing to be ──────
+// Third review round. Neither `fenceShape` nor `hasSwallowedOpener` generalises — a MOVED
+// closer leaves no stray fence, no unterminated fence and an identical shape, and a tilde or
+// longer-run wrap rides through both documented exemptions. Every construction in the family
+// works by moving the mask across the prose/frozen boundary, in one of two directions, and
+// membership tests catch both without knowing how the corruption was spelled.
+
+test('exposed frozen content is not evidence of translation', () => {
+  // EXPOSED-KNOWN-FENCE. Insert one bare ``` inside the last gated fence: it closes the fence
+  // early, the frozen remainder is exposed as prose, and those keep-in-English lines are
+  // absent from the English PROSE pool by construction — so they counted as NOVEL and the
+  // scaffold was reported `has-novel-lines`. A positive claim of translation, which is worse
+  // than `insufficient`: it asserts rather than admits.
+  const english = [
+    '# Harden GitHub Repo Security',
+    '',
+    'Use this skill to lock down a repository before it goes public.',
+    'It covers branch protection, required checks and deploy keys.',
+    '',
+    '```yaml',
+    'name: harden-github-repo-security',
+    'domain: defensive-security-practices',
+    '```',
+    '',
+    'Verify the ruleset is ENFORCED and not merely evaluated.',
+    'Record the bypass actors, because a deploy key is one.',
+    '',
+  ].join('\n');
+  const pool = poolOf(english);
+  assert.ok(pool.fenceLines.has('domain: defensive-security-practices'),
+    'the frozen body must be pooled, or this test cannot distinguish the fix from its absence');
+
+  const split = english.replace(
+    'name: harden-github-repo-security\n',
+    'name: harden-github-repo-security\n```\n',
+  );
+  // The construction must actually evade both fingerprints, or it proves nothing.
+  assert.equal(fenceShape(split), fenceShape(english), 'shape must survive the split');
+  assert.equal(hasSwallowedOpener(split), false, 'no opener sits inside a body here');
+  assert.ok(substantiveLines(split).includes('domain: defensive-security-practices'),
+    'the frozen line must genuinely be exposed as comparable prose');
+
+  const verdict = classifyTranslation({ translatedText: split, locale: 'de', english: pool });
+  assert.equal(verdict.novel, 0, 'keep-in-English content is not novelty');
+  assert.equal(verdict.stub, true);
+});
+
+test('a MOVED closer is caught too, though it leaves no stray fence at all', () => {
+  // The variant that defeats any fingerprint keyed to stray or unterminated fences: move the
+  // real closer up rather than inserting one. Shape identical, fence count identical, nothing
+  // unterminated, nothing swallowed. Plausibly accidental — a truncated paste that drops the
+  // tail of a fence body has exactly this signature.
+  const english = [
+    '# Harden GitHub Repo Security',
+    '',
+    'Use this skill to lock down a repository before it goes public.',
+    'It covers branch protection, required checks and deploy keys.',
+    '',
+    '```yaml',
+    'name: harden-github-repo-security',
+    'domain: defensive-security-practices',
+    '```',
+    '',
+    'Verify the ruleset is ENFORCED and not merely evaluated.',
+    'Record the bypass actors, because a deploy key is one.',
+    '',
+  ].join('\n');
+  const moved = english
+    .replace('name: harden-github-repo-security\n', 'name: harden-github-repo-security\n```\n')
+    .replace('domain: defensive-security-practices\n```\n', 'domain: defensive-security-practices\n');
+
+  assert.equal(fenceShape(moved), fenceShape(english));
+  assert.equal(hasSwallowedOpener(moved), false);
+  assert.equal(classifyTranslation({ translatedText: moved, locale: 'de', english: poolOf(english) }).novel, 0);
+});
+
+test('a frozen fence hiding known English prose is a mask corruption', () => {
+  // HIDDEN-KNOWN-PROSE, the other direction, and the one that catches the wrap: tilde or
+  // longer-run fences replicating the original tags reproduce the shape exactly and trip
+  // neither fingerprint by design. Asking what ended up INSIDE them settles it — English's own
+  // frozen bodies are excluded from the prose pool, so an intersection means prose was
+  // swallowed.
+  const english = [
+    '# Ein Titel fuer die Pruefung hier',
+    '',
+    'Dies ist ein Satz mit genuegend Zeichen fuer die Zaehlung.',
+    'Und hier folgt ein zweiter Satz mit genuegend Zeichen.',
+    'Ein dritter Satz, ebenfalls lang genug fuer die Zaehlung.',
+    'Ein vierter Satz, ebenfalls lang genug fuer die Zaehlung.',
+    '',
+  ].join('\n');
+  const pool = poolOf(english);
+
+  // A tilde wrap: inner backticks neither close it nor trip hasSwallowedOpener.
+  const wrapped = [
+    '# Ein Titel fuer die Pruefung hier',
+    '~~~yaml',
+    'Dies ist ein Satz mit genuegend Zeichen fuer die Zaehlung.',
+    'Und hier folgt ein zweiter Satz mit genuegend Zeichen.',
+    'Ein dritter Satz, ebenfalls lang genug fuer die Zaehlung.',
+    'Ein vierter Satz, ebenfalls lang genug fuer die Zaehlung.',
+    '~~~',
+    '',
+  ].join('\n');
+  assert.equal(hasSwallowedOpener(wrapped), false, 'the wrap evades the opener fingerprint by design');
+  assert.equal(hidesKnownProse(wrapped, pool.lines, pool.fenceLines), true);
+  assert.equal(
+    classifyTranslation({ translatedText: wrapped, locale: 'de', english: pool }).reason,
+    'fence-mismatch',
+  );
+});
+
+test('a SHAPE-REPLICATING wrap is caught by membership, not by shape', () => {
+  // The killing test for the wiring, supplied by review. My own wrap fixture built its pool
+  // from a FENCE-FREE English body, so the wrapped fixture mismatched on shape and the
+  // assertion was satisfied by `shapeUnknown` alone — the one fingerprint the wrap family is
+  // defined by evading. It passed for the wrong reason, and deleting the `hidesKnownProse`
+  // call from `classifyTranslation` left the entire suite green.
+  //
+  // Here the English source HAS a `yaml` fence and the wrap copies that tag, so the shape is
+  // replicated exactly and only membership can decide.
+  const english = [
+    '# Title long enough for compare',
+    'Prose line one long enough here.',
+    'Prose line two long enough here.',
+    'Prose line three long enough yes.',
+    'Prose line four long enough yes.',
+    '```yaml',
+    'name: keep-in-english',
+    '```',
+  ].join('\n');
+  const pool = poolOf(english);
+  const wrapped = [
+    '~~~yaml',
+    '# Title long enough for compare',
+    'Prose line one long enough here.',
+    'Prose line two long enough here.',
+    'Prose line three long enough yes.',
+    'Prose line four long enough yes.',
+    '~~~',
+  ].join('\n');
+
+  // Both fingerprints must be genuinely silent, or this proves nothing about membership.
+  assert.equal(fenceShape(wrapped), 'yaml', 'the wrap must replicate the shape exactly');
+  assert.ok(pool.fenceShapes.has(fenceShape(wrapped)), 'so shapeUnknown is FALSE');
+  assert.equal(hasSwallowedOpener(wrapped), false);
+
+  assert.equal(
+    classifyTranslation({ translatedText: wrapped, locale: 'de', english: pool }).reason,
+    'fence-mismatch',
+  );
+});
+
+test('a DEPTH-2 wrap cannot hide prose from the hiding detector', () => {
+  // `hidesKnownProse` inspected the fence body through `substantiveLines`, which re-masks
+  // fences INSIDE that body — so it looked through the very mask it audits. A 5-backtick outer
+  // wrapping a 4-backtick inner (inner run < outer, the documented fence-in-fence exemption)
+  // hid five prose lines from it: it saw `[]`, intersected nothing, and the file reached
+  // `insufficient` — counted as translated. Byte-for-byte the outcome the flat-wrap fix
+  // exists to close, one nesting level down.
+  const english = [
+    '# Title long enough for compare',
+    'Prose line one long enough here.',
+    'Prose line two long enough here.',
+    'Prose line three long enough yes.',
+    'Prose line four long enough yes.',
+    '```bash',
+    'echo hello world here',
+    '```',
+  ].join('\n');
+  const pool = poolOf(english);
+  const nested = [
+    '`````bash',
+    '````bash',
+    '# Title long enough for compare',
+    'Prose line one long enough here.',
+    'Prose line two long enough here.',
+    'Prose line three long enough yes.',
+    'Prose line four long enough yes.',
+    'echo hello world here',
+    '````',
+    '`````',
+  ].join('\n');
+
+  assert.equal(fenceShape(nested), 'bash', 'shape replicated');
+  assert.equal(hasSwallowedOpener(nested), false, 'inner run is shorter — the exemption');
+  assert.deepEqual(substantiveLines(nested), [], 'the mask really does swallow everything');
+
+  assert.equal(
+    classifyTranslation({ translatedText: nested, locale: 'de', english: pool }).reason,
+    'fence-mismatch',
+  );
+});
+
+test('a broken frontmatter mask cannot manufacture novelty either', () => {
+  // The fence mask is not the only mask over this comparison. `stripFrontmatter` fails OPEN —
+  // it returns the whole text when it cannot find two `---` lines — so deleting the OPENING
+  // delimiter turns the frontmatter into body. Its own fields clear the substantive filter and
+  // sit in NO pool, because English frontmatter is stripped before pooling on both paths.
+  //
+  // Measured before the guard: `no-novel-lines` (a scaffold) became `has-novel-lines` with
+  // novel 4 — counted as TRANSLATED, on four lines of its own metadata, with the shape
+  // untouched and both membership tests silent.
+  const body = [
+    '# Create R Package',
+    'Use this skill when starting a new R package from scratch.',
+    'It covers the directory layout and the DESCRIPTION file.',
+    'Verify the package directory was created before continuing.',
+    'The DESCRIPTION file must name an author and a maintainer.',
+    'One further line of English prose to clear the floor.',
+  ].join('\n');
+  const pool = poolAllowingNoFences(body);
+  const wellFormed = [
+    '---', 'name: create-r-package', 'description: Scaffold an R package for analysis',
+    'source_commit: abc1234def', 'translator: Claude plus human review', '---', body,
+  ].join('\n');
+
+  assert.equal(classifyTranslation({ translatedText: wellFormed, locale: 'de', english: pool }).reason,
+    'no-novel-lines');
+
+  const broken = wellFormed.replace(/^---\n/, '');
+  // The fixture must genuinely exhibit the leak, or it proves nothing.
+  assert.ok(stripFrontmatter(broken).includes('source_commit'), 'frontmatter must survive into the body');
+  assert.equal(frontmatterUnparsed(stripFrontmatter(broken)), true);
+
+  const verdict = classifyTranslation({ translatedText: broken, locale: 'de', english: pool });
+  assert.equal(verdict.reason, 'mask-unparsed');
+  assert.equal(verdict.cause, 'frontmatter');
+  assert.equal(verdict.stub, false, 'not a scaffold — the remedy for a stub is deletion');
+  assert.ok(UNJUDGED_REASONS.has(verdict.reason), 'and it must land in the unjudged bucket');
+});
+
+test('an untagged fence cannot masquerade as no fences at all', () => {
+  // `''` for an untagged fence made a single untagged terminated fence spell the same shape as
+  // a file with NO fences. If any English revision was fence-free, an untagged wrap around the
+  // whole body matched the pool and hid everything.
+  assert.notEqual(fenceShape('```\nhidden line long enough to compare\n```\n'), fenceShape('no fences here at all\n'));
+  assert.equal(fenceShape('```\nx\n```\n'), '{');
+  assert.equal(fenceShape('plain prose only\n'), '');
+
+  // `{` rather than `~` because it is provably impossible in a `lang`: extractFences strips
+  // braces unconditionally. Nothing strips `~`, so a ```~ fence would have collided with the
+  // placeholder — a "cannot happen" margin of exactly the kind this module keeps losing to.
+  assert.equal(fenceShape('```~\nx\n```\n'), '~', 'a ~-tagged fence keeps its own tag');
+  assert.notEqual(fenceShape('```~\nx\n```\n'), fenceShape('```\nx\n```\n'));
+  assert.equal(fenceShape('```{r}\nx\n```\n'), '{', 'a {...} info string is lang-empty too');
+});
+
 test('legitimate fence-in-fence documentation is not a swallowed opener', () => {
   // The false-positive risk of the swallowed-opener check. This corpus documents markdown by
   // wrapping a longer outer run around a shorter inner one, and `extractFences`' own docstring
@@ -767,6 +1025,61 @@ test('every content tree present in i18n/ is one the scan walks', () => {
 });
 
 // ── the git path ────────────────────────────────────────────────────────────
+
+test('buildEnglishProseHistory collects all THREE pools, and poolOf mirrors it', () => {
+  // Two gaps closed at once. The production collectors for `fenceShapes` and `fenceLines` were
+  // asserted nowhere: the git-path tests checked only `.lines`, and every classify test used
+  // the hand-written `poolOf`. So deleting the collector loop left the suite green while
+  // emptying `english.fenceLines` for every key in production — which kills the exposed-content
+  // exclusion outright AND degrades `hidesKnownProse` to its pre-disambiguation form, measured
+  // at 87 files flagged with 76 innocent, each a genuine translation dropped into `unjudged`.
+  //
+  // It also pins `poolOf` against production. That mirror is duplicated logic with a one-sided
+  // drift axis: if the helper drifts lenient, every fixture silently stops representing the
+  // pools production actually builds, and the tests keep passing.
+  const repo = mkdtempSync(join(tmpdir(), 'aa-tstatus-pools-'));
+  try {
+    const git = (...args) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' });
+    git('init', '-q', '-b', 'main');
+    git('config', 'user.email', 'test@example.invalid');
+    git('config', 'user.name', 'Test');
+
+    const skillDir = join(repo, 'skills', 'demo-skill');
+    mkdirSync(skillDir, { recursive: true });
+    const body = [
+      '# Demo Skill Title Here',
+      'A prose line that is long enough to compare.',
+      '```bash',
+      'echo "frozen content that is long enough"',
+      '```',
+      '```text',
+      'A localisable line that is long enough here.',
+      '```',
+    ].join('\n');
+    writeFileSync(join(skillDir, 'SKILL.md'), withFrontmatter(body));
+    git('add', '-A');
+    git('commit', '-qm', 'only');
+
+    const entry = buildEnglishProseHistory(repo).get('skills/demo-skill');
+    const mirror = poolOf(body);
+
+    assert.deepEqual([...entry.lines].sort(), [...mirror.lines].sort(), 'prose pool must mirror');
+    assert.deepEqual([...entry.fenceShapes], [...mirror.fenceShapes], 'shape pool must mirror');
+    assert.deepEqual([...entry.fenceLines].sort(), [...mirror.fenceLines].sort(), 'frozen pool must mirror');
+
+    // And the pools must actually be populated, or "they match" is two empty sets agreeing.
+    assert.ok(entry.fenceLines.has('echo "frozen content that is long enough"'),
+      'the GATED body belongs to the frozen pool');
+    assert.ok(!entry.lines.has('echo "frozen content that is long enough"'),
+      'and must NOT be in the prose pool — that separation is what the whole rule rests on');
+    assert.ok(entry.lines.has('A localisable line that is long enough here.'),
+      'a localisable body is prose, not frozen');
+    assert.ok(!entry.fenceLines.has('A localisable line that is long enough here.'));
+    assert.deepEqual([...entry.fenceShapes], ['bash,text']);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
 
 test('buildEnglishProseHistory pools every revision a source has had', () => {
   const repo = mkdtempSync(join(tmpdir(), 'aa-tstatus-'));

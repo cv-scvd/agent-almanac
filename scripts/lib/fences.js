@@ -271,7 +271,22 @@ export function toLines(text) {
 export function fenceShape(text) {
   return extractFences(text)
     .filter((f) => !f.unterminated)
-    .map((f) => f.lang || '')
+    // A lang-empty fence renders as `{`, not as the empty string. Empty made a single such
+    // terminated fence spell the shape `''` — identical to the shape of a file with NO fences
+    // at all. So if any English revision was fence-free, an untagged wrap around the whole
+    // body matched the pool, hid everything, and landed `insufficient`.
+    //
+    // `{` is provably impossible in a `lang`: the extractor strips braces unconditionally
+    // (`.replace(/[{}]/g, '')`), so no info string can produce one. An earlier draft used `~`
+    // and justified it with "never contains whitespace" — which argues the wrong character.
+    // Nothing removes `~`, so ```` ```~ ```` yields `lang === '~'` and collides with the
+    // placeholder. A "cannot happen" margin is exactly how this module keeps getting bypassed.
+    //
+    // Note the placeholder covers more than untagged fences: any `{...}` info string
+    // (```` ```{r} ````, ```` ```{r setup} ````) is also lang-empty, and the corpus carries
+    // dozens — all currently nested inside ```` ````markdown ```` wraps, so no top-level shape
+    // changes today.
+    .map((f) => f.lang || '{')
     .join(',');
 }
 
