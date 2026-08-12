@@ -554,7 +554,19 @@ export function buildEnglishProseHistory(root) {
     // from the English prose pool", i.e. novel, i.e. evidence of translation. Pooling them
     // separately lets the verdict say what is actually true — this line is English, it is
     // simply English we normally decline to compare.
+    const bodyLines = toLines(body);
     for (const fence of extractFences(body)) {
+      // The fence's own OPENER line, for every fence, terminated or not, gated or not.
+      // `openLines` drops delimiter lines unconditionally, so they were in NO pool — and an
+      // opener long enough to be comparable (```javascript is 13 chars with letters) counted
+      // as NOVEL the moment a corrupted mask exposed it. That is novelty fabricated out of
+      // pure markdown syntax: a byte-identical scaffold wrapped in one ````text fence reported
+      // `has-novel-lines`, a positive claim of translation, on the strength of a backtick line.
+      // Closers need no such treatment — a bare ``` is 3 chars with no letter, so it can never
+      // clear the comparability filter.
+      const opener = bodyLines[fence.line - 1];
+      if (opener !== undefined) for (const l of rawComparableLines(opener)) entry.fenceLines.add(l);
+
       if (!isGated(fence) || fence.unterminated) continue;
       // RAW here too, and for the mirror-image reason: English content nested gated-in-gated
       // would never enter the frozen pool, so if a corrupted mask later EXPOSED it, it would

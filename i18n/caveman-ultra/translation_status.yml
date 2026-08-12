@@ -2,12 +2,12 @@ locale: caveman-ultra
 last_updated: '2026-08-12'
 coverage:
   skills:
-    translated: 345
+    translated: 346
     total: 369
-    pct: 93.5
-    stale: 306
+    pct: 93.8
+    stale: 307
     stubs: 5
-    unjudged: 2
+    unjudged: 1
   agents:
     translated: 0
     total: 75
@@ -30,9 +30,9 @@ coverage:
     stubs: 0
     unjudged: 0
   total:
-    translated: 345
+    translated: 346
     total: 500
-    pct: 69
-    stale: 306
+    pct: 69.2
+    stale: 307
     stubs: 5
-    unjudged: 2
+    unjudged: 1

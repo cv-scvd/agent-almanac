@@ -279,7 +279,31 @@ export function toLines(text) {
  */
 export function fenceShape(text) {
   return extractFences(text)
-    .filter((f) => !f.unterminated)
+    // GATED fences only, and this is the whole point of the invariant rather than a detail.
+    // The mask `openLines` builds drops FROZEN bodies and keeps localisable ones, so a
+    // well-formed `text`/`markdown` fence added or removed in translation cannot corrupt the
+    // measurement — it is translatable prose either way. Counting it in the shape cost real
+    // translations their verdict for a change that provably could not affect them: measured on
+    // the corpus, 76 files mismatched on the all-fence shape and 62 of those had an intact
+    // frozen mask. 59 of those 62 recovered; the other 3 are held by a second, independent
+    // cause. That is the strict direction, which this module's header names as the expensive
+    // one.
+    //
+    // What it costs, stated conditionally because the unconditional version was wrong. A stray
+    // localisable opener still CHANGES this shape — it swallows the real frozen fence, which
+    // disappears from the gated list — but changing only CATCHES when the new shape is absent
+    // from the pool, and the new shape is often `''`, which any gated-fence-free revision
+    // pools. Fences accrete, so that is common rather than exotic. There the catcher is
+    // `hasSwallowedOpener`, and the membership tests behind it; a test pins that fallback
+    // explicitly rather than leaving it to this comment.
+    //
+    // It also gives up an accidental tripwire: under the all-fence shape a `yaml`->`text`
+    // retag (#481's escape hatch, which also evades the parity gate) usually changed the shape
+    // and was flagged here. Under gated-only it is invisible whenever the pre-addition revision
+    // already pooled the shorter shape. That tripwire was never designed, never tested, and
+    // never documented — but it was real, and its loss belongs on the record rather than in
+    // silence. Tag-sequence parity (#481) is the durable close.
+    .filter((f) => !f.unterminated && isGated(f))
     // A lang-empty fence renders as `{`, not as the empty string. Empty made a single such
     // terminated fence spell the shape `''` — identical to the shape of a file with NO fences
     // at all. So if any English revision was fence-free, an untagged wrap around the whole

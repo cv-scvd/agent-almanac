@@ -7,16 +7,16 @@ This directory contains translations of agent-almanac content into multiple lang
 <!-- AUTO:START:i18n-locales -->
 | Code | Language | Skills | Agents | Teams | Guides | Translated | Stale |
 |---|---|---|---|---|---|---|---|
-| de | Deutsch | 328/369 | 3/75 | 1/22 | 2/34 | 334/500 (66.8%) | 160 |
-| zh-CN | 简体中文 | 320/369 | 3/75 | 1/22 | 2/34 | 326/500 (65.2%) | 149 |
-| ja | 日本語 | 338/369 | 3/75 | 1/22 | 2/34 | 344/500 (68.8%) | 159 |
-| es | Español | 323/369 | 3/75 | 1/22 | 2/34 | 329/500 (65.8%) | 159 |
-| caveman-lite | Caveman Lite | 345/369 | 0/75 | 0/22 | 0/34 | 345/500 (69%) | 306 |
-| caveman | Caveman | 345/369 | 0/75 | 0/22 | 0/34 | 345/500 (69%) | 306 |
-| caveman-ultra | Caveman Ultra | 345/369 | 0/75 | 0/22 | 0/34 | 345/500 (69%) | 306 |
+| de | Deutsch | 340/369 | 3/75 | 1/22 | 2/34 | 346/500 (69.2%) | 171 |
+| zh-CN | 简体中文 | 342/369 | 3/75 | 1/22 | 2/34 | 348/500 (69.6%) | 168 |
+| ja | 日本語 | 347/369 | 3/75 | 1/22 | 2/34 | 353/500 (70.6%) | 166 |
+| es | Español | 334/369 | 3/75 | 1/22 | 2/34 | 340/500 (68%) | 168 |
+| caveman-lite | Caveman Lite | 346/369 | 0/75 | 0/22 | 0/34 | 346/500 (69.2%) | 307 |
+| caveman | Caveman | 346/369 | 0/75 | 0/22 | 0/34 | 346/500 (69.2%) | 307 |
+| caveman-ultra | Caveman Ultra | 346/369 | 0/75 | 0/22 | 0/34 | 346/500 (69.2%) | 307 |
 | wenyan-lite | 文言文輕 | 342/369 | 0/75 | 0/22 | 0/34 | 342/500 (68.4%) | 303 |
 | wenyan | 文言文 | 342/369 | 0/75 | 0/22 | 0/34 | 342/500 (68.4%) | 303 |
-| wenyan-ultra | 文言文極 | 343/369 | 0/75 | 0/22 | 0/34 | 343/500 (68.6%) | 301 |
+| wenyan-ultra | 文言文極 | 345/369 | 0/75 | 0/22 | 0/34 | 345/500 (69%) | 303 |
 <!-- AUTO:END:i18n-locales -->
 
 Generated from `i18n/_config.yml` and each locale's `translation_status.yml` — the same
