@@ -16,6 +16,7 @@ import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from '
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import * as yaml from 'js-yaml';
+import { CONTENT_TYPES } from './lib/content-types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -607,7 +608,7 @@ function generateTranslationsSection() {
 
   const i18nConfig = yaml.load(readFileSync(configPath, 'utf8'));
   const locales = i18nConfig.supported_locales || [];
-  const contentTypes = ['skills', 'agents', 'teams', 'guides'];
+  const contentTypes = CONTENT_TYPES;
   // Fallback denominators only. Measured rows take theirs from the status
   // file, so the two surfaces cannot disagree about the denominator either.
   // Registry drift stays guarded by integrity checks A4/A5.

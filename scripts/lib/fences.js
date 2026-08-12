@@ -27,6 +27,7 @@ import { readFileSync, readdirSync, existsSync, statSync } from 'fs';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { execFileSync, spawnSync } from 'child_process';
+import { CONTENT_TYPES } from './content-types.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const GIT_BUFFER = 2048 * 1024 * 1024;
@@ -69,8 +70,16 @@ export const LOCALISABLE_TAGS = new Set(['text', 'markdown', 'md']);
 /** True when a fence's body must match an English revision byte-for-byte. */
 export const isGated = (fence) => !LOCALISABLE_TAGS.has(fence.lang);
 
-/** English content trees that have translated mirrors under `i18n/<locale>/`. */
-export const TREES = ['skills', 'agents', 'teams', 'guides'];
+/**
+ * English content trees that have translated mirrors under `i18n/<locale>/`.
+ *
+ * Re-exported from the SSOT (#568), NOT re-declared. Note the shape: `import` plus
+ * `export const`, never `export { CONTENT_TYPES as TREES } from './content-types.js'` — a bare
+ * re-export creates no LOCAL binding, and this module reads `TREES` internally in
+ * `contentKey`, in the `git log` pathspec, and in the working-tree walk. Measured: 42 of 224
+ * tests fail with `ReferenceError: TREES is not defined`.
+ */
+export const TREES = CONTENT_TYPES;
 
 /**
  * Repo-relative English content path -> stable `<tree>/<id>` key, or null when

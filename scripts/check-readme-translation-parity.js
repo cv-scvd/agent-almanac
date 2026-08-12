@@ -23,6 +23,12 @@
  * shape-restricted parser is honest here -- and it fails closed (exit 2)
  * rather than guessing whenever the shape is not the one it knows.
  *
+ * The import graph is now this file -> lib/content-types.js, and that module is
+ * a LEAF on purpose (#568): it declares the content-type list and imports
+ * nothing, so this file's transitive closure stays inside node builtins. An
+ * import added anywhere in that closure breaks B13 in CI only -- green locally,
+ * where node_modules exists. scripts/test/dependency-free.test.js enforces it.
+ *
  * Exit codes:
  *   0  the two surfaces agree
  *   1  they disagree (the defect this exists to catch)
@@ -36,7 +42,11 @@ import { fileURLToPath } from 'url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-export const CONTENT_TYPES = ['skills', 'agents', 'teams', 'guides'];
+// Both lines are needed: `export ... from` does not create a local binding, and this module
+// uses CONTENT_TYPES itself. Re-exported so existing importers of this file keep working.
+import { CONTENT_TYPES } from './lib/content-types.js';
+
+export { CONTENT_TYPES };
 
 /** Marker suffix a cell carries when the generator fell back to file counting. */
 export const FALLBACK_MARK = '*';
