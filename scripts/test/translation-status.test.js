@@ -37,7 +37,7 @@ import {
   REQUIRED_SCRIPT,
   MIN_LINES_TO_JUDGE,
 } from '../lib/translation-status.js';
-import { TREES, fenceShape, hasSwallowedOpener, extractFences, isGated } from '../lib/fences.js';
+import { TREES, fenceShape, hasSwallowedOpener, extractFences, isGated, toLines } from '../lib/fences.js';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -90,9 +90,15 @@ const poolOf = (...bodies) => ({
   // Mirrors buildEnglishProseHistory's third collector. A fixture pool missing this cannot
   // distinguish the cross-pool fix from its absence -- the reviewer's own proof file predated
   // the field, and its regression test could only ever fail for that reason.
-  fenceLines: new Set(bodies.flatMap((body) => extractFences(body)
-    .filter((f) => isGated(f) && !f.unterminated)
-    .flatMap((f) => rawComparableLines(f.body)))),
+  fenceLines: new Set(bodies.flatMap((body) => {
+    const lines = toLines(body);
+    return extractFences(body).flatMap((f) => [
+      // Every fence's OPENER line — they are dropped by `openLines` and so sit in no other
+      // pool, which let an exposed ```javascript line be counted as novel prose.
+      ...rawComparableLines(lines[f.line - 1] ?? ''),
+      ...(isGated(f) && !f.unterminated ? rawComparableLines(f.body) : []),
+    ]);
+  })),
 });
 
 /**
@@ -468,6 +474,77 @@ test('a stray LOCALISABLE opener is caught even though it hides nothing', () => 
     classifyTranslation({ translatedText: strayed, locale: 'de', english: pool }).reason,
     'fence-mismatch',
   );
+});
+
+test('a localisable stray is caught by the FINGERPRINT when the shape cannot help', () => {
+  // #582 F2. The shape only CATCHES when the resulting shape is absent from the pool. Gate the
+  // shape on gated fences and a stray `text` opener yields '' — which IS in the pool for any
+  // file whose history contains a gated-fence-free revision, and fences accrete, so that is the
+  // common case rather than the exotic one. There the shape is silent and `hasSwallowedOpener`
+  // is the sole catcher. That fallback was pinned by nothing: restricting the fingerprint to
+  // gated enclosing fences left the whole suite green.
+  const body = [
+    '# Ein Titel fuer die Pruefung hier',
+    'Dies ist ein Satz mit genuegend Zeichen fuer die Zaehlung.',
+    'Und hier folgt ein zweiter Satz mit genuegend Zeichen.',
+    '```yaml',
+    'name: keep-this-identifier-in-english',
+    '```',
+    'Ein dritter Satz, ebenfalls lang genug fuer die Zaehlung.',
+    '',
+  ].join('\n');
+  // An OLDER English revision with no gated fence at all, so '' is legitimately pooled.
+  const older = ['# Ein Titel fuer die Pruefung hier', 'Dies ist ein Satz mit genuegend Zeichen fuer die Zaehlung.'].join('\n');
+  const pool = poolOf(body, older);
+  assert.ok(pool.fenceShapes.has(''), "the fixture must actually pool '' or it tests the shape path");
+
+  const strayed = body.replace(
+    '# Ein Titel fuer die Pruefung hier\n',
+    '# Ein Titel fuer die Pruefung hier\n```text\n',
+  );
+  assert.ok(pool.fenceShapes.has(fenceShape(strayed)), 'and the shape check must be SILENT here');
+  assert.equal(hasSwallowedOpener(strayed), true, 'so the fingerprint is the only thing left');
+
+  const verdict = classifyTranslation({ translatedText: strayed, locale: 'de', english: pool });
+  assert.equal(verdict.reason, 'fence-mismatch');
+  assert.equal(verdict.cause, 'swallowed-opener', 'and the cause must name what actually caught it');
+});
+
+test('an exposed fence OPENER line is not novelty (#582 F1)', () => {
+  // Delimiter lines are dropped by `openLines` for every fence, so they sat in no pool. An
+  // opener long enough to compare — ```javascript is 13 chars with letters — therefore counted
+  // as NOVEL the moment a corrupted mask exposed it. A byte-identical scaffold wrapped in one
+  // ````text fence reported `has-novel-lines`: a positive claim of translation manufactured
+  // out of markdown syntax, with both fingerprints silent by construction.
+  const body = [
+    '# Ein Titel fuer die Pruefung hier',
+    'Dies ist ein Satz mit genuegend Zeichen fuer die Zaehlung.',
+    'Und hier folgt ein zweiter Satz mit genuegend Zeichen.',
+    'Ein dritter Satz, ebenfalls lang genug fuer die Zaehlung.',
+    'Ein vierter Satz, ebenfalls lang genug fuer die Zaehlung.',
+    '```javascript',
+    'const keepThisInEnglish = 1;',
+    '```',
+    '',
+  ].join('\n');
+  const older = ['# Ein Titel fuer die Pruefung hier', 'Dies ist ein Satz mit genuegend Zeichen fuer die Zaehlung.'].join('\n');
+  const pool = poolOf(body, older);
+
+  // The opener must be comparable, or the construction has nothing to exploit.
+  assert.deepEqual(rawComparableLines('```javascript'), ['```javascript']);
+  assert.ok(pool.fenceLines.has('```javascript'), 'and it must now be pooled');
+
+  const wrapped = ['````text', body.trimEnd(), '````', ''].join('\n');
+  // Both fingerprints silent, and the shape is '' which the older revision legitimately pooled.
+  assert.equal(fenceShape(wrapped), '', 'the wrap is localisable, the inner fence is content');
+  assert.ok(pool.fenceShapes.has(''));
+  assert.equal(hasSwallowedOpener(wrapped), false, 'inner run 3 < outer 4 — the documented exemption');
+  assert.equal(hidesKnownProse(wrapped, pool.lines, pool.fenceLines), false, 'the wrap is not gated');
+
+  // With nothing else to catch it, the verdict rests entirely on the novel count.
+  const verdict = classifyTranslation({ translatedText: wrapped, locale: 'de', english: pool });
+  assert.equal(verdict.novel, 0, 'a byte-identical scaffold has no novelty, delimiters included');
+  assert.equal(verdict.stub, true, 'so it is a scaffold, not a translation');
 });
 
 test('a SAME-TAG stray opener is caught, though the shape is byte-identical', () => {
