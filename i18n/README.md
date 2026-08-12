@@ -4,12 +4,25 @@ This directory contains translations of agent-almanac content into multiple lang
 
 ## Supported Locales
 
-| Code | Language | Skills | Agents | Teams | Guides | Status |
-|---|---|---|---|---|---|---|
-| de | Deutsch (German) | 317/328 | 3/66 | 1/15 | 1/19 | Active |
-| zh-CN | 简体中文 (Simplified Chinese) | 317/328 | 3/66 | 1/15 | 1/19 | Active |
-| ja | 日本語 (Japanese) | 317/328 | 3/66 | 1/15 | 1/19 | Active |
-| es | Español (Spanish) | 317/328 | 3/66 | 1/15 | 1/19 | Active |
+<!-- AUTO:START:i18n-locales -->
+| Code | Language | Skills | Agents | Teams | Guides | Translated | Stale |
+|---|---|---|---|---|---|---|---|
+| de | Deutsch | 328/369 | 3/75 | 1/22 | 2/34 | 334/500 (66.8%) | 160 |
+| zh-CN | 简体中文 | 320/369 | 3/75 | 1/22 | 2/34 | 326/500 (65.2%) | 149 |
+| ja | 日本語 | 338/369 | 3/75 | 1/22 | 2/34 | 344/500 (68.8%) | 159 |
+| es | Español | 323/369 | 3/75 | 1/22 | 2/34 | 329/500 (65.8%) | 159 |
+| caveman-lite | Caveman Lite | 345/369 | 0/75 | 0/22 | 0/34 | 345/500 (69%) | 306 |
+| caveman | Caveman | 345/369 | 0/75 | 0/22 | 0/34 | 345/500 (69%) | 306 |
+| caveman-ultra | Caveman Ultra | 345/369 | 0/75 | 0/22 | 0/34 | 345/500 (69%) | 306 |
+| wenyan-lite | 文言文輕 | 342/369 | 0/75 | 0/22 | 0/34 | 342/500 (68.4%) | 303 |
+| wenyan | 文言文 | 342/369 | 0/75 | 0/22 | 0/34 | 342/500 (68.4%) | 303 |
+| wenyan-ultra | 文言文極 | 343/369 | 0/75 | 0/22 | 0/34 | 343/500 (68.6%) | 301 |
+<!-- AUTO:END:i18n-locales -->
+
+Generated from `i18n/_config.yml` and each locale's `translation_status.yml` — the same
+source the root [README](../README.md#translations) table reads, so the two cannot disagree.
+`stale` counts translated files whose English source moved on; see [Status
+Reports](#status-reports) below for why a *falling* `stale` is not by itself progress.
 
 ## Directory Structure
 

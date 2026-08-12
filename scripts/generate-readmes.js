@@ -17,7 +17,7 @@ import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import * as yaml from 'js-yaml';
 import { CONTENT_TYPES } from './lib/content-types.js';
-import { applySections, renderTranslationsTable } from './lib/readme-sections.js';
+import { applySections, renderTranslationsTable, renderLocaleTable } from './lib/readme-sections.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -567,6 +567,37 @@ function countExistingTranslations(localeDir, contentTypes) {
   return { counts, total };
 }
 
+/**
+ * Read `i18n/_config.yml` and each locale's `translation_status.yml`.
+ *
+ * One reader for both translation tables, so the root README and `i18n/README.md` cannot
+ * disagree about what a locale's numbers are — they are two views of one read.
+ */
+function loadLocaleCoverage() {
+  const i18nDir = resolve(ROOT, 'i18n');
+  const configPath = resolve(i18nDir, '_config.yml');
+  if (!existsSync(configPath)) return null;
+  const locales = (yaml.load(readFileSync(configPath, 'utf8')) || {}).supported_locales || [];
+  return locales.map((locale) => {
+    const localeDir = resolve(i18nDir, locale.code);
+    const statusPath = resolve(localeDir, 'translation_status.yml');
+    return {
+      code: locale.code,
+      name: locale.name,
+      localeDir,
+      coverage: existsSync(statusPath)
+        ? (yaml.load(readFileSync(statusPath, 'utf8')) || {}).coverage
+        : null,
+    };
+  });
+}
+
+function generateI18nLocalesSection() {
+  const records = loadLocaleCoverage();
+  if (!records || records.length === 0) return '*No translations configured yet.*';
+  return renderLocaleTable(records, CONTENT_TYPES);
+}
+
 function generateTranslationsSection() {
   const i18nDir = resolve(ROOT, 'i18n');
   const configPath = resolve(i18nDir, '_config.yml');
@@ -655,6 +686,12 @@ const MANAGED = [
   { path: 'viz/README.md', make: (p) => writeGeneratedFile(p, generateVizReadme()) },
   { path: 'teams/README.md', make: (p) => writeGeneratedFile(p, generateTeamsReadme()) },
   { path: 'tests/README.md', make: (p) => writeGeneratedFile(p, generateTestsReadme()) },
+  // Marker-based, not fully generated: the rest of i18n/README.md is a hand-written
+  // contributor guide. Only the locale table is derived. Its markers MUST exist or the run
+  // exits 2 — see the missingMarkers block below.
+  { path: 'i18n/README.md', make: (p) => processFile(p, {
+    'i18n-locales': generateI18nLocalesSection,
+  }) },
 ];
 
 // --list-outputs: print managed output paths (one per line) and exit without

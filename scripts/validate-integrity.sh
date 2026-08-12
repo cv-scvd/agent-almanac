@@ -240,15 +240,31 @@ else
   # a `!`-negation in update-readmes.yml paths, or the auto-commit re-triggers
   # the workflow (bounce).
   a8_negations=$(grep -E "^[[:space:]]*-[[:space:]]*'\!" .github/workflows/update-readmes.yml | sed -E "s/^[[:space:]]*-[[:space:]]*'\!//; s/'[[:space:]]*$//" || true)
+  # The triggering trees are DERIVED from the workflow's own paths, not hardcoded. They used to
+  # be the literal case arms `skills/*|agents/*|teams/*|guides/*`, which is a proxy for "what
+  # this workflow triggers on" — and the proxy went stale the moment i18n/README.md became a
+  # generated output (#569): `i18n/**/*.md` triggers, so the auto-commit would have re-triggered
+  # the workflow with nothing here to notice. Same guard-by-a-proxy shape this repo keeps
+  # paying for. Taking the top-level prefix of each wildcard path over-approximates, which
+  # fails SAFE: it can demand a negation that was not strictly needed, never skip one.
+  a8_trees=$(grep -E "^[[:space:]]*-[[:space:]]*'[^!][^']*\*" .github/workflows/update-readmes.yml \
+    | sed -E "s/^[[:space:]]*-[[:space:]]*'//; s/'.*$//; s#/.*##" | sort -u || true)
+  if [ -z "$a8_trees" ]; then
+    echo "FAIL: A8 could not derive the triggering trees from update-readmes.yml paths (parse broke, not a pass)"
+    failed=1; a8_fail=1
+  fi
   while IFS= read -r f; do
     [ -z "$f" ] && continue
-    case "$f" in
-      skills/*|agents/*|teams/*|guides/*)
-        if ! printf '%s\n' "$a8_negations" | grep -Fxq "$f"; then
-          echo "FAIL: MANAGED output '$f' sits under a triggering content tree but has no '!$f' negation in update-readmes.yml paths (auto-commit would re-trigger the workflow)"
-          failed=1; a8_fail=1
-        fi ;;
-    esac
+    while IFS= read -r tree; do
+      [ -z "$tree" ] && continue
+      case "$f" in
+        "$tree"/*)
+          if ! printf '%s\n' "$a8_negations" | grep -Fxq "$f"; then
+            echo "FAIL: MANAGED output '$f' sits under triggering tree '$tree/' but has no '!$f' negation in update-readmes.yml paths (auto-commit would re-trigger the workflow)"
+            failed=1; a8_fail=1
+          fi ;;
+      esac
+    done <<< "$a8_trees"
   done <<< "$a8_readmes"
   # Dead negations: a negation for a path no generator manages is stale.
   while IFS= read -r n; do
