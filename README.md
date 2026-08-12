@@ -188,16 +188,16 @@ New here? Start with [Understanding the System](guides/understanding-the-system.
 <!-- AUTO:START:translations -->
 | Locale | Language | Skills | Agents | Teams | Guides | Total | Stubs | Unjudged |
 |---|---|---|---|---|---|---|---|---|
-| de | Deutsch | 328/369 | 3/75 | 1/22 | 2/34 | 334/500 (66.8%) | 35 | 14 |
-| zh-CN | 简体中文 | 320/369 | 3/75 | 1/22 | 2/34 | 326/500 (65.2%) | 26 | 31 |
-| ja | 日本語 | 338/369 | 3/75 | 1/22 | 2/34 | 344/500 (68.8%) | 26 | 13 |
-| es | Español | 323/369 | 3/75 | 1/22 | 2/34 | 329/500 (65.8%) | 40 | 14 |
-| caveman-lite | Caveman Lite | 345/369 | 0/75 | 0/22 | 0/34 | 345/500 (69%) | 5 | 2 |
-| caveman | Caveman | 345/369 | 0/75 | 0/22 | 0/34 | 345/500 (69%) | 5 | 2 |
-| caveman-ultra | Caveman Ultra | 345/369 | 0/75 | 0/22 | 0/34 | 345/500 (69%) | 5 | 2 |
+| de | Deutsch | 340/369 | 3/75 | 1/22 | 2/34 | 346/500 (69.2%) | 35 | 2 |
+| zh-CN | 简体中文 | 342/369 | 3/75 | 1/22 | 2/34 | 348/500 (69.6%) | 26 | 9 |
+| ja | 日本語 | 347/369 | 3/75 | 1/22 | 2/34 | 353/500 (70.6%) | 26 | 4 |
+| es | Español | 334/369 | 3/75 | 1/22 | 2/34 | 340/500 (68%) | 40 | 3 |
+| caveman-lite | Caveman Lite | 346/369 | 0/75 | 0/22 | 0/34 | 346/500 (69.2%) | 5 | 1 |
+| caveman | Caveman | 346/369 | 0/75 | 0/22 | 0/34 | 346/500 (69.2%) | 5 | 1 |
+| caveman-ultra | Caveman Ultra | 346/369 | 0/75 | 0/22 | 0/34 | 346/500 (69.2%) | 5 | 1 |
 | wenyan-lite | 文言文輕 | 342/369 | 0/75 | 0/22 | 0/34 | 342/500 (68.4%) | 5 | 5 |
 | wenyan | 文言文 | 342/369 | 0/75 | 0/22 | 0/34 | 342/500 (68.4%) | 5 | 5 |
-| wenyan-ultra | 文言文極 | 343/369 | 0/75 | 0/22 | 0/34 | 343/500 (68.6%) | 5 | 4 |
+| wenyan-ultra | 文言文極 | 345/369 | 0/75 | 0/22 | 0/34 | 345/500 (69%) | 5 | 2 |
 <!-- AUTO:END:translations -->
 
 See [i18n/README.md](i18n/README.md) for the translation contributor guide.

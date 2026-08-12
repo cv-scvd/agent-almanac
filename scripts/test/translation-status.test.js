@@ -454,7 +454,11 @@ test('a stray LOCALISABLE opener is caught even though it hides nothing', () => 
 
   // The fixture must genuinely exhibit the evading shape, or it proves nothing.
   assert.equal(hidesLines(strayed), false, 'a localisable fence hides nothing — the old predicate passed it');
-  assert.equal(fenceShape(strayed), 'text');
+  // The shape counts GATED fences only, so the stray `text` opener contributes nothing itself.
+  // What changes the shape is that it SWALLOWS the real frozen fence, which then vanishes from
+  // the gated list — which is exactly why gating the shape costs no attack coverage.
+  assert.equal(fenceShape(body), 'yaml', 'the clean body has one frozen fence');
+  assert.equal(fenceShape(strayed), '', 'and the stray opener swallows it');
   assert.ok(
     substantiveLines(strayed).some((l) => l.startsWith('name: keep-this-identifier')),
     'the frozen body must actually be exposed as comparable prose',
@@ -1075,7 +1079,10 @@ test('buildEnglishProseHistory collects all THREE pools, and poolOf mirrors it',
     assert.ok(entry.lines.has('A localisable line that is long enough here.'),
       'a localisable body is prose, not frozen');
     assert.ok(!entry.fenceLines.has('A localisable line that is long enough here.'));
-    assert.deepEqual([...entry.fenceShapes], ['bash,text']);
+    // GATED only: the fixture's `text` fence is localisable, so it is absent from the shape.
+    // Its body is in `lines` (asserted above) because localisable content IS compared — which
+    // is precisely why it must not perturb the shape.
+    assert.deepEqual([...entry.fenceShapes], ['bash']);
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }

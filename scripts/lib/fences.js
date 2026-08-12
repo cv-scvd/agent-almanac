@@ -279,7 +279,19 @@ export function toLines(text) {
  */
 export function fenceShape(text) {
   return extractFences(text)
-    .filter((f) => !f.unterminated)
+    // GATED fences only, and this is the whole point of the invariant rather than a detail.
+    // The mask `openLines` builds drops FROZEN bodies and keeps localisable ones, so a
+    // well-formed `text`/`markdown` fence added or removed in translation cannot corrupt the
+    // measurement — it is translatable prose either way. Counting it in the shape cost 62 real
+    // translations their verdict for a change that provably could not affect them: measured on
+    // the corpus, 76 files mismatched on the all-fence shape and 62 of those had an intact
+    // frozen mask. That is the strict direction, which this module's header names as the
+    // expensive one.
+    //
+    // It costs no attack coverage, because every construction that corrupts the mask does so
+    // with a GATED fence, or swallows one. A stray localisable opener still changes this shape:
+    // it swallows the real frozen fence, which then disappears from the gated list.
+    .filter((f) => !f.unterminated && isGated(f))
     // A lang-empty fence renders as `{`, not as the empty string. Empty made a single such
     // terminated fence spell the shape `''` — identical to the shape of a file with NO fences
     // at all. So if any English revision was fence-free, an untagged wrap around the whole
