@@ -488,6 +488,43 @@ else
     done <<< "$a10_hits"
   done
 
+  # A10d: this job must actually RUN when one of the files A10 reads changes.
+  #
+  # A check that cannot fire on the file it guards is not a gate. `validate-integrity.yml`
+  # already self-lists its own path for that reason, and A8c enforces the same property for the
+  # staleness gate's outputs -- but nothing covered A10's INPUTS, and one of them
+  # (.github/workflows/validate-translations.yml) was outside the trigger. A PR editing only that
+  # file dropped a tree from its loop with A10 never running. Found by checking the CI log
+  # rather than the check's own green.
+  #
+  # The source list below is hardcoded and inherently so: it is the set of files A10 opens, which
+  # only A10 knows. Adding a read without adding it here is the one drift this cannot see.
+  a10_paths=$(sed -n '/^  pull_request:/,/^  workflow_dispatch:/p' .github/workflows/validate-integrity.yml \
+    | grep -E '^      - ' | sed -E "s/^      - //; s/^['\"]//; s/['\"]\$//" || true)
+  a10_covered() { # <repo-relative path> -> 0 when some pull_request path entry matches it
+    while IFS= read -r a10_pat; do
+      [ -z "$a10_pat" ] && continue
+      case "$a10_pat" in
+        */\*\*) [ "${1#${a10_pat%/\*\*}/}" != "$1" ] && return 0 ;;
+        *) [ "$a10_pat" = "$1" ] && return 0 ;;
+      esac
+    done <<< "$a10_paths"
+    return 1
+  }
+  if [ -z "$a10_paths" ]; then
+    echo "FAIL: A10 could not read validate-integrity.yml's pull_request paths -- trigger coverage UNCHECKED"
+    failed=1; a10_fail=1
+  else
+    for a10_src in scripts/lib/content-types.js scripts/check-i18n-fence-parity.js \
+                   scripts/validate-integrity.sh scripts/translate-content.sh \
+                   .github/workflows/validate-translations.yml; do
+      if ! a10_covered "$a10_src"; then
+        echo "FAIL: A10 reads $a10_src, but .github/workflows/validate-integrity.yml does not run on changes to it -- editing that file alone bypasses this check entirely"
+        failed=1; a10_fail=1
+      fi
+    done
+  fi
+
   # translate-content.sh. The `case` arms are the ACCEPT-RULE -- what the scaffolder will and
   # will not act on. The other two describe that rule to a human, and a description that
   # disagrees with the rule is a lie someone reads while debugging.
