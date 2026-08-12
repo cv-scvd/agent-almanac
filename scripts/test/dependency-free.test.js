@@ -1,136 +1,140 @@
 /**
- * The dependency-free constraint, made checkable (#568).
+ * The dependency-free constraint, tested against node's own resolver (#568).
  *
  * `scripts/check-readme-translation-parity.js` is invoked by integrity check B13, and
  * `.github/workflows/validate-integrity.yml` runs with `setup-node` but deliberately NO
  * `npm ci` — the constraint A8 documents. So that file's TRANSITIVE import closure must stay
  * inside node builtins.
  *
- * Nothing else can see a violation. Locally `node_modules` exists, so the checker runs fine
- * and every other gate stays green; the failure appears only in CI, as
- * `ERR_MODULE_NOT_FOUND`, in a job whose other checks are unrelated. Measured on a scratch
- * clone: adding `import 'js-yaml'` to the checker left the whole suite passing except for one
- * failure that was present identically WITHOUT the mutation — i.e. no signal at all — while
- * the same file exits 1 the moment `node_modules` is removed.
+ * Nothing else in the repo can see a violation. Locally `node_modules` exists, so the checker
+ * runs and every gate stays green; the failure appears only in CI, as `ERR_MODULE_NOT_FOUND`,
+ * in a job whose other checks are unrelated.
  *
- * The walker is static (regex over specifiers) rather than a real resolver, because the
- * question is "what would node try to resolve", not "what does it resolve to here". It
- * refuses to report clean when it meets a dynamic `import(` whose argument it cannot read.
+ * ## Why this is a probe and not a parser
+ *
+ * The first version walked the import graph with regexes, and it was the wrong instrument
+ * twice over. Anchored patterns missed `import 'pkg';` appended mid-line (caught by
+ * mutation-check), and then missed its sibling `import X from 'pkg';` in the same position
+ * (caught by review). Both are valid JavaScript that node resolves and the regex did not see.
+ * A third patch would have been a third guess.
+ *
+ * The rule this repo already writes down is: guard by the CONSUMER'S OWN accept-rule, not by
+ * a proxy for it. The consumer here is node's module resolver, so the test asks node. It
+ * copies `scripts/` somewhere with no `node_modules` ancestry and imports the entry point
+ * there — exactly the resolution CI performs. No static form can escape it, including syntax
+ * that does not exist yet.
+ *
+ * `ci-scripts.yml` DOES run `npm ci`, so the test itself has full tooling freedom; it is only
+ * the checker's runtime closure that must stay bare.
+ *
+ * Residual, stated rather than hidden: a resolver probe sees only what is actually imported
+ * when the module is evaluated. A dynamic `import()` behind a branch that does not run is
+ * invisible to it — and to any static regex that cannot read a computed specifier. The last
+ * test covers that gap the only way it can be covered: by refusing to accept a non-literal
+ * dynamic import in the closure at all.
  */
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'fs';
-import { resolve, dirname } from 'path';
+import { mkdtempSync, cpSync, rmSync, readFileSync, readdirSync } from 'fs';
+import { tmpdir } from 'os';
+import { join, resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { spawnSync } from 'child_process';
 
 const SCRIPTS = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-/** `node:fs` and bare `fs` are both builtins; anything else bare is a package. */
-const BUILTINS = new Set([
-  'assert', 'buffer', 'child_process', 'console', 'crypto', 'events', 'fs', 'http', 'https',
-  'os', 'path', 'process', 'readline', 'stream', 'string_decoder', 'timers', 'tty', 'url',
-  'util', 'worker_threads', 'zlib',
-]);
-
-const isBuiltin = (spec) => spec.startsWith('node:') || BUILTINS.has(spec);
-
 /**
- * Every module specifier `file` mentions statically.
+ * Import `entry` from a copy of `scripts/` that has no `node_modules` above it.
  *
- * Covers `import ... from 'x'`, `export ... from 'x'`, bare `import 'x'`, and literal
- * `import('x')` / `require('x')`.
+ * `--input-type=module -e` with a dynamic import of an absolute path leaves `process.argv[1]`
+ * undefined, so the checker's own `argv[1] === this file` guard keeps `main()` from running:
+ * module RESOLUTION is exercised, execution is not. That matters because the entry would
+ * otherwise fail for want of a README to read, which is not what is being tested.
+ *
+ * @returns {{status: number, stderr: string}}
  */
-function specifiersOf(source) {
-  const found = [];
-  const patterns = [
-    /(?:^|\n)\s*(?:import|export)\s[\s\S]*?\sfrom\s*['"]([^'"]+)['"]/g,
-    // Deliberately NOT anchored to line start. It was, and a mutation appending
-    // `import 'js-yaml';` to the END of an existing import line sailed past the gate —
-    // syntactically valid, and invisible to a line-anchored pattern. `import` followed by
-    // whitespace and a quote cannot be a `from` clause (that form has a binding in between),
-    // so this stays specific without the anchor.
-    /\bimport\s+['"]([^'"]+)['"]/g,
-    /\b(?:import|require)\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
-  ];
-  for (const re of patterns) {
-    for (const m of source.matchAll(re)) found.push(m[1]);
+function importFromBareTree(entry) {
+  // mkdtemp under the OS temp dir, which has no node_modules ancestry. Copying `scripts/`
+  // alone is enough — resolution of a bare specifier walks parent directories looking for
+  // `node_modules`, and there is none to find.
+  const dir = mkdtempSync(join(tmpdir(), 'aa-depfree-'));
+  try {
+    cpSync(SCRIPTS, join(dir, 'scripts'), { recursive: true });
+    const target = join(dir, 'scripts', entry).replace(/\\/g, '/');
+    const result = spawnSync(
+      process.execPath,
+      ['--input-type=module', '-e', `await import(${JSON.stringify(`file://${target}`)});`],
+      { encoding: 'utf8', cwd: dir },
+    );
+    return { status: result.status, stderr: result.stderr || '' };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
-  return found;
 }
 
-/**
- * Walk the relative import graph from `entry`.
- *
- * @returns {{files: string[], external: string[], dynamic: number}}
- */
-function walk(entry) {
-  const seen = new Set();
-  const external = [];
-  let dynamic = 0;
-  const queue = [resolve(SCRIPTS, entry)];
+const RESOLUTION_FAILURE = /ERR_MODULE_NOT_FOUND|Cannot find package|Cannot find module/;
 
-  while (queue.length) {
-    const file = queue.shift();
-    if (seen.has(file) || !existsSync(file)) continue;
-    seen.add(file);
-    const source = readFileSync(file, 'utf8');
-
-    // A dynamic import whose argument is not a literal defeats static analysis. Count it, so
-    // "clean" can never mean "I could not tell".
-    for (const m of source.matchAll(/\bimport\s*\(\s*([^'")\s])/g)) { void m; dynamic += 1; }
-
-    for (const spec of specifiersOf(source)) {
-      if (isBuiltin(spec)) continue;
-      if (spec.startsWith('.')) {
-        queue.push(resolve(dirname(file), spec));
-        continue;
-      }
-      external.push(`${file.slice(SCRIPTS.length + 1)} -> ${spec}`);
-    }
-  }
-  return { files: [...seen], external, dynamic };
-}
-
-test('the parity checker reaches nothing outside node builtins', () => {
-  const { files, external, dynamic } = walk('check-readme-translation-parity.js');
-
-  // Assert on the formatted list, so a failure names the offending edge rather than a count.
-  assert.deepEqual(external, [], `B13 would die at module resolution in CI:\n  ${external.join('\n  ')}`);
-  assert.equal(dynamic, 0, 'a non-literal dynamic import defeats this walk');
-
-  // A walk that stopped at the entry file would report clean while checking nothing.
-  assert.ok(files.length >= 2, `expected the walk to follow relative edges, saw ${files.length} file(s)`);
-  assert.ok(files.some((f) => f.endsWith('content-types.js')), 'the SSOT leaf must be in the closure');
-});
-
-test('the walker actually detects a package import (non-vacuity control)', () => {
-  // Without this, the test above proves nothing: a walker that silently found no specifiers
-  // at all would report the same empty list.
-  const { external } = walk('generate-readmes.js');
+test('the parity checker resolves with no node_modules anywhere above it', () => {
+  const { stderr } = importFromBareTree('check-readme-translation-parity.js');
   assert.ok(
-    external.some((e) => e.endsWith('-> js-yaml')),
-    `expected generate-readmes.js -> js-yaml, saw:\n  ${external.join('\n  ') || '(nothing)'}`,
+    !RESOLUTION_FAILURE.test(stderr),
+    `B13 would die at module resolution in CI:\n${stderr.split('\n').slice(0, 6).join('\n')}`,
   );
 });
 
-test('a bare import appended mid-line is still seen', () => {
-  // The mutation that exposed the gate's own hole. `import 'js-yaml';` tacked onto the end of
-  // an existing import line is valid JavaScript, and a line-anchored pattern misses it —
-  // mutation-check reported SURVIVED against the first version of this walker.
-  const midLine = "import { readFileSync } from 'fs'; import 'js-yaml';\n";
-  assert.ok(specifiersOf(midLine).includes('js-yaml'), 'a mid-line bare import must be found');
-  assert.ok(specifiersOf(midLine).includes('fs'));
-
-  // And the shapes that must NOT be mistaken for a bare import.
-  assert.deepEqual(specifiersOf("import yaml from 'js-yaml';\n"), ['js-yaml']);
-  assert.deepEqual(specifiersOf("export { x } from './lib/a.js';\n"), ['./lib/a.js']);
+test('a package import anywhere in that closure is detected (non-vacuity control)', () => {
+  // Without this, the test above proves nothing: a probe that silently failed to run the
+  // import at all would also produce no resolution error. `generate-readmes.js` imports
+  // js-yaml directly, so the bare tree MUST reject it.
+  const { stderr } = importFromBareTree('generate-readmes.js');
+  assert.ok(
+    RESOLUTION_FAILURE.test(stderr),
+    `expected the bare tree to reject a js-yaml consumer, got:\n${stderr.slice(0, 400)}`,
+  );
+  assert.ok(/js-yaml/.test(stderr), 'and it should name the package');
 });
 
-test('the walker follows relative edges to find a transitive package import', () => {
-  // generate-translation-status.js reaches js-yaml directly AND pulls in several relative
-  // modules; asserting both shows the traversal is real rather than a single-file scan.
-  const { files, external } = walk('generate-translation-status.js');
-  assert.ok(files.length >= 4, `expected a multi-file closure, saw ${files.length}`);
-  assert.ok(external.some((e) => e.endsWith('-> js-yaml')));
+test('the control also proves TRANSITIVE detection, not just direct imports', () => {
+  // `generate-translation-status.js` reaches js-yaml both directly and through relative
+  // modules; the point here is that a package reached along a relative edge is caught too,
+  // which is the case a single-file scan would miss.
+  const { stderr } = importFromBareTree('generate-translation-status.js');
+  assert.ok(RESOLUTION_FAILURE.test(stderr));
+});
+
+test('no module in the checker closure uses a non-literal dynamic import or require', () => {
+  // The one gap a resolver probe cannot close: an `import()` behind a branch that did not run
+  // is invisible to it, and a computed specifier is invisible to any static reader. So the
+  // closure is required not to contain one at all. Narrow by design — it scans only the files
+  // the checker can reach, so unrelated scripts stay free to do as they like.
+  const closure = ['check-readme-translation-parity.js', 'lib/content-types.js'];
+
+  // Guard the guard: if the closure list ever drifts from reality, this scans the wrong files
+  // and reports clean. Anchor it to something that fails when the closure grows.
+  const entry = readFileSync(join(SCRIPTS, 'check-readme-translation-parity.js'), 'utf8');
+  const relativeImports = [...entry.matchAll(/from\s*['"](\.[^'"]+)['"]/g)].map((m) => m[1]);
+  assert.deepEqual(relativeImports, ['./lib/content-types.js'],
+    'the checker\'s relative imports changed — update the closure list above');
+
+  for (const file of closure) {
+    const source = readFileSync(join(SCRIPTS, file), 'utf8');
+    // A literal specifier is fine; anything else cannot be reasoned about statically.
+    const suspicious = [...source.matchAll(/\b(?:import|require)\s*\(\s*([^'")\s])/g)];
+    assert.deepEqual(suspicious.map((m) => m[0]), [],
+      `${file} contains a dynamic import/require with a non-literal specifier`);
+  }
+});
+
+test('the scripts directory copy used by the probe is real', () => {
+  // A cpSync that silently copied nothing would make every probe above pass by not looking.
+  const dir = mkdtempSync(join(tmpdir(), 'aa-depfree-sanity-'));
+  try {
+    cpSync(SCRIPTS, join(dir, 'scripts'), { recursive: true });
+    const copied = readdirSync(join(dir, 'scripts'));
+    assert.ok(copied.includes('check-readme-translation-parity.js'));
+    assert.ok(copied.includes('lib'));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

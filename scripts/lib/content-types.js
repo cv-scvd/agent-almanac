@@ -29,4 +29,12 @@
  * than merely asserted here.
  */
 
-export const CONTENT_TYPES = ['skills', 'agents', 'teams', 'guides'];
+/**
+ * Frozen, because consolidating turned four private copies into one SHARED array: `TREES` in
+ * fences.js is this very object by identity, not a copy of it. Before, a consumer calling
+ * `.sort()` or `.push()` corrupted only itself; now it would corrupt the git pathspec, the
+ * README columns and B13's comparison at once, from anywhere in the process. ESM is strict
+ * mode, so an in-place mutation now throws at its call site instead of silently reordering
+ * someone else's output.
+ */
+export const CONTENT_TYPES = Object.freeze(['skills', 'agents', 'teams', 'guides']);
