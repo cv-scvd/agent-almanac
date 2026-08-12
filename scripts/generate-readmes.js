@@ -17,6 +17,9 @@ import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import * as yaml from 'js-yaml';
 import { CONTENT_TYPES } from './lib/content-types.js';
+import {
+  replaceSection, renderTranslationsTable, FALLBACK_MARK, UNMEASURED,
+} from './lib/readme-sections.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -85,39 +88,10 @@ function teamDisplayName(teamId) {
 /**
  * Sections whose AUTO markers were missing, collected across every processed file.
  *
- * Module-level rather than threaded through return values: `replaceSection` is called in a
- * reduce over `Object.entries(sections)`, and the marker case has to survive that fold
- * without changing the shape every generator returns.
+ * Module-level because `replaceSection` is called in a fold over the section map, and the
+ * marker case has to survive that fold without changing the shape every generator returns.
  */
 const missingMarkers = [];
-
-/**
- * Replace content between AUTO markers in a file.
- * Returns true if the file changed.
- */
-function replaceSection(content, sectionName, newInner) {
-  const startTag = `<!-- AUTO:START:${sectionName} -->`;
-  const endTag = `<!-- AUTO:END:${sectionName} -->`;
-  const startIdx = content.indexOf(startTag);
-  const endIdx = content.indexOf(endTag);
-  if (startIdx === -1 || endIdx === -1) {
-    // Deleting a marker used to be PERMANENT SILENT DRIFT. This returned the content
-    // unchanged, so `--check` computed `changed === false` and exited 0 on a warning nobody
-    // reads in a green job — and the healer took the same path, so `update-readmes.yml` could
-    // not repair it either. The section simply stopped being generated, for good, with every
-    // gate in the repo green. That is worse than the staleness #563 exists to catch, and it is
-    // the "a match-based gate cannot see a deletion" class exactly.
-    //
-    // Missing markers are now fatal in both modes. Fatal rather than "stale" because
-    // regenerating cannot fix it: there is nowhere to put the content. A human has to restore
-    // the marker pair.
-    missingMarkers.push(sectionName);
-    return content;
-  }
-  const before = content.slice(0, startIdx + startTag.length);
-  const after = content.slice(endIdx);
-  return `${before}\n${newInner}\n${after}`;
-}
 
 /**
  * Process a file: apply all section replacements, write if changed.
@@ -127,7 +101,9 @@ function processFile(filePath, sections) {
   const original = readFileSync(filePath, 'utf8');
   let content = original;
   for (const [name, generator] of Object.entries(sections)) {
-    content = replaceSection(content, name, generator());
+    const result = replaceSection(content, name, generator());
+    if (!result.matched) missingMarkers.push(name);
+    content = result.content;
   }
   const changed = content !== original;
   if (changed && !CHECK_MODE) {
@@ -572,11 +548,6 @@ function generateTestsReadme() {
 // translation:status` must run BEFORE this generator, or the table renders
 // last cycle's numbers and the same commit overwrites the file it read.
 
-/** Marker on a cell whose number is a file count, not a measurement. */
-const FALLBACK_MARK = '*';
-/** Rendered where a number was not measured. Never `0`, which reads as "none". */
-const UNMEASURED = '-';
-
 function countExistingTranslations(localeDir, contentTypes) {
   const counts = {};
   let total = 0;
@@ -624,49 +595,28 @@ function generateTranslationsSection() {
     return '*No translations configured yet.*';
   }
 
-  const rows = [];
-  rows.push('| Locale | Language | Skills | Agents | Teams | Guides | Total | Stubs | Unjudged |');
-  rows.push('|---|---|---|---|---|---|---|---|---|');
-
-  let anyFallback = false;
-
-  for (const locale of locales) {
+  // I/O here, rendering in the lib. This function is now only "read the per-locale status
+  // files and hand them over" — everything that decides what a cell SAYS lives in
+  // renderTranslationsTable, where a test can reach it. That split is the whole of #566: the
+  // core line of #560's fix could be deleted with the entire suite staying green, because
+  // this logic sat inside a module that cannot be imported without writing nine files.
+  const localeRecords = locales.map((locale) => {
     const localeDir = resolve(i18nDir, locale.code);
     const statusPath = resolve(localeDir, 'translation_status.yml');
-    const coverage = existsSync(statusPath)
-      ? (yaml.load(readFileSync(statusPath, 'utf8')) || {}).coverage
-      : null;
+    return {
+      code: locale.code,
+      name: locale.name,
+      coverage: existsSync(statusPath)
+        ? (yaml.load(readFileSync(statusPath, 'utf8')) || {}).coverage
+        : null,
+      // Computed for every locale, including measured ones. Cheap, and it keeps the
+      // measured/fallback PREDICATE in one place rather than splitting it across the
+      // caller and the renderer.
+      fallback: countExistingTranslations(localeDir, contentTypes),
+    };
+  });
 
-    if (coverage && contentTypes.every((ct) => coverage[ct]) && coverage.total) {
-      const cell = (ct) => `${coverage[ct].translated}/${coverage[ct].total}`;
-      const t = coverage.total;
-      rows.push(
-        `| ${locale.code} | ${locale.name} | ${cell('skills')} | ${cell('agents')} | ` +
-        `${cell('teams')} | ${cell('guides')} | ${t.translated}/${t.total} (${t.pct}%) | ${t.stubs} | ${t.unjudged} |`
-      );
-      continue;
-    }
-
-    anyFallback = true;
-    const { counts, total } = countExistingTranslations(localeDir, contentTypes);
-    const m = FALLBACK_MARK;
-    const pct = sourceCounts.total > 0 ? Math.round((total / sourceCounts.total) * 1000) / 10 : 0;
-    rows.push(
-      `| ${locale.code} | ${locale.name} | ${counts.skills}/${sourceCounts.skills}${m} | ` +
-      `${counts.agents}/${sourceCounts.agents}${m} | ${counts.teams}/${sourceCounts.teams}${m} | ` +
-      `${counts.guides}/${sourceCounts.guides}${m} | ${total}/${sourceCounts.total} (${pct}%)${m} | ${UNMEASURED} | ${UNMEASURED} |`
-    );
-  }
-
-  if (anyFallback) {
-    rows.push('');
-    rows.push(
-      `${FALLBACK_MARK} File count, not a measurement -- this locale has no ` +
-      '`translation_status.yml`. Run `npm run translation:status` to measure it.'
-    );
-  }
-
-  return rows.join('\n');
+  return renderTranslationsTable(localeRecords, sourceCounts, contentTypes);
 }
 
 // ── Main ─────────────────────────────────────────────────────────
