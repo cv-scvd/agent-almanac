@@ -67,6 +67,7 @@ import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { assertNotShallow } from './lib/git-freshness.js';
 import { extractFences, buildEnglishFenceHistory, isGated } from './lib/fences.js';
+import { CONTENT_TYPES } from './lib/content-types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -104,13 +105,15 @@ const ONLY_ID = flagValue('--id', null);
  * says "any translated file" — and the mirrors carry 168 gated fences that a
  * skills-only walk never opens. Covering them is what makes the documented rule
  * true.
+ *
+ * The DIRECTORY LIST is derived from the SSOT (#578), so a fifth content tree cannot be
+ * covered here while being missed elsewhere, or the reverse. Only the nesting flag stays
+ * local, because it is a different fact — the layout of one tree, not the set of trees —
+ * and `NESTED` is an explicit set rather than a predicate, so adding a tree makes the
+ * question visible instead of defaulting silently.
  */
-const TREES = [
-  { dir: 'skills', nested: true },   // i18n/<loc>/skills/<id>/SKILL.md
-  { dir: 'agents', nested: false },  // i18n/<loc>/agents/<id>.md
-  { dir: 'teams', nested: false },
-  { dir: 'guides', nested: false },
-];
+const NESTED = new Set(['skills']);   // i18n/<loc>/skills/<id>/SKILL.md, vs <id>.md elsewhere
+const TREES = CONTENT_TYPES.map((dir) => ({ dir, nested: NESTED.has(dir) }));
 
 /** Every translated file to compare, as { relPath, absPath, locale, id, tree }. */
 function collectTargets() {

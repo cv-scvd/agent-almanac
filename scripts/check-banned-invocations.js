@@ -60,7 +60,10 @@ const EXEMPT_SKILLS = new Map([
 ]);
 
 /** Trees to walk. `docs/` is excluded: it analyses what build.sh calls internally. */
-const TREES = ['skills', 'agents', 'teams', 'guides'];
+import { CONTENT_TYPES } from './lib/content-types.js';
+
+/** Re-exported name kept local: this module reads TREES internally. */
+const TREES = CONTENT_TYPES;
 
 function parseArgs(argv) {
   const out = { root: process.cwd(), list: false };

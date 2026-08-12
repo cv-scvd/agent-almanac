@@ -15,6 +15,7 @@ import { readFileSync, readdirSync, existsSync, statSync } from 'fs';
 import { resolve, dirname, basename, join } from 'path';
 import { fileURLToPath } from 'url';
 import { assertNotShallow, createFreshnessChecker, buildLatestCommitMap } from './lib/git-freshness.js';
+import { CONTENT_TYPES } from './lib/content-types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -66,7 +67,7 @@ function resolveSourcePath(locale, contentType, itemPath) {
 
 // ── Main ─────────────────────────────────────────────────────────
 
-const contentTypes = ['skills', 'agents', 'teams', 'guides'];
+const contentTypes = CONTENT_TYPES;
 let staleCount = 0;
 let checkedCount = 0;
 let orphanCount = 0;
