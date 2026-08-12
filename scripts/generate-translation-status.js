@@ -23,7 +23,9 @@ import { resolve, dirname, join, basename } from 'path';
 import { fileURLToPath } from 'url';
 import * as yaml from 'js-yaml';
 import { assertNotShallow, createFreshnessChecker } from './lib/git-freshness.js';
-import { buildEnglishProseHistory, classifyTranslation, translationKey } from './lib/translation-status.js';
+import {
+  buildEnglishProseHistory, classifyTranslation, translationKey, UNJUDGED_REASONS,
+} from './lib/translation-status.js';
 import { TREES } from './lib/fences.js';
 
 // Validated against an accept-list, not sniffed with `includes`. `--verdict`, `--verdicts=1`
@@ -205,10 +207,10 @@ function countTranslations(locale, contentType) {
     // it. The file's fence structure matches no revision its English source ever had, so the
     // frozen-region mask is untrustworthy and every measurement taken through it is void —
     // the honest report is that this file was not judged.
-    if (verdict.reason === 'fence-mismatch') {
+    if (UNJUDGED_REASONS.has(verdict.reason)) {
       unjudged++;
       if (SHOW_VERDICTS) {
-        console.log(`  UNJUDGED  ${shownPath}  (fence-mismatch — fence shape matches no English revision; not counted as translated)`);
+        console.log(`  UNJUDGED  ${shownPath}  (${verdict.reason}/${verdict.cause} — mask untrustworthy; not counted as translated)`);
       }
       continue;
     }
@@ -309,7 +311,7 @@ for (const locale of locales) {
   }
   console.log(`  Coverage: ${totalTranslated}/${totalSource} (${totalPct}%), ${totalStale} stale, ${totalStubs} stubs, ${totalUnjudged} unjudged`);
   if (totalUnjudged > 0 && !SHOW_VERDICTS) {
-    console.log(`  ${totalUnjudged} unjudged — fence shape matches no English revision, so these were not measured at all. Re-run with --verdicts to list them.`);
+    console.log(`  ${totalUnjudged} unjudged — the frozen-region mask is untrustworthy (shape, swallowed opener, or hidden known prose), so these were not measured at all. Re-run with --verdicts to list them.`);
   }
   // Standing hint, not a footnote in a docstring. A stub verdict is remediated by deleting
   // the file, the detector's errors point strict, and `--verdicts` was discoverable only by

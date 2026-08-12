@@ -97,6 +97,16 @@ export const MIN_COMPARABLE_LINE_CHARS = 12;
 export const MIN_LINES_TO_JUDGE = 5;
 
 /**
+ * Verdicts meaning "a mask was untrustworthy, so nothing was measured".
+ *
+ * Exported so `generate-translation-status.js` counts that bucket from ONE list rather than
+ * matching a reason string it has to remember to extend. Adding a mask check without adding
+ * its reason there would silently count those files as translated — the lenient direction,
+ * arrived at by omission.
+ */
+export const UNJUDGED_REASONS = new Set(['fence-mismatch', 'mask-unparsed']);
+
+/**
  * Locales written in a script English does not use. A file in one of these containing none
  * of that script is untranslated no matter what its prose compares to — decisive, with no
  * false positives available to it.
@@ -255,6 +265,38 @@ function comparable(lines) {
 }
 
 /**
+ * Frontmatter keys that only ever appear in a translation's frontmatter.
+ *
+ * If one of these survives into what `stripFrontmatter` returned, the frontmatter mask did not
+ * close — and `stripFrontmatter` fails OPEN by design, returning the whole text when it cannot
+ * find two `---` lines.
+ */
+const FRONTMATTER_KEYS = /^(locale|source_locale|source_commit|translator|translation_date):/;
+
+/**
+ * Did the frontmatter mask fail to close over `body`?
+ *
+ * The fence mask is not the only mask over this comparison, and the review that produced the
+ * cross-pool rule was right that the claim "covers constructions nobody has thought of yet"
+ * only ever covered fence-mask moves. `stripFrontmatter` is a second mask with the same two
+ * directions, and moving its boundary manufactures novelty exactly as R2-A did.
+ *
+ * Measured: delete the OPENING `---` of a scaffold. `stripFrontmatter` then counts one
+ * delimiter, never two, and returns the whole text, so the frontmatter becomes body. Its own
+ * fields — `name:`, `description:`, `source_commit:`, `translator:` — clear the substantive
+ * filter and sit in NO pool, because English frontmatter is stripped before pooling on both
+ * the historical and working-tree paths. Verdict went `no-novel-lines` (a scaffold) to
+ * `has-novel-lines` with novel 4: counted as TRANSLATED, on four lines of its own metadata.
+ * Shape untouched, both membership tests silent.
+ *
+ * @param {string} body the text `stripFrontmatter` returned
+ * @returns {boolean}
+ */
+export function frontmatterUnparsed(body) {
+  return toLines(body).some((line) => FRONTMATTER_KEYS.test(line));
+}
+
+/**
  * Comparable lines of `text` WITHOUT applying the fence mask.
  *
  * For auditing a fence body, where `substantiveLines` is the wrong tool and quietly so: it
@@ -298,7 +340,7 @@ export function translationKey(contentType, itemId) {
  * @param {object} input
  * @param {string} input.translatedText   full text of the translated file
  * @param {string} input.locale           locale code, e.g. `de`
- * @param {{lines: Set<string>, fenceShapes: Set<string>}|undefined} input.english the English
+ * @param {{lines: Set<string>, fenceShapes: Set<string>, fenceLines: Set<string>}|undefined} input.english the English
  *   source's pooled history (see `buildEnglishProseHistory`), or undefined when it has none.
  *   Both pools arrive together deliberately: passing prose without shapes was possible while
  *   they were separate parameters, and a caller that forgot the second one would silently
@@ -392,8 +434,22 @@ export function classifyTranslation({ translatedText, locale, english }) {
   // Membership, not shape. That is why it covers constructions nobody has thought of yet.
   const shapes = english.fenceShapes;
   const shapeUnknown = Boolean(shapes && shapes.size && !shapes.has(fenceShape(body)));
-  if (shapeUnknown || hasSwallowedOpener(body) || hidesKnownProse(body, englishLines, english.fenceLines)) {
-    return { stub: false, reason: 'fence-mismatch', novel: null, total: null };
+  // Distinct causes, distinct sub-reasons. `--verdicts` is this module's control surface --
+  // 'a number cannot be reviewed' -- and it reported every one of these as 'fence shape matches
+  // no English revision'. For two of the three the shape MATCHES, so a maintainer sent to diff
+  // shapes finds them identical and concludes the tool is wrong.
+  // The frontmatter mask, checked beside the fence mask because it is the same failure: a mask
+  // boundary moved so that unpooled text reads as evidence of translation.
+  if (frontmatterUnparsed(body)) {
+    return { stub: false, reason: 'mask-unparsed', cause: 'frontmatter', novel: null, total: null };
+  }
+
+  const cause = shapeUnknown ? 'shape'
+    : hasSwallowedOpener(body) ? 'swallowed-opener'
+      : hidesKnownProse(body, englishLines, english.fenceLines) ? 'hidden-prose'
+        : null;
+  if (cause) {
+    return { stub: false, reason: 'fence-mismatch', cause, novel: null, total: null };
   }
 
   if (lines.length < MIN_LINES_TO_JUDGE) {
@@ -442,7 +498,7 @@ export function classifyTranslation({ translatedText, locale, english }) {
  * a body existing only as conflict-resolution output never enters the pool; and `--name-only`
  * without `--follow` loses pre-rename paths (harmless for the skills flatten, which
  * `contentKey` normalises, but not for an id rename). The direction differs by consumer, and
- * there are now THREE, so "fix the walk" is not a decision that can be made from one of them:
+ * there are now FOUR, so "fix the walk" is not a decision that can be made from one of them:
  *
  *   - **prose pool, here:** a shrunk pool means a scaffold shows novel lines and reads as
  *     translated — lenient.
@@ -451,14 +507,17 @@ export function classifyTranslation({ translatedText, locale, english }) {
  *   - **fence shapes, here (#561):** a missing revision means a missing *legitimate* shape,
  *     so a genuine translation drops out of the count into `unjudged` — also strict, and this
  *     one silently removes real coverage rather than raising a flag someone reads.
+ *   - **frozen-fence lines, here (#561 R2):** a missing revision means missing frozen lines, so
+ *     content the mask later exposes reads as novel — lenient, the opposite of its neighbour.
  *
  * Measured on this repo: adding `--diff-merges=separate` changes the pool by 0 lines and the
  * verdict set by 0 files. Re-measure all three before changing the walk.
  *
  * @param {string} root repository root
- * @returns {Map<string, {lines: Set<string>, fenceShapes: Set<string>}>} per source: every
- *   substantive prose line it has ever carried, and every fence shape it has ever had
- *   (see `fenceShape`). One walk feeds both.
+ * @returns {Map<string, {lines: Set<string>, fenceShapes: Set<string>, fenceLines: Set<string>}>}
+ *   per source: every substantive prose line it has ever carried, every fence shape it has ever
+ *   had (see `fenceShape`), and every line it keeps inside its own frozen fences. ONE walk
+ *   feeds all three.
  */
 export function buildEnglishProseHistory(root) {
   const log = execFileSync(
