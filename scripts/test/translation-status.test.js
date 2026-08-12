@@ -1130,8 +1130,12 @@ test('buildEnglishProseHistory collects all THREE pools, and poolOf mirrors it',
     const body = [
       '# Demo Skill Title Here',
       'A prose line that is long enough to compare.',
-      '```bash',
-      'echo "frozen content that is long enough"',
+      // A tag long enough that the OPENER LINE itself clears the 12-char comparability floor.
+      // With `bash` (7 chars) neither opener is poolable, so deleting the production collector's
+      // opener line changed nothing and the mutant survived — the fixture lacked the construct
+      // the defect needs. `javascript` makes the opener 13 chars.
+      '```javascript',
+      'const frozenContentLongEnough = 1;',
       '```',
       '```text',
       'A localisable line that is long enough here.',
@@ -1149,9 +1153,11 @@ test('buildEnglishProseHistory collects all THREE pools, and poolOf mirrors it',
     assert.deepEqual([...entry.fenceLines].sort(), [...mirror.fenceLines].sort(), 'frozen pool must mirror');
 
     // And the pools must actually be populated, or "they match" is two empty sets agreeing.
-    assert.ok(entry.fenceLines.has('echo "frozen content that is long enough"'),
+    assert.ok(entry.fenceLines.has('const frozenContentLongEnough = 1;'),
       'the GATED body belongs to the frozen pool');
-    assert.ok(!entry.lines.has('echo "frozen content that is long enough"'),
+    assert.ok(entry.fenceLines.has('```javascript'),
+      'and so does the OPENER LINE — it is in no other pool, so an exposed one reads as novelty');
+    assert.ok(!entry.lines.has('const frozenContentLongEnough = 1;'),
       'and must NOT be in the prose pool — that separation is what the whole rule rests on');
     assert.ok(entry.lines.has('A localisable line that is long enough here.'),
       'a localisable body is prose, not frozen');
@@ -1159,7 +1165,7 @@ test('buildEnglishProseHistory collects all THREE pools, and poolOf mirrors it',
     // GATED only: the fixture's `text` fence is localisable, so it is absent from the shape.
     // Its body is in `lines` (asserted above) because localisable content IS compared — which
     // is precisely why it must not perturb the shape.
-    assert.deepEqual([...entry.fenceShapes], ['bash']);
+    assert.deepEqual([...entry.fenceShapes], ['javascript']);
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }
