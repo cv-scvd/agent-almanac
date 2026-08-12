@@ -205,8 +205,9 @@ done
 # English content trees; its deploy-key auto-commit re-triggers workflows
 # (unlike GITHUB_TOKEN), so every MANAGED output under a triggering tree must
 # carry a matching `!`-negation in the paths list, or the auto-commit bounces
-# the workflow. Assumes the triggering trees are skills/ agents/ teams/
-# guides/ (matching the paths list in update-readmes.yml).
+# the workflow. The triggering trees are DERIVED from that workflow's own paths list rather
+# than assumed — they were hardcoded as skills/ agents/ teams/ guides/, which went stale the
+# moment i18n/README.md became a generated output (#569).
 echo "--- A8: Auto-commit file_pattern coverage ---"
 a8_fail=0
 a8_readmes=$(sed -n '/^const MANAGED = \[/,/^\];/p' scripts/generate-readmes.js \
@@ -245,14 +246,35 @@ else
   # this workflow triggers on" — and the proxy went stale the moment i18n/README.md became a
   # generated output (#569): `i18n/**/*.md` triggers, so the auto-commit would have re-triggered
   # the workflow with nothing here to notice. Same guard-by-a-proxy shape this repo keeps
-  # paying for. Taking the top-level prefix of each wildcard path over-approximates, which
-  # fails SAFE: it can demand a negation that was not strictly needed, never skip one.
+  # paying for.
+  #
+  # Scope of the over-approximation, stated precisely because an earlier version of this
+  # comment claimed it "never skips one" and that was false. For a SINGLE-QUOTED wildcard path
+  # whose first segment is literal, taking the top-level prefix over-approximates and so fails
+  # safe — it can demand a negation that was not strictly needed. Outside that shape it can
+  # UNDER-derive, in three known ways: a root-level glob (`**/*.md`) reduces to the dead
+  # literal tree `**`; a double-quoted or unquoted entry is invisible to this grep; and a
+  # wildcard-FREE trigger equal to a MANAGED output derives no tree at all. The first is caught
+  # mechanically just below. The other two are inherited from the single-quote convention the
+  # negation parse above already assumes.
   a8_trees=$(grep -E "^[[:space:]]*-[[:space:]]*'[^!][^']*\*" .github/workflows/update-readmes.yml \
     | sed -E "s/^[[:space:]]*-[[:space:]]*'//; s/'.*$//; s#/.*##" | sort -u || true)
   if [ -z "$a8_trees" ]; then
     echo "FAIL: A8 could not derive the triggering trees from update-readmes.yml paths (parse broke, not a pass)"
     failed=1; a8_fail=1
   fi
+  # A derived tree that still contains a wildcard came from a root-level glob. The case pattern
+  # below QUOTES "$tree", so such a tree matches only paths literally beginning `**/` — nothing
+  # — and would silently demand no negation for a pattern that re-triggers on everything.
+  # Refuse rather than carry a dead tree.
+  while IFS= read -r a8_tree; do
+    [ -z "$a8_tree" ] && continue
+    case "$a8_tree" in
+      *\**)
+        echo "FAIL: A8 derived the triggering tree '$a8_tree', which still contains a wildcard — a root-level glob cannot be reduced to a tree prefix, and would silently demand no negations"
+        failed=1; a8_fail=1 ;;
+    esac
+  done <<< "$a8_trees"
   while IFS= read -r f; do
     [ -z "$f" ] && continue
     while IFS= read -r tree; do

@@ -108,9 +108,15 @@ export function applySections(content, sections) {
  * @returns {string}
  */
 export function renderLocaleTable(locales, contentTypes) {
+  // Header and rows both DERIVED from contentTypes. The first version gated on
+  // `contentTypes.every(...)` but rendered four hardcoded columns, so adding a fifth content
+  // type would have widened the gate while leaving the table four wide — the new type
+  // silently missing from a table whose whole purpose is completeness. Deriving both means a
+  // fifth type either appears or nothing renders; it cannot half-appear.
+  const title = (ct) => ct.charAt(0).toUpperCase() + ct.slice(1);
   const rows = [
-    '| Code | Language | Skills | Agents | Teams | Guides | Translated | Stale |',
-    '|---|---|---|---|---|---|---|---|',
+    `| Code | Language | ${contentTypes.map(title).join(' | ')} | Translated | Stale |`,
+    `|---|---|${contentTypes.map(() => '---|').join('')}---|---|`,
   ];
 
   for (const locale of locales) {
@@ -118,15 +124,15 @@ export function renderLocaleTable(locales, contentTypes) {
     if (!coverage || !contentTypes.every((ct) => coverage[ct]) || !coverage.total) {
       // No measurement rather than a zero: a locale configured but never scanned has not been
       // measured at 0%, and printing 0 would say it had.
-      rows.push(`| ${locale.code} | ${locale.name} | ${UNMEASURED} | ${UNMEASURED} | `
-        + `${UNMEASURED} | ${UNMEASURED} | ${UNMEASURED} | ${UNMEASURED} |`);
+      const blanks = contentTypes.map(() => UNMEASURED).join(' | ');
+      rows.push(`| ${locale.code} | ${locale.name} | ${blanks} | ${UNMEASURED} | ${UNMEASURED} |`);
       continue;
     }
-    const cell = (ct) => `${coverage[ct].translated}/${coverage[ct].total}`;
+    const cells = contentTypes.map((ct) => `${coverage[ct].translated}/${coverage[ct].total}`);
     const t = coverage.total;
     rows.push(
-      `| ${locale.code} | ${locale.name} | ${cell('skills')} | ${cell('agents')} | `
-      + `${cell('teams')} | ${cell('guides')} | ${t.translated}/${t.total} (${t.pct}%) | ${t.stale} |`,
+      `| ${locale.code} | ${locale.name} | ${cells.join(' | ')} | `
+      + `${t.translated}/${t.total} (${t.pct}%) | ${t.stale} |`,
     );
   }
 
