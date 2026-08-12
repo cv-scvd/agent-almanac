@@ -60,18 +60,12 @@
  * count. `generate-translation-status.js --verdicts` prints it. A number cannot be reviewed.
  */
 
-import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
-import { join } from 'path';
-import { execFileSync, spawnSync } from 'child_process';
-import { toLines, extractFences, isGated, contentKey, fenceShape, hasSwallowedOpener, TREES } from './fences.js';
+import { toLines, extractFences, isGated, contentKey, fenceShape, hasSwallowedOpener } from './fences.js';
+import { walkEnglishHistory } from './english-history.js';
 
-// Smaller than `lib/fences.js`'s 2 GiB, and the earlier justification here was wrong: the
-// buffer bounds `git cat-file --batch` stdout, which is the same bytes in both callers, so
-// what the pool later retains has nothing to do with it. The honest statement is that this
-// caller will hit ENOBUFS first as history grows, and that the failure is loud — `spawnSync`
-// sets `error` and a short `stdout`, and the parse below would silently produce a truncated
-// pool if it were not for the `status !== 0` check. Raise both together, and keep that check.
-const GIT_BUFFER = 512 * 1024 * 1024;
+// The `git cat-file --batch` buffer used to be declared here at 512 MiB against `fences.js`'s
+// 2 GiB, and there was no reason either copy could state — the buffer bounds the same bytes
+// for both. It now lives once, in `english-history.js`, at the larger of the two (#559).
 
 /**
  * Shortest line worth comparing. Below this, markdown structure dominates — `---`, `1.`,
@@ -492,26 +486,11 @@ export function classifyTranslation({ translatedText, locale, english }) {
  * `git cat-file --batch` — rather than one per file (#305). The working tree is added last
  * so an uncommitted English edit counts as English too.
  *
- * Two known gaps in the walk, shared with `buildEnglishFenceHistory` and pointing opposite
- * ways in the two consumers, which is why neither should be "fixed" without checking both:
- * `git log` lists no paths for a merge commit and applies default history simplification, so
- * a body existing only as conflict-resolution output never enters the pool; and `--name-only`
- * without `--follow` loses pre-rename paths (harmless for the skills flatten, which
- * `contentKey` normalises, but not for an id rename). The direction differs by consumer, and
- * there are now FOUR, so "fix the walk" is not a decision that can be made from one of them:
- *
- *   - **prose pool, here:** a shrunk pool means a scaffold shows novel lines and reads as
- *     translated — lenient.
- *   - **fence bodies, `fences.js`:** the same pool is a *violation* basis, so a missing
- *     revision manufactures a false violation — strict.
- *   - **fence shapes, here (#561):** a missing revision means a missing *legitimate* shape,
- *     so a genuine translation drops out of the count into `unjudged` — also strict, and this
- *     one silently removes real coverage rather than raising a flag someone reads.
- *   - **frozen-fence lines, here (#561 R2):** a missing revision means missing frozen lines, so
- *     content the mask later exposes reads as novel — lenient, the opposite of its neighbour.
- *
- * Measured on this repo: adding `--diff-merges=separate` changes the pool by 0 lines and the
- * verdict set by 0 files. Re-measure all three before changing the walk.
+ * The walk itself is `walkEnglishHistory` in `english-history.js`, shared with
+ * `buildEnglishFenceHistory` (#559). Its two known gaps push this module's three collectors —
+ * `lines`, `fenceShapes`, `fenceLines` — in OPPOSITE directions, and the two in `fences.js`
+ * differ again, so "fix the walk" cannot be decided from here. That table is at the walker,
+ * which is the only place that sees all five.
  *
  * @param {string} root repository root
  * @returns {Map<string, {lines: Set<string>, fenceShapes: Set<string>, fenceLines: Set<string>}>}
@@ -520,26 +499,8 @@ export function classifyTranslation({ translatedText, locale, english }) {
  *   feeds all three.
  */
 export function buildEnglishProseHistory(root) {
-  const log = execFileSync(
-    'git', ['log', '--format=%x00%H', '--name-only', '--', ...TREES],
-    { cwd: root, encoding: 'utf8', maxBuffer: GIT_BUFFER },
-  );
-
-  const specs = [];
-  const seen = new Set();
-  let commit = null;
-  for (const line of log.split('\n')) {
-    if (line.startsWith('\x00')) { commit = line.slice(1).trim(); continue; }
-    if (!line || !commit || contentKey(line) === null) continue;
-    const spec = `${commit}:${line}`;
-    if (seen.has(spec)) continue;
-    seen.add(spec);
-    specs.push(spec);
-  }
-
   const history = new Map();
   const add = (key, text) => {
-    if (key === null) return;
     if (!history.has(key)) {
       history.set(key, { lines: new Set(), fenceShapes: new Set(), fenceLines: new Set() });
     }
@@ -579,52 +540,7 @@ export function buildEnglishProseHistory(root) {
     entry.fenceShapes.add(fenceShape(body));
   };
 
-  if (specs.length) {
-    const batch = spawnSync('git', ['cat-file', '--batch'], {
-      cwd: root,
-      input: Buffer.from(`${specs.join('\n')}\n`, 'utf8'),
-      maxBuffer: GIT_BUFFER,
-    });
-    // Surfaced explicitly, not left to the status check. A maxBuffer overflow SIGTERMs the
-    // child and leaves `status` null, which `!== 0` happens to catch — but the message would
-    // then blame git for failing rather than naming the truncation, and a truncated pool is
-    // the one failure here that silently reclassifies files.
-    if (batch.error) {
-      throw new Error(`git cat-file --batch did not complete (${batch.error.code ?? batch.error.message}). `
-        + `If this is ENOBUFS, GIT_BUFFER (${GIT_BUFFER}) is too small for this history.`);
-    }
-    if (batch.status !== 0) {
-      throw new Error(`git cat-file --batch failed: ${batch.stderr?.toString().slice(0, 500)}`);
-    }
-    const buf = batch.stdout;
-    let offset = 0;
-    let index = 0;
-    while (offset < buf.length && index < specs.length) {
-      const newline = buf.indexOf(0x0a, offset);
-      if (newline < 0) break;
-      const header = buf.slice(offset, newline).toString('utf8');
-      offset = newline + 1;
-      if (/ (missing|ambiguous)$/.test(header)) { index += 1; continue; }
-      const size = Number.parseInt(header.split(' ')[2], 10);
-      if (!Number.isFinite(size)) break;
-      const path = specs[index].slice(specs[index].indexOf(':') + 1);
-      add(contentKey(path), buf.slice(offset, offset + size).toString('utf8'));
-      offset += size + 1;
-      index += 1;
-    }
-  }
-
-  for (const tree of TREES) {
-    const base = join(root, tree);
-    if (!existsSync(base)) continue;
-    for (const entry of readdirSync(base)) {
-      if (entry.startsWith('_')) continue;
-      const path = tree === 'skills' ? join(base, entry, 'SKILL.md') : join(base, entry);
-      if (!existsSync(path) || !statSync(path).isFile()) continue;
-      const rel = tree === 'skills' ? `${tree}/${entry}/SKILL.md` : `${tree}/${entry}`;
-      add(contentKey(rel), readFileSync(path, 'utf8'));
-    }
-  }
+  walkEnglishHistory(root, add);
 
   return history;
 }

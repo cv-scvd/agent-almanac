@@ -107,6 +107,36 @@ test('a package import anywhere in that closure is detected (non-vacuity control
   assert.ok(/js-yaml/.test(stderr), 'and it should name the package');
 });
 
+test('the audit-skill-sections closure resolves with no node_modules above it', () => {
+  // A SECOND pre-`npm ci` closure, and the one #559 grew. `.github/workflows/validate-skills.yml`
+  // runs `node scripts/audit-skill-sections.js --missing` at step 57, with `npm ci` not until
+  // step 123 — so everything that entry can reach must resolve against the bare tree.
+  //
+  // #559 extended that closure without extending this probe: audit-skill-sections imports
+  // `toLines` from `lib/fences.js`, which now pulls in `lib/english-history.js` and
+  // `lib/content-paths.js`. Both headers assert they take no package imports, and until this
+  // test that assertion was exactly the untested docstring guarantee the walker's own header
+  // warns about ("a walker is exactly the kind of module someone would later reach for a YAML
+  // parser inside"). The failure would be CI-only and would land on an unrelated PR.
+  const { stderr } = importFromBareTree('audit-skill-sections.js');
+  assert.ok(
+    !RESOLUTION_FAILURE.test(stderr),
+    `validate-skills.yml step 1 would die at module resolution:\n${stderr.split('\n').slice(0, 6).join('\n')}`,
+  );
+});
+
+test('the walker and its path module resolve standalone, not only via their consumer', () => {
+  // Entry-point-only probing hides a dependency that a *different* consumer would hit first.
+  // Probe each new module directly as well.
+  for (const entry of ['lib/english-history.js', 'lib/content-paths.js']) {
+    const { stderr } = importFromBareTree(entry);
+    assert.ok(
+      !RESOLUTION_FAILURE.test(stderr),
+      `${entry} acquired a package dependency:\n${stderr.split('\n').slice(0, 6).join('\n')}`,
+    );
+  }
+});
+
 test('the control also proves TRANSITIVE detection, not just direct imports', () => {
   // `generate-translation-status.js` reaches js-yaml both directly and through relative
   // modules; the point here is that a package reached along a relative edge is caught too,

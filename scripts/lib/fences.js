@@ -23,14 +23,13 @@
  *    the first ``` would splice two blocks together and invent divergences.
  */
 
-import { readFileSync, readdirSync, existsSync, statSync } from 'fs';
-import { resolve, dirname, join } from 'path';
+import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { execFileSync, spawnSync } from 'child_process';
 import { CONTENT_TYPES } from './content-types.js';
+import { contentKey } from './content-paths.js';
+import { walkEnglishHistory } from './english-history.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const GIT_BUFFER = 2048 * 1024 * 1024;
 
 /**
  * The ONLY fence info-string tags a translation may localise. Everything else
@@ -75,62 +74,29 @@ export const isGated = (fence) => !LOCALISABLE_TAGS.has(fence.lang);
  *
  * Re-exported from the SSOT (#568), NOT re-declared. Note the shape: `import` plus
  * `export const`, never `export { CONTENT_TYPES as TREES } from './content-types.js'` — a bare
- * re-export creates no LOCAL binding, and this module reads `TREES` internally in
- * `contentKey`, in the `git log` pathspec, and in the working-tree walk. Measured: 42 of 224
- * tests fail with `ReferenceError: TREES is not defined`.
+ * re-export creates no LOCAL binding.
+ *
+ * Stated as a rule rather than as a fact about this file, because the fact expired. The
+ * original wording said this module reads `TREES` internally "in `contentKey`, in the `git log`
+ * pathspec, and in the working-tree walk" (measured then: 42 of 224 tests failing with
+ * `ReferenceError: TREES is not defined`). #559 moved all three of those out, so today nothing
+ * here reads it and a bare re-export would in fact work. Keep the shape anyway: the next line
+ * added to this module that uses `TREES` would otherwise fail at a distance from the edit, and
+ * a comment justifying a shape by a condition that can silently stop holding is worse than no
+ * comment.
  */
 export const TREES = CONTENT_TYPES;
 
 /**
- * Repo-relative English content path -> stable `<tree>/<id>` key, or null when
- * the path is not translatable content.
+ * Re-exported, not re-declared: `contentKey` now lives in `content-paths.js` so the shared
+ * history walker can key blobs without importing this module, which imports the walker (#559).
+ * Four modules import it from here — `normalize-i18n-fences.js`, `lib/translation-status.js`,
+ * `check-yaml-fences.js`, `test/fences.test.js` — and this keeps all four working unchanged.
  *
- * Uses the second-to-last segment for `SKILL.md` so that pre-flatten historical
- * paths (`skills/<domain>/<id>/SKILL.md`, ~42% of the blobs in history) key to
- * the same id as today's `skills/<id>/SKILL.md`.
+ * Same `import` + `export` shape as `TREES` above, for the same forward-looking reason and with
+ * the same caveat: nothing in this module reads `contentKey` internally today either.
  */
-export function contentKey(relPath) {
-  const parts = relPath.split('/');
-  if (parts.length < 2 || !TREES.includes(parts[0])) return null;
-  // Both branches below must agree on what an id is, and on which ids are not content.
-  // They did not: the exclusion lived only in the flat branch, so
-  // `contentKey('skills/_template/SKILL.md')` returned `skills/_template` — a key the
-  // English history index then carried, which would have made a translated `_template`
-  // a rewrite target (#519). skills/ holds most of the corpus, so the general claim that
-  // deriving both the path and the key from this function removes the need for a second
-  // exclusion list was false exactly where it mattered most.
-  if (parts[parts.length - 1] === 'SKILL.md') {
-    if (parts.length < 3) return null;
-    // Second-to-last, never parts[1]: pre-flatten paths are
-    // `skills/<domain>/<id>/SKILL.md`, and keying off parts[1] would silently key a whole
-    // domain — ~42% of the blobs in history — to the wrong id.
-    const id = parts[parts.length - 2];
-    if (isExcludedId(id)) return null;
-    return `${parts[0]}/${id}`;
-  }
-  if (parts.length === 2 && parts[1].endsWith('.md')) {
-    const id = parts[1].slice(0, -3);
-    if (isExcludedId(id)) return null;
-    return `${parts[0]}/${id}`;
-  }
-  return null;
-}
-
-/**
- * Names that live inside a content tree without being content.
- *
- * Takes a RAW path segment and strips a `.md` suffix itself, so the two branches above can
- * hand it the same kind of thing. They could not before: the flat branch stripped the
- * extension before testing while the nested branch passed a bare directory segment, which
- * made `contentKey('skills/README.md/SKILL.md')` return `skills/README.md` instead of null
- * while `contentKey('skills/README.md')` correctly returned null. Unreachable today only
- * because every caller happens to `statSync(...).isFile()` afterwards — which is the
- * "unreachable because of ambient state" framing #519 exists to reject.
- */
-function isExcludedId(id) {
-  const stem = id.endsWith('.md') ? id.slice(0, -3) : id;
-  return stem.startsWith('_') || stem === 'README';
-}
+export { contentKey };
 
 /**
  * Union of every fence body that has ever appeared in each English SKILL.md,
@@ -141,84 +107,29 @@ function isExcludedId(id) {
  * (which can only make a fence match an EARLIER revision) nor by a
  * `source_commit` bumped without retranslation (#405).
  *
- * Costs two git processes rather than one per revision.
- * @returns {Map<string, Set<string>>}
+ * Costs two git processes rather than one per revision — see `english-history.js`, which owns
+ * the walk both this and `buildEnglishProseHistory` run over.
+ *
+ * `root` defaults to the repo this file lives in, which is how every production caller uses it.
+ * It exists as a parameter because it did NOT before, and that was the reason this half of the
+ * duplicated walk had no test: nothing could point it at a fixture repo (#559).
+ *
+ * @param {string} [root] repository root
+ * @returns {Map<string, Set<string>> & {current: Map<string, Fence[]>}}
  */
-export function buildEnglishFenceHistory() {
-  const log = execFileSync(
-    'git', ['log', '--format=%x00%H', '--name-only', '--', ...TREES],
-    { cwd: ROOT, encoding: 'utf8', maxBuffer: GIT_BUFFER },
-  );
-
-  const specs = [];
-  const seen = new Set();
-  let commit = null;
-  for (const line of log.split('\n')) {
-    if (line.startsWith('\x00')) { commit = line.slice(1).trim(); continue; }
-    if (!line || !commit || contentKey(line) === null) continue;
-    const spec = `${commit}:${line}`;
-    if (seen.has(spec)) continue;
-    seen.add(spec);
-    specs.push(spec);
-  }
-
+export function buildEnglishFenceHistory(root = ROOT) {
   const history = new Map();
-  const add = (key, text) => {
-    if (key === null) return;
+  // Kept separately, keyed the same way: the deleted-fence check needs the fences English has
+  // NOW, with their tags, not the flattened union of every body that ever existed.
+  const current = new Map();
+
+  walkEnglishHistory(root, (key, text, { fromWorkingTree }) => {
     if (!history.has(key)) history.set(key, new Set());
     const set = history.get(key);
-    for (const f of extractFences(text)) set.add(f.body);
-  };
-
-  if (specs.length) {
-    const batch = spawnSync('git', ['cat-file', '--batch'], {
-      cwd: ROOT,
-      input: Buffer.from(specs.join('\n') + '\n', 'utf8'),
-      maxBuffer: GIT_BUFFER,
-    });
-    if (batch.status !== 0) {
-      console.error('ERROR: git cat-file --batch failed');
-      console.error(batch.stderr?.toString().slice(0, 500));
-      process.exit(1);
-    }
-    const buf = batch.stdout;
-    let offset = 0;
-    let index = 0;
-    while (offset < buf.length && index < specs.length) {
-      const nl = buf.indexOf(0x0a, offset);
-      if (nl < 0) break;
-      const header = buf.slice(offset, nl).toString('utf8');
-      offset = nl + 1;
-      if (/ (missing|ambiguous)$/.test(header)) { index++; continue; }
-      const size = Number.parseInt(header.split(' ')[2], 10);
-      if (!Number.isFinite(size)) break;
-      add(contentKey(specs[index].slice(specs[index].indexOf(':') + 1)),
-        buf.slice(offset, offset + size).toString('utf8'));
-      offset += size + 1;
-      index++;
-    }
-  }
-
-  // An uncommitted English edit is a legal basis too. The working tree is also
-  // kept separately as `history.current`, keyed the same way: the deleted-fence
-  // check needs the fences English has NOW, with their tags, not the flattened
-  // union of every body that ever existed.
-  const current = new Map();
-  for (const tree of TREES) {
-    const base = join(ROOT, tree);
-    if (!existsSync(base)) continue;
-    for (const entry of readdirSync(base)) {
-      if (entry.startsWith('_')) continue;
-      const p = tree === 'skills' ? join(base, entry, 'SKILL.md') : join(base, entry);
-      if (!existsSync(p) || !statSync(p).isFile()) continue;
-      const rel = tree === 'skills' ? `${tree}/${entry}/SKILL.md` : `${tree}/${entry}`;
-      const key = contentKey(rel);
-      if (key === null) continue;
-      const text = readFileSync(p, 'utf8');
-      add(key, text);
-      current.set(key, extractFences(text));
-    }
-  }
+    const fences = extractFences(text);
+    for (const f of fences) set.add(f.body);
+    if (fromWorkingTree) current.set(key, fences);
+  });
 
   history.current = current;
   return history;

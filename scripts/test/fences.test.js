@@ -1,5 +1,11 @@
 /**
- * Unit tests for `contentKey()` in `scripts/lib/fences.js`.
+ * Unit tests for `contentKey()`, which since #559 is defined in `scripts/lib/content-paths.js`
+ * and re-exported from `scripts/lib/fences.js`.
+ *
+ * The import below deliberately keeps going through `fences.js`. That is the path four modules
+ * use, so testing it is what proves the re-export still resolves — importing from
+ * `content-paths.js` directly would test the definition while leaving every real caller's route
+ * unexercised.
  *
  * There was no test file for this module at all, and that is how #519 survived: every
  * skills path any fixture in `scripts/test/` constructs is the 3-segment
