@@ -19,6 +19,9 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'fs';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import {
   parseLocales,
   parseStatus,
@@ -28,6 +31,8 @@ import {
   FALLBACK_MARK,
   UNMEASURED
 } from '../check-readme-translation-parity.js';
+
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 // ── Fixtures ─────────────────────────────────────────────────────
 
@@ -129,6 +134,46 @@ test('parseLocales throws rather than returning a short list', () => {
     /unrecognised line/
   );
   assert.throws(() => parseLocales('supported_locales:\n  - code: de\n    status: active\n'), /no name/);
+});
+
+test('parseLocales reads the LAST line of a block that runs to end of file', () => {
+  // #574 deleted `content_types:`, which used to be the first dedented line and therefore
+  // always what stopped the block scan. The production file now takes the exhaustion path
+  // that only synthetic fixtures reached before.
+  //
+  // The first version of this test was theatre, and review said so. It asserted a config
+  // ending `    status: active\n`, which four existing fixtures in this file already cover —
+  // and worse, it could not detect an off-by-one in the very bound it was named for. Mutate
+  // the loop to `i < lines.length - 1` and every one of those fixtures survives, because each
+  // ends on a line whose loss changes nothing: a trailing `''`, or a `continue` line such as
+  // `status:`.
+  //
+  // So the final line has to be LOAD-BEARING. With `name:` last and no trailing newline, the
+  // mutant skips it, `name` stays null, and the parser throws `/no name/` — red under the
+  // mutant, green against the real code.
+  assert.deepEqual(
+    parseLocales('supported_locales:\n  - code: de\n    name: Deutsch'),
+    [{ code: 'de', name: 'Deutsch' }],
+  );
+
+  // The same shape WITH a trailing newline, so both terminations are pinned.
+  assert.deepEqual(
+    parseLocales('supported_locales:\n  - code: de\n    name: Deutsch\n'),
+    [{ code: 'de', name: 'Deutsch' }],
+  );
+});
+
+test('parseLocales reads the real i18n/_config.yml, which now ends at the block', () => {
+  // The only assertion here that touches the actual EOF-terminated file. Everything else is
+  // synthetic, and #574's change is precisely a change to the real file's shape — so without
+  // this, nothing at unit level would notice if that file stopped parsing.
+  const config = readFileSync(resolve(REPO_ROOT, 'i18n/_config.yml'), 'utf8');
+  assert.ok(!/^content_types:/m.test(config), 'the dead key must stay gone');
+  assert.deepEqual(
+    parseLocales(config).map((l) => l.code),
+    ['de', 'zh-CN', 'ja', 'es', 'caveman-lite', 'caveman', 'caveman-ultra',
+      'wenyan-lite', 'wenyan', 'wenyan-ultra'],
+  );
 });
 
 test('parseLocales stops at the end of the block', () => {
