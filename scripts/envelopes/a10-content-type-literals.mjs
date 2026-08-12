@@ -127,11 +127,15 @@ export const cases = [
     // validate-integrity.yml's trigger paths, so a PR editing only it bypassed A10 entirely.
     label: 'the trigger path for a file A10 reads is removed',
     file: '.github/workflows/validate-integrity.yml',
-    // Identical in the `push` and `pull_request` blocks, hence `sites: 2`. A10d reads only the
-    // pull_request list, so removing both is a superset of the drift it guards against.
+    // The two-line form matches ONCE, in the `pull_request` block: the `push` block carries the
+    // A8/#362 comment between the same two entries. An earlier version of this case claimed the
+    // blocks were "identical" and declared `sites: 2`; the count guard rejected it, which is the
+    // point of naming the number instead of accepting whatever is there.
+    //
+    // Targeting pull_request alone is also the more precise mutation, since that is the only
+    // list A10d reads.
     find: "      - '.github/workflows/validate-translations.yml'\n      - 'i18n/**'",
     replace: "      - 'i18n/**'",
-    sites: 2,
     expect: 'does not run on changes to it',
   },
   {
