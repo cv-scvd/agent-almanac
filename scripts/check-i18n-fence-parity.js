@@ -66,12 +66,10 @@ import { readFileSync, readdirSync, existsSync, statSync } from 'fs';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { assertNotShallow } from './lib/git-freshness.js';
-import { extractFences, buildEnglishFenceHistory, isGated } from './lib/fences.js';
+import { extractFences, buildEnglishFenceHistory, isGated, foldedTagSequence } from './lib/fences.js';
 import { CONTENT_TYPES } from './lib/content-types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT = resolve(__dirname, '..');
-const I18N_DIR = resolve(ROOT, 'i18n');
 
 const WARN_ONLY = process.argv.includes('--warn');
 const SHOW_ALL = process.argv.includes('--all');
@@ -93,6 +91,26 @@ function flagValue(name, fallback) {
   }
   return v;
 }
+
+/**
+ * The repo to check. Defaults to this one, which is how every real invocation uses it.
+ *
+ * It exists as a flag because the gate was otherwise untestable end to end, and that gap was
+ * not theoretical: deleting the blocking flag from the tag-sequence finding SURVIVED against the
+ * whole suite, meaning every such finding could stop being blocking with 298 tests still green.
+ * Three component-level mutation kills had been quoted as coverage for a path nothing executed.
+ *
+ * The flag is deliberately NOT quoted verbatim here. Spelling it out made this comment a second
+ * match site for the very mutation it describes, and `mutation-check` refused the run rather than
+ * guessing which site to mutate — the same collision the A10 envelope hit hours earlier, where
+ * a comment quoting `find agents teams guides ...` doubled its own case.
+ *
+ * Third time this exact shape has appeared here — `buildEnglishFenceHistory()` closing over its
+ * module root (#559), `gate-envelope.js` before `--root`, and now this. The rule it keeps
+ * teaching: a module that hardcodes its own repo root cannot be tested, so it will not be.
+ */
+const ROOT = resolve(flagValue('--root', resolve(__dirname, '..')));
+const I18N_DIR = resolve(ROOT, 'i18n');
 
 const LIMIT = Number(flagValue('--limit', '40'));
 if (!Number.isFinite(LIMIT)) { console.error('ERROR: --limit must be a number'); process.exit(2); }
@@ -156,21 +174,100 @@ export function collectTargets() {
   return out;
 }
 
+/**
+ * Does this translation's folded tag sequence exist in English?
+ *
+ * #481: the retag escape. `isGated` reads the info string off the TRANSLATION, so retagging a
+ * frozen ```yaml fence to ```text removes it from the body check entirely — the set of fences
+ * under the gate is chosen by the file being gated. Default-deny narrowed that escape to
+ * {text, markdown, md} without closing it, and #583 records that the status detector's
+ * accidental tripwire for the same escape was removed in #582, leaving this the only cover.
+ *
+ * Staleness-immune by the same construction as the body check: the sequence must match SOME
+ * English revision, never HEAD. A stale translation legitimately carries an older sequence.
+ *
+ * @param {string[]} mine folded tag sequence of the translation
+ * @param {Set<string>|undefined} englishSequences joined folded sequences from every revision
+ * @returns {null | {unalignable: true} | {positions: {index: number, english: string, translated: string}[]}}
+ */
+export function compareTagSequence(mine, englishSequences) {
+  if (!englishSequences || englishSequences.has(mine.join(','))) return null;
+
+  // `''.split(',')` is `['']` — length 1, not 0. A source revision with NO fences joins to the
+  // empty string, so the naive length made it look like a one-fence revision, matched it against
+  // every one-fence translation, and compared position 1 against `undefined`. That fabricated 3
+  // findings reading `#1 ->markdown`, and it was caught only because an independent measurement
+  // of the same property disagreed by exactly 3 — not by any test.
+  const lengthOf = (seq) => (seq === '' ? 0 : seq.split(',').length);
+  const sameLength = [...englishSequences].filter((seq) => lengthOf(seq) === mine.length);
+
+  // NOT a violation. With a different number of fences there is no positional correspondence to
+  // claim anything about, and a translation predating a fence English later gained lands here —
+  // calling that a violation reintroduces exactly the staleness confound this gate avoids.
+  if (sameLength.length === 0) return { unalignable: true };
+
+  // Report against the count-matched revision differing in the FEWEST positions — the nearest
+  // legal basis. An arbitrary one inflates a single retag into wholesale divergence.
+  let best = null;
+  for (const candidate of sameLength) {
+    const other = candidate === '' ? [] : candidate.split(',');
+    const diff = mine
+      .map((tag, i) => ({ index: i + 1, english: other[i], translated: tag }))
+      .filter((d) => d.english !== d.translated);
+    if (!best || diff.length < best.length) best = diff;
+  }
+  return { positions: best };
+}
+
 function main() {
   assertNotShallow(ROOT);
 
-  const history = buildEnglishFenceHistory();
+  const history = buildEnglishFenceHistory(ROOT);
   const findings = [];
   let filesCompared = 0;
   let fencesCompared = 0;
   let ungatedDivergences = 0;
+  let tagSequenceUnalignable = 0;
 
   for (const t of collectTargets()) {
     const englishFences = history.get(`${t.tree}/${t.id}`);
     if (!englishFences) continue; // orphan: check-i18n-frontmatter-parity.js owns that
 
     filesCompared++;
-    for (const fence of extractFences(readFileSync(t.absPath, 'utf8'))) {
+    const translatedFences = extractFences(readFileSync(t.absPath, 'utf8'));
+
+    // #481: the retag escape. `isGated` reads the info string off the TRANSLATION, so retagging
+    // a frozen ```yaml fence to ```text removes it from the loop below entirely — the set of
+    // fences under the gate is chosen by the file being gated. Default-deny narrowed that escape
+    // to {text, markdown, md} without closing it, and #583 records that the status detector's
+    // accidental tripwire for the same escape was removed in #582, leaving this the only cover.
+    //
+    // Staleness-immune by the same construction as the body check: the sequence must match SOME
+    // English revision, never HEAD. A stale translation legitimately carries an older sequence.
+    //
+    // Count-mismatched pairs are NOT violations. With a different number of fences there is no
+    // positional correspondence to claim anything about, and a translation predating a fence
+    // English later gained lands here — calling that a violation reintroduces exactly the
+    // staleness confound this gate exists to avoid.
+    const seqVerdict = compareTagSequence(
+      foldedTagSequence(translatedFences), history.sequences.get(`${t.tree}/${t.id}`),
+    );
+    if (seqVerdict?.unalignable) {
+      tagSequenceUnalignable++;
+    } else if (seqVerdict) {
+      findings.push({
+        file: t.relPath,
+        line: translatedFences[seqVerdict.positions[0].index - 1]?.line ?? 1,
+        locale: t.locale,
+        skill: t.id,
+        tag: seqVerdict.positions.map((p) => `#${p.index} ${p.english}->${p.translated}`).join(', '),
+        gated: true,
+        kind: 'tag-sequence',
+        firstDivergentLine: `fence tag sequence appears in no English revision (${seqVerdict.positions.length} position(s) differ)`,
+      });
+    }
+
+    for (const fence of translatedFences) {
       fencesCompared++;
       if (englishFences.has(fence.body)) continue;
       const gated = isGated(fence);
@@ -209,6 +306,8 @@ function main() {
       filesCompared, fencesCompared,
       violations: blocking.length,
       ungatedDivergences,
+      tagSequenceFindings: findings.filter((f) => f.kind === 'tag-sequence').length,
+      tagSequenceUnalignable,
       findings,
     }, null, 2));
     process.exitCode = blocking.length > 0 && !WARN_ONLY ? 1 : 0;
@@ -224,8 +323,9 @@ function main() {
     console.log(`... ${findings.length - LIMIT} more (use --limit ${findings.length} to see all, or --json)`);
   }
 
+  const tagSeq = blocking.filter((f) => f.kind === 'tag-sequence');
   const byTag = new Map();
-  for (const f of blocking) byTag.set(f.tag, (byTag.get(f.tag) || 0) + 1);
+  for (const f of blocking.filter((f) => f.kind !== 'tag-sequence')) byTag.set(f.tag, (byTag.get(f.tag) || 0) + 1);
   const byLocale = new Map();
   for (const f of blocking) byLocale.set(f.locale, (byLocale.get(f.locale) || 0) + 1);
 
@@ -241,6 +341,28 @@ function main() {
     console.log(`by locale: ${[...byLocale.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}=${v}`).join('  ')}`);
     console.log('\nFix: restore the English fence body verbatim. Code blocks are keep-in-English');
     console.log('(CLAUDE.md § Translation Rules, i18n/README.md). Translate the surrounding prose only.');
+  }
+  if (tagSeq.length) {
+    // Reported apart from body divergences because the remedy differs: a body divergence is
+    // repaired by restoring the English text, a tag-sequence finding by restoring the fence
+    // STRUCTURE — and the two most common causes need different judgement. Measured at
+    // introduction across 3,584 count-matched pairs: 9 findings, of which 3 were a frozen tag
+    // becoming localisable (the #481 escape proper, and in `escalate-issues` caused by a
+    // 4-backtick opener degraded to 3, which swallows the next fence whole) and 6 were
+    // partial-update drift on stale files. Read the file before repairing it.
+    console.log(`\n${tagSeq.length} fence tag-sequence finding(s) — a structure appearing in NO English revision.`);
+    console.log('These are the retag escape (#481): a frozen tag changed to text/markdown/md leaves');
+    console.log('the body check entirely, because gating is read off the translated file.');
+    for (const f of tagSeq.slice(0, LIMIT)) console.log(`  ${f.file}  ${f.tag}`);
+    if (tagSeq.length > LIMIT) console.log(`  ... ${tagSeq.length - LIMIT} more`);
+  }
+  if (tagSequenceUnalignable) {
+    // Deliberately not a finding. No English revision has that fence COUNT, so there is no
+    // positional correspondence to make a claim about; a stale translation predating a fence
+    // English later gained lands here. Counting them keeps the omission visible rather than
+    // silent — the population is unmeasured otherwise.
+    console.log(`\n${tagSequenceUnalignable} file(s) unjudged for tag sequence — no English revision has their fence count.`);
+    console.log('Not violations: without a count match there is no position to compare (staleness, #481).');
   }
   if (ungatedDivergences) {
     // Deliberately does NOT say "untagged": untagged fences are frozen under

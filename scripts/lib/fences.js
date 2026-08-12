@@ -114,14 +114,20 @@ export { contentKey };
  * It exists as a parameter because it did NOT before, and that was the reason this half of the
  * duplicated walk had no test: nothing could point it at a fixture repo (#559).
  *
+ * Also pooled, from the same walk: every folded TAG SEQUENCE each source has carried
+ * (`history.sequences`), which is the basis for the retag check (#481). Collected here rather
+ * than in a third builder for the reason #559 exists — a third near-identical walk is exactly
+ * the duplication that issue removed.
+ *
  * @param {string} [root] repository root
- * @returns {Map<string, Set<string>> & {current: Map<string, Fence[]>}}
+ * @returns {Map<string, Set<string>> & {current: Map<string, Fence[]>, sequences: Map<string, Set<string>>}}
  */
 export function buildEnglishFenceHistory(root = ROOT) {
   const history = new Map();
   // Kept separately, keyed the same way: the deleted-fence check needs the fences English has
   // NOW, with their tags, not the flattened union of every body that ever existed.
   const current = new Map();
+  const sequences = new Map();
 
   walkEnglishHistory(root, (key, text, { fromWorkingTree }) => {
     if (!history.has(key)) history.set(key, new Set());
@@ -129,10 +135,63 @@ export function buildEnglishFenceHistory(root = ROOT) {
     const fences = extractFences(text);
     for (const f of fences) set.add(f.body);
     if (fromWorkingTree) current.set(key, fences);
+    if (!sequences.has(key)) sequences.set(key, new Set());
+    sequences.get(key).add(foldedTagSequence(fences).join(','));
   });
 
   history.current = current;
+  history.sequences = sequences;
   return history;
+}
+
+/**
+ * A document's fence tags in order, with untagged folded to `text`.
+ *
+ * The fold is not cosmetic and must not be dropped. `normalize-content-style.js --mode fences`
+ * retro-tagged untagged blocks as `text` on the NEWER side only, so an untagged fence facing a
+ * `text` one is an artifact of a repo tool rather than a translator action. Without the fold,
+ * every one of those pairings reads as a retag.
+ *
+ * Equally, this must NOT be expressed as `isGated(a) !== isGated(b)`. Under default-deny an
+ * untagged fence is gated while `text` is not, so that formulation makes the same benign
+ * pairings misalignments — it stranded 169 mechanically-repairable fences across 73 files when
+ * `normalize-i18n-fences.js` tried it, and the comment there records why.
+ *
+ * ALL fences, not just gated ones. The retag this detects is precisely a fence LEAVING the gated
+ * set, so a gated-only sequence cannot see it — that is the tripwire #582 removed from the
+ * status detector's `fenceShape` and #583 records the loss of. `fenceShape` stays gated-only
+ * because it answers a different question (is the frozen-region mask trustworthy?).
+ *
+ * The fold is on the INFO STRING being empty, not on `lang` being empty, and the difference is
+ * load-bearing. `lang` is also `''` for a brace info string — ` ```{r} `, ` ```{r setup} ` —
+ * because the split at the bottom of this module breaks on `{`. Brace fences are frozen under
+ * default-deny exactly like untagged ones, so folding them to `text` would let an English
+ * ` ```{r} ` fence be replaced by a localisable ` ```text ` one with neither this check nor the
+ * body check seeing it: the retag escape surviving through its own fix. They get the same `{`
+ * placeholder `fenceShape` uses, whose comment already records the lesson — "a 'cannot happen'
+ * margin is exactly how this module keeps getting bypassed". Zero top-level brace fences exist
+ * today, which is the argument for encoding it now rather than after one appears.
+ *
+ * Unterminated fences ARE included, unlike in `fenceShape`, and the choice is not free either
+ * way. `fenceShape` filters them because an unterminated fence masks nothing (#558). Here the
+ * sequence is a structural claim, and a degradation near EOF that leaves a fence open is a real
+ * corruption this should see; excluding them would demote it to `unalignable`. The cost is that
+ * a translation carrying #558's stray-opener artifact gains a phantom token — usually a count
+ * mismatch, so unjudged rather than a false finding. Measured over all 3,644 translated files at
+ * introduction: 0 carry an unterminated fence and 0 carry a top-level brace-info fence, so both
+ * choices above are free TODAY and are made on their merits rather than on cost. Re-measure
+ * before assuming that still holds — `scripts/measure-tag-sequence-parity.js` is the reproducer
+ * for the finding set, and neither number is pinned by a gate.
+ *
+ * @param {Fence[]|string} input fences, or text to extract them from
+ * @returns {string[]}
+ */
+export function foldedTagSequence(input) {
+  const fences = typeof input === 'string' ? extractFences(input) : input;
+  return fences.map((f) => {
+    if (f.lang !== '') return f.lang;
+    return f.info === '' ? 'text' : '{';
+  });
 }
 
 /**
