@@ -90,6 +90,56 @@ export function applySections(content, sections) {
 }
 
 /**
+ * Render the locale table for `i18n/README.md`.
+ *
+ * Deliberately a DIFFERENT table from the root README's, not a second copy of it (#569). This
+ * one answers a translator's question — which locales exist, which trees they cover, how fresh
+ * they are — while the root README answers a reader's: overall coverage, stubs, unjudged. Two
+ * generated views of one source cannot drift; two hand-maintained ones are how #560 happened,
+ * and this table was the proof, listing 4 of 10 locales with every count wrong.
+ *
+ * `stale` is included because it is the number a translator can act on, and because its
+ * meaning is counterintuitive enough that `i18n/README.md` already explains it two sections
+ * below: it is measured only over `translated`, so recognising a scaffold LOWERS it with
+ * nothing translated.
+ *
+ * @param {Array<{code: string, name: string, coverage: object|null}>} locales
+ * @param {string[]} contentTypes
+ * @returns {string}
+ */
+export function renderLocaleTable(locales, contentTypes) {
+  // Header and rows both DERIVED from contentTypes. The first version gated on
+  // `contentTypes.every(...)` but rendered four hardcoded columns, so adding a fifth content
+  // type would have widened the gate while leaving the table four wide — the new type
+  // silently missing from a table whose whole purpose is completeness. Deriving both means a
+  // fifth type either appears or nothing renders; it cannot half-appear.
+  const title = (ct) => ct.charAt(0).toUpperCase() + ct.slice(1);
+  const rows = [
+    `| Code | Language | ${contentTypes.map(title).join(' | ')} | Translated | Stale |`,
+    `|---|---|${contentTypes.map(() => '---|').join('')}---|---|`,
+  ];
+
+  for (const locale of locales) {
+    const { coverage } = locale;
+    if (!coverage || !contentTypes.every((ct) => coverage[ct]) || !coverage.total) {
+      // No measurement rather than a zero: a locale configured but never scanned has not been
+      // measured at 0%, and printing 0 would say it had.
+      const blanks = contentTypes.map(() => UNMEASURED).join(' | ');
+      rows.push(`| ${locale.code} | ${locale.name} | ${blanks} | ${UNMEASURED} | ${UNMEASURED} |`);
+      continue;
+    }
+    const cells = contentTypes.map((ct) => `${coverage[ct].translated}/${coverage[ct].total}`);
+    const t = coverage.total;
+    rows.push(
+      `| ${locale.code} | ${locale.name} | ${cells.join(' | ')} | `
+      + `${t.translated}/${t.total} (${t.pct}%) | ${t.stale} |`,
+    );
+  }
+
+  return rows.join('\n');
+}
+
+/**
  * Render the translations coverage table from already-loaded per-locale data.
  *
  * The function #560 fixed and #566 exists to make testable. It takes records rather than

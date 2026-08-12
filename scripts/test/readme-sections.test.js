@@ -18,7 +18,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  replaceSection, applySections, renderTranslationsTable, FALLBACK_MARK, UNMEASURED,
+  replaceSection, applySections, renderTranslationsTable, renderLocaleTable,
+  FALLBACK_MARK, UNMEASURED,
 } from '../lib/readme-sections.js';
 
 const doc = (inner) => [
@@ -212,6 +213,38 @@ test('a PARTIAL status file falls back rather than rendering half a row', () => 
   );
   assert.ok(!rendered.includes('undefined'));
   assert.match(rendered, new RegExp(`\\${FALLBACK_MARK}`));
+});
+
+// ── renderLocaleTable (i18n/README.md) ──────────────────────────────────────
+
+test('the locale table renders measured figures for every configured locale', () => {
+  // #569: this table was hand-maintained, listed 4 of 10 locales, and every count was wrong —
+  // sitting directly above the section explaining what the numbers mean.
+  const rendered = renderLocaleTable([
+    { code: 'de', name: 'Deutsch', coverage: { ...coverageOf(334, 35, 14), total: { translated: 334, total: 500, pct: 66.8, stale: 160 } } },
+    { code: 'ja', name: '日本語', coverage: { ...coverageOf(344, 26, 13), total: { translated: 344, total: 500, pct: 68.8, stale: 159 } } },
+  ], TYPES);
+
+  assert.match(rendered, /\| de \| Deutsch \| 328\/369 \| 3\/75 \| 1\/22 \| 2\/34 \| 334\/500 \(66\.8%\) \| 160 \|/);
+  assert.match(rendered, /\| ja \| 日本語 \|/);
+  // Every configured locale gets a row — the defect was a table listing a SUBSET (4 of 10).
+  const dataRows = rendered.split('\n').filter((l) => /^\| [a-z]/.test(l));
+  assert.equal(dataRows.length, 2, `expected one row per locale, got:\n${dataRows.join('\n')}`);
+});
+
+test('a locale with no status file is UNMEASURED, not zero', () => {
+  // Printing 0 would assert it had been measured at 0%. It has not been measured.
+  const rendered = renderLocaleTable([{ code: 'xx', name: 'Xish', coverage: null }], TYPES);
+  assert.match(rendered, new RegExp(`\\| xx \\| Xish \\| ${UNMEASURED} \\|`));
+  assert.ok(!/\| 0\//.test(rendered), 'must not render a zero it never measured');
+});
+
+test('a PARTIAL coverage object is unmeasured rather than half-rendered', () => {
+  const partial = coverageOf(334, 35, 14);
+  delete partial.teams;
+  const rendered = renderLocaleTable([{ code: 'de', name: 'D', coverage: partial }], TYPES);
+  assert.ok(!rendered.includes('undefined'));
+  assert.match(rendered, new RegExp(`\\| de \\| D \\| ${UNMEASURED} \\|`));
 });
 
 test('the footnote appears only when something actually fell back', () => {

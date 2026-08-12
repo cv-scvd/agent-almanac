@@ -47,6 +47,7 @@ on:
       - 'guides/quick-reference.md'
       - 'viz/README.md'
       - 'tests/README.md'
+      - 'i18n/README.md'
       - '.github/workflows/validate-readmes.yml'
   pull_request:
     paths:
@@ -59,6 +60,7 @@ on:
       - 'guides/quick-reference.md'
       - 'viz/README.md'
       - 'tests/README.md'
+      - 'i18n/README.md'
       - '.github/workflows/validate-readmes.yml'
   # Path filters do not apply to `schedule`, which is the point. Everything above is
   # commit-triggered, so all of it is blind to HEALER FAILURE: if update-readmes.yml goes red

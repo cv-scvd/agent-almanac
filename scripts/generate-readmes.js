@@ -17,7 +17,7 @@ import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import * as yaml from 'js-yaml';
 import { CONTENT_TYPES } from './lib/content-types.js';
-import { applySections, renderTranslationsTable } from './lib/readme-sections.js';
+import { applySections, renderTranslationsTable, renderLocaleTable } from './lib/readme-sections.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -567,15 +567,48 @@ function countExistingTranslations(localeDir, contentTypes) {
   return { counts, total };
 }
 
-function generateTranslationsSection() {
+/**
+ * Read `i18n/_config.yml` and each locale's `translation_status.yml`.
+ *
+ * One reader for both translation tables, so the root README and `i18n/README.md` cannot
+ * disagree about what a locale's numbers are — they are two views of one read.
+ */
+function loadLocaleCoverage() {
   const i18nDir = resolve(ROOT, 'i18n');
   const configPath = resolve(i18nDir, '_config.yml');
-  if (!existsSync(configPath)) {
+  if (!existsSync(configPath)) return null;
+  const locales = (yaml.load(readFileSync(configPath, 'utf8')) || {}).supported_locales || [];
+  return locales.map((locale) => {
+    const localeDir = resolve(i18nDir, locale.code);
+    const statusPath = resolve(localeDir, 'translation_status.yml');
+    return {
+      code: locale.code,
+      name: locale.name,
+      localeDir,
+      coverage: existsSync(statusPath)
+        ? (yaml.load(readFileSync(statusPath, 'utf8')) || {}).coverage
+        : null,
+    };
+  });
+}
+
+function generateI18nLocalesSection() {
+  const records = loadLocaleCoverage();
+  if (!records || records.length === 0) return '*No translations configured yet.*';
+  return renderLocaleTable(records, CONTENT_TYPES);
+}
+
+function generateTranslationsSection() {
+  // ONE read, shared with generateI18nLocalesSection. The first version of #569 added
+  // loadLocaleCoverage, used it for the i18n table only, and left this function doing its own
+  // duplicate read — while the commit message and PR body both claimed "one read feeding BOTH
+  // tables". A stated invariant that the code does not implement is worse than no claim: it
+  // is what a later reader relies on. Caught in review.
+  const records = loadLocaleCoverage();
+  if (!records || records.length === 0) {
     return '*No translations configured yet.*';
   }
 
-  const i18nConfig = yaml.load(readFileSync(configPath, 'utf8'));
-  const locales = i18nConfig.supported_locales || [];
   const contentTypes = CONTENT_TYPES;
   // Fallback denominators only. Measured rows take theirs from the status
   // file, so the two surfaces cannot disagree about the denominator either.
@@ -588,30 +621,19 @@ function generateTranslationsSection() {
     total: totalSkills + totalAgents + totalTeams + totalGuides
   };
 
-  if (locales.length === 0) {
-    return '*No translations configured yet.*';
-  }
-
-  // I/O here, rendering in the lib. This function is now only "read the per-locale status
-  // files and hand them over" — everything that decides what a cell SAYS lives in
-  // renderTranslationsTable, where a test can reach it. That split is the whole of #566: the
-  // core line of #560's fix could be deleted with the entire suite staying green, because
-  // this logic sat inside a module that cannot be imported without writing nine files.
-  const localeRecords = locales.map((locale) => {
-    const localeDir = resolve(i18nDir, locale.code);
-    const statusPath = resolve(localeDir, 'translation_status.yml');
-    return {
-      code: locale.code,
-      name: locale.name,
-      coverage: existsSync(statusPath)
-        ? (yaml.load(readFileSync(statusPath, 'utf8')) || {}).coverage
-        : null,
-      // Computed for every locale, including measured ones. Cheap, and it keeps the
-      // measured/fallback PREDICATE in one place rather than splitting it across the
-      // caller and the renderer.
-      fallback: countExistingTranslations(localeDir, contentTypes),
-    };
-  });
+  // Rendering lives in the lib; this function only adds the fallback counts, which the
+  // i18n table does not need. That split is the whole of #566: the core line of #560's fix
+  // could be deleted with the entire suite staying green, because this logic sat inside a
+  // module that cannot be imported without writing nine files.
+  const localeRecords = records.map((record) => ({
+    code: record.code,
+    name: record.name,
+    coverage: record.coverage,
+    // Computed for every locale, including measured ones. Cheap, and it keeps the
+    // measured/fallback PREDICATE in one place rather than splitting it across the
+    // caller and the renderer.
+    fallback: countExistingTranslations(record.localeDir, contentTypes),
+  }));
 
   return renderTranslationsTable(localeRecords, sourceCounts, contentTypes);
 }
@@ -655,6 +677,12 @@ const MANAGED = [
   { path: 'viz/README.md', make: (p) => writeGeneratedFile(p, generateVizReadme()) },
   { path: 'teams/README.md', make: (p) => writeGeneratedFile(p, generateTeamsReadme()) },
   { path: 'tests/README.md', make: (p) => writeGeneratedFile(p, generateTestsReadme()) },
+  // Marker-based, not fully generated: the rest of i18n/README.md is a hand-written
+  // contributor guide. Only the locale table is derived. Its markers MUST exist or the run
+  // exits 2 — see the missingMarkers block below.
+  { path: 'i18n/README.md', make: (p) => processFile(p, {
+    'i18n-locales': generateI18nLocalesSection,
+  }) },
 ];
 
 // --list-outputs: print managed output paths (one per line) and exit without
