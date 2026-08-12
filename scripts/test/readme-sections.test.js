@@ -133,6 +133,20 @@ test('replaceSection touches only the named section', () => {
 // ── renderTranslationsTable ─────────────────────────────────────────────────
 
 const SOURCE = { skills: 369, agents: 75, teams: 22, guides: 34, total: 500 };
+
+/**
+ * A four-tree literal, and it is CORRECT to keep — do not "fix" it to `CONTENT_TYPES` (#585).
+ *
+ * #578 routed the production consumers through the SSOT and A10 now asserts the shell and YAML
+ * ones against it, so a literal here looks like the one that got away. It is the opposite: a
+ * fixture that derived its expectation from the SSOT could not detect SSOT corruption. Reorder
+ * or truncate `CONTENT_TYPES` and every assertion below would move with it, agreeing with the
+ * broken value and reporting green.
+ *
+ * The rule that separates the two cases: derive when the literal is an INPUT the code acts on,
+ * hardcode when it is the EXPECTATION the code is measured against. A test that shares its
+ * subject's source of truth is measuring the subject against itself.
+ */
 const TYPES = ['skills', 'agents', 'teams', 'guides'];
 
 const coverageOf = (translated, stubs, unjudged) => ({

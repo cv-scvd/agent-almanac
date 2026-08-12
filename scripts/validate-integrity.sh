@@ -378,6 +378,132 @@ while IFS= read -r f; do
 done <<< "$a9_hits"
 [ "$a9_warned" -eq 0 ] && echo "OK: no invocation-phrase/allowed-tools drift (anchored pattern, warn-only)"
 
+# A10: Content-type literals outside JavaScript (#585)
+#
+# #578 routed every JS consumer through `scripts/lib/content-types.js`. Three consumers are not
+# JavaScript and cannot import it: two shell loops and one shell `case`. #584's PR body asserted
+# the remaining literals "survive only inside a comment" -- true of A8's `case` arms, false of
+# the repo, generalised from one site.
+#
+# So this ASSERTS rather than shares. A check beats a share when the languages differ, and it
+# is the only option available here: this job runs `setup-node` with deliberately NO `npm ci`
+# (the constraint A8 documents), and a shell script cannot import an ESM binding regardless.
+# The SSOT is therefore read the way A8 reads MANAGED -- a static `sed` parse of the JS source.
+#
+# Two legal derivations, not one. `validate-translations.yml:59` iterates `agents teams guides`
+# and is CORRECT to: it globs `"$locale_dir"*.md`, which finds nothing under the nested
+# `skills/<id>/SKILL.md` layout. A rule demanding every loop equal CONTENT_TYPES would fire on
+# it. So the flat form is derived too, from the `NESTING` record in check-i18n-fence-parity.js
+# -- the same record that throws there on an unclassified tree, which makes it the cross-language
+# source for the nesting fact rather than a second literal invented here.
+#
+# Every extraction below fails CLOSED. A pattern that drifts and matches nothing reports FAIL,
+# never OK: a silent zero is the vacuous pass this whole check exists to prevent, and it is the
+# same shape #578's first `NESTED.has(dir)` predicate had.
+echo "--- A10: Content-type literals outside JavaScript ---"
+a10_fail=0
+a10_flat=""
+# Counted separately, because they mean different things: `a10_full` is surfaces required to
+# carry every tree, `a10_flatsites` is surfaces legitimately carrying only the non-nested ones.
+# Reported rather than asserted -- the assertion is per site, against the form that site's own
+# behaviour requires. An earlier version asserted on the COUNT instead, which passed while a
+# full loop degraded to flat.
+a10_full=0
+a10_flatsites=0
+
+a10_all=$(sed -n 's/^export const CONTENT_TYPES = Object.freeze(\[\(.*\)\]);$/\1/p' scripts/lib/content-types.js \
+  | tr -d "'\"" | tr ',' ' ' | tr -s ' ' '\n' | sed '/^$/d' | sort || true)
+a10_nested=$(sed -n 's/^const NESTING = {\(.*\)};$/\1/p' scripts/check-i18n-fence-parity.js \
+  | tr ',' '\n' | grep -E ':[[:space:]]*true' | sed -E 's/^[[:space:]]*//; s/[[:space:]]*:.*//' | sed '/^$/d' | sort || true)
+
+# Compare one extracted list against the full SSOT. Order is ignored -- these are loop and case
+# arms, where order carries no meaning -- but duplicates are not, hence `sort` and not `sort -u`.
+a10_expect_all() { # <label> <sorted-newline-list>
+  a10_full=$((a10_full + 1))
+  if [ -z "$2" ]; then
+    echo "FAIL: A10 extracted no content types from $1 -- the pattern drifted, so that site is UNCHECKED"
+    failed=1; a10_fail=1
+  elif [ "$2" != "$a10_all" ]; then
+    echo "FAIL: $1 lists [$(printf '%s' "$2" | tr '\n' ' ')] but CONTENT_TYPES is [$(printf '%s' "$a10_all" | tr '\n' ' ')]"
+    failed=1; a10_fail=1
+  fi
+}
+
+if [ -z "$a10_all" ] || [ -z "$a10_nested" ]; then
+  echo "FAIL: A10 could not parse CONTENT_TYPES and/or NESTING -- every site below would go UNCHECKED"
+  failed=1; a10_fail=1
+else
+  a10_flat=$(printf '%s\n' "$a10_all" | grep -vxF -f <(printf '%s\n' "$a10_nested") || true)
+  if [ "$a10_flat" = "$a10_all" ]; then
+    echo "FAIL: A10 derived no nested trees from NESTING, so the flat form cannot be told from the full one"
+    failed=1; a10_fail=1
+  fi
+
+  # Every `for content_type in` loop in both files, matched by pattern rather than by line
+  # number so a THIRD loop added later is checked too, instead of being invisible to a
+  # hardcoded inventory.
+  #
+  # Which form a loop SHOULD take is derived from what the loop does, not from a list kept
+  # here. A loop that branches on a nested tree (`[ "$content_type" = "skills" ]`) must iterate
+  # the full list, because that branch is dead otherwise. A loop that does not branch --
+  # validate-translations.yml:59, which globs `"$locale_dir"*.md` -- must iterate the flat
+  # subset, because the nested layout puts nothing where that glob looks.
+  #
+  # The weaker rule this replaces ("at least one loop iterates the full list") let a full loop
+  # silently degrade to the flat form whenever another full loop survived. Measured: dropping
+  # `skills` from validate-translations.yml:81 left A10 reporting OK at exit 0, while CI stopped
+  # checking every skill mirror for an orphaned source.
+  a10_nested_re=$(printf '%s' "$a10_nested" | paste -sd'|' - || true)
+  for a10_file in scripts/validate-integrity.sh .github/workflows/validate-translations.yml; do
+    a10_hits=$(grep -nE 'for content_type in [a-z ]+; do' "$a10_file" 2>/dev/null || true)
+    # Per FILE, not once overall. A pattern that still matches the other file would otherwise
+    # satisfy a global check while this file went entirely unread -- measured: renaming the
+    # loop variable in validate-integrity.sh left the old global guard silent.
+    if [ -z "$a10_hits" ]; then
+      echo "FAIL: A10 found no 'for content_type in' loop in $a10_file -- the pattern drifted, so that file is UNCHECKED"
+      failed=1; a10_fail=1
+      continue
+    fi
+    # Herestring, not a pipe: a `while` on the right of a pipe runs in a subshell, where
+    # `failed=1` would be discarded and the whole check would report OK while finding violations.
+    while IFS= read -r a10_hit; do
+      [ -z "$a10_hit" ] && continue
+      a10_line=${a10_hit%%:*}
+      a10_list=$(printf '%s' "$a10_hit" | grep -oE 'for content_type in [a-z ]+; do' \
+        | sed -E 's/^for content_type in //; s/; do$//' | tr -s ' ' '\n' | sed '/^$/d' | sort || true)
+      # The branch sits 4 lines into both real cases; 10 is margin. A restructure that moves it
+      # further reads here as "flat loop with a full list" and FAILS -- loud and worth reading,
+      # which is the right direction for a heuristic window.
+      if sed -n "${a10_line},$((a10_line + 10))p" "$a10_file" | grep -qE "= \"($a10_nested_re)\""; then
+        a10_want="$a10_all"; a10_form="full (it branches on a nested tree)"
+      else
+        a10_want="$a10_flat"; a10_form="flat (it never branches on a nested tree)"
+      fi
+      if [ "$a10_list" = "$a10_want" ]; then
+        if [ "$a10_want" = "$a10_all" ]; then a10_full=$((a10_full + 1)); else a10_flatsites=$((a10_flatsites + 1)); fi
+      else
+        echo "FAIL: $a10_file:$a10_line iterates [$(printf '%s' "$a10_list" | tr '\n' ' ')] but must be $a10_form: [$(printf '%s' "$a10_want" | tr '\n' ' ')]"
+        failed=1; a10_fail=1
+      fi
+    done <<< "$a10_hits"
+  done
+
+  # translate-content.sh. The `case` arms are the ACCEPT-RULE -- what the scaffolder will and
+  # will not act on. The other two describe that rule to a human, and a description that
+  # disagrees with the rule is a lie someone reads while debugging.
+  a10_expect_all "scripts/translate-content.sh case arms (the accept-rule)" \
+    "$(sed -n '/^case "\$CONTENT_TYPE" in$/,/^esac$/p' scripts/translate-content.sh \
+      | grep -oE '^  [a-z]+\)$' | tr -d ' )' | sort || true)"
+  a10_expect_all "scripts/translate-content.sh usage line" \
+    "$(grep -oE 'content-type: [a-z |]+' scripts/translate-content.sh \
+      | sed -E 's/^content-type: //' | tr '|' ' ' | tr -s ' ' '\n' | sed '/^$/d' | sort || true)"
+  a10_expect_all "scripts/translate-content.sh unknown-type message" \
+    "$(grep -oE 'Use: [a-z, ]+' scripts/translate-content.sh \
+      | sed -E 's/^Use: //' | tr ',' ' ' | tr -s ' ' '\n' | sed '/^$/d' | sort || true)"
+fi
+
+[ "$a10_fail" -eq 0 ] && echo "OK: $((a10_full + a10_flatsites)) shell/YAML content-type list(s) agree with CONTENT_TYPES ($a10_full full, $a10_flatsites flat)"
+
 echo ""
 echo "=== Category B: Structural Integrity ==="
 
