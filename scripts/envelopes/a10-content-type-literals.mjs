@@ -8,8 +8,11 @@
  *
  *   npm run gate-envelope -- --spec scripts/envelopes/a10-content-type-literals.mjs
  *
- * Every `find` string below must match exactly one site; the runner refuses otherwise, because a
- * mutation that silently matches nothing makes the whole envelope pass while proving nothing.
+ * Every `find` string below must match exactly the number of sites the case declares (`sites`,
+ * default 1); the runner refuses otherwise, because a mutation that silently matches nothing
+ * makes the whole envelope pass while proving nothing. Two cases here needed re-anchoring after
+ * A10's own comments began quoting the commands they guard, creating a second match site — the
+ * runner caught that rather than mutating an arbitrary one.
  *
  * Note the `expect: null` case at the end. It is not a failure — it is A10's one documented
  * non-guarantee, measured rather than asserted in prose.
@@ -105,15 +108,17 @@ export const cases = [
     // inventory and by A10's first version.
     label: "B5's flat find drops a tree",
     file: 'scripts/validate-integrity.sh',
-    find: "find agents teams guides -name '*.md'",
-    replace: "find agents teams -name '*.md'",
+    // `-not` is in the command and not in A10's comment quoting it, which is what makes this
+    // unique — the comment created a second match site and the runner refused to guess.
+    find: "find agents teams guides -name '*.md' -not",
+    replace: "find agents teams -name '*.md' -not",
     expect: "B5's flat find walks",
   },
   {
     label: "B5's SKILL.md find loses the nested tree",
     file: 'scripts/validate-integrity.sh',
-    find: "find skills -name 'SKILL.md'",
-    replace: "find guides -name 'SKILL.md'",
+    find: "find skills -name 'SKILL.md' -exec",
+    replace: "find guides -name 'SKILL.md' -exec",
     expect: "B5's SKILL.md find walks",
   },
   {
@@ -122,8 +127,11 @@ export const cases = [
     // validate-integrity.yml's trigger paths, so a PR editing only it bypassed A10 entirely.
     label: 'the trigger path for a file A10 reads is removed',
     file: '.github/workflows/validate-integrity.yml',
-    find: "      - '.github/workflows/validate-translations.yml'\n  workflow_dispatch:",
-    replace: '  workflow_dispatch:',
+    // Identical in the `push` and `pull_request` blocks, hence `sites: 2`. A10d reads only the
+    // pull_request list, so removing both is a superset of the drift it guards against.
+    find: "      - '.github/workflows/validate-translations.yml'\n      - 'i18n/**'",
+    replace: "      - 'i18n/**'",
+    sites: 2,
     expect: 'does not run on changes to it',
   },
   {

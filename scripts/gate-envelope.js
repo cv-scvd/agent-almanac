@@ -47,6 +47,7 @@
  *   export const cases = [
  *     { label: '...', file: 'scripts/x.sh', find: '...', replace: '...', expect: 'FAIL substring' },
  *     { label: '...', file: '...', find: '...', replace: '...', expect: null, why: 'documented limit' },
+ *     { label: '...', file: '...', find: '...', replace: '...', expect: '...', sites: 2 },
  *   ];
  */
 
@@ -210,14 +211,20 @@ for (const c of cases) {
     continue;
   }
   const before = readFileSync(abs, 'utf8');
+  // `sites` defaults to 1 and is an explicit COUNT, not an `allowMultiple` boolean. A boolean
+  // says "however many there are is fine", which is the same silence as no check: a find string
+  // that starts matching a third site after an unrelated edit would still pass. Naming the
+  // number turns that into a failure. Two real cases here match twice because A10's own comment
+  // quotes the command it guards.
+  const wanted = c.sites ?? 1;
   const sites = before.split(c.find).length - 1;
-  if (sites !== 1) {
+  if (sites !== wanted) {
     // Zero is the dangerous one: the case would "pass" having changed nothing.
-    console.log(`[INCONCLUSIVE] ${c.label} — ${sites} match site(s) for the \`find\` text, expected exactly 1`);
+    console.log(`[INCONCLUSIVE] ${c.label} — ${sites} match site(s) for the \`find\` text, expected exactly ${wanted}`);
     problems += 1;
     continue;
   }
-  const mutant = before.replace(c.find, c.replace);
+  const mutant = before.split(c.find).join(c.replace);
   const syntax = syntaxCheck(abs, mutant);
   if (!syntax.ok) {
     console.log(`[INVALID]  ${c.label} — the mutant does not parse, so any red is meaningless\n           ${syntax.detail}`);

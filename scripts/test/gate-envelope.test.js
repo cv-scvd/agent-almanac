@@ -179,6 +179,67 @@ test('a mutant that does not parse is INVALID, not a kill', () => {
   }
 });
 
+test('a case may declare N sites, and a drift from N is still refused', () => {
+  // `sites` is a count, not an `allowMultiple` boolean. A boolean says "however many there are
+  // is fine", which is the same silence as no check — a find string that starts matching a third
+  // site after an unrelated edit would still pass. Naming the number turns that into a failure.
+  const dir = makeTree([{
+    label: 'both markers removed',
+    file: 'subject.sh',
+    find: 'GUARDED',
+    replace: 'gone',
+    sites: 1,
+  }]);
+  try {
+    // The fixture has one GUARDED; declaring 1 is right, so this must run and kill.
+    const { out } = runTool(dir);
+    assert.match(out, /\[KILLED\]|\[WRONG-RED\]/, 'a correct site count must not be refused');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+
+  const dir2 = makeTree([{
+    label: 'declares two sites but there is one',
+    file: 'subject.sh',
+    find: 'GUARDED',
+    replace: 'gone',
+    expect: 'the GUARDED marker is gone',
+    sites: 2,
+  }]);
+  try {
+    const { status, out } = runTool(dir2);
+    assert.match(out, /\[INCONCLUSIVE\].*1 match site\(s\).*expected exactly 2/s);
+    assert.equal(status, 1);
+  } finally {
+    rmSync(dir2, { recursive: true, force: true });
+  }
+});
+
+test('every site is mutated when a case declares more than one', () => {
+  // `String.replace` with a string pattern replaces only the FIRST occurrence — a trap that
+  // would leave a `sites: 2` case half-mutated, and the gate might well stay green on the
+  // survivor, scoring the property as unenforced when it is merely half-broken.
+  const dir = mkdtempSync(join(tmpdir(), 'aa-envelope-multi-'));
+  try {
+    writeFileSync(join(dir, 'subject.sh'), '#!/usr/bin/env bash\n# GUARDED a\n# GUARDED b\necho hi\n');
+    writeFileSync(join(dir, 'check.sh'),
+      '#!/usr/bin/env bash\n'
+      + 'n=$(grep -c GUARDED subject.sh)\n'
+      + 'if [ "$n" = "2" ]; then echo "OK: both markers present"; exit 0; fi\n'
+      + 'echo "FAIL: expected 2 markers, found $n"\nexit 1\n');
+    writeFileSync(join(dir, 'spec.mjs'),
+      "export const gate = { command: ['bash', 'check.sh'] };\n"
+      + 'export const cases = [{ label: "both", file: "subject.sh", find: "# GUARDED",'
+      + ' replace: "# gone", expect: "expected 2 markers, found 0", sites: 2 }];\n');
+    const { status, out } = runTool(dir);
+    assert.match(out, /\[KILLED\]/);
+    assert.match(out, /found 0/, 'both sites must be mutated, not just the first');
+    assert.equal(status, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('a non-green baseline refuses to measure anything', () => {
   const dir = makeTree([KILLABLE]);
   try {
