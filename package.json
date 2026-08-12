@@ -67,6 +67,7 @@
     "guard:release": "node scripts/repo-guard.js verify --release",
     "coverage:evals": "node scripts/eval-coverage.js",
     "mutation-check": "node scripts/mutation-check.js",
+    "gate-envelope": "node scripts/gate-envelope.js",
     "translation:status": "node scripts/generate-translation-status.js",
     "translate:scaffold": "bash scripts/translate-content.sh",
     "test": "npm run validate:integrity && npm run check-readmes",

@@ -406,10 +406,19 @@ a10_flat=""
 # Counted separately, because they mean different things: `a10_full` is surfaces required to
 # carry every tree, `a10_flatsites` is surfaces legitimately carrying only the non-nested ones.
 # Reported rather than asserted -- the assertion is per site, against the form that site's own
-# behaviour requires. An earlier version asserted on the COUNT instead, which passed while a
-# full loop degraded to flat.
+# behaviour requires.
+#
+# `a10_loops_full` is asserted, and is LOOP-ONLY on purpose. The per-site rule and a count rule
+# catch different drifts, so this repo now carries both. The per-site rule misses CO-DELETION:
+# remove a loop's `= "skills"` branch AND drop `skills` from its list in one edit and it is a
+# well-formed flat loop, silently. Do that to both full loops and no loop iterates the nested
+# tree anywhere. Counting only loops is what makes that visible -- `a10_full` cannot, because
+# translate-content.sh's three surfaces always count full and would report `3 full` on a corpus
+# with zero full loops.
 a10_full=0
 a10_flatsites=0
+a10_loops_full=0
+a10_checked_find=0
 
 a10_all=$(sed -n 's/^export const CONTENT_TYPES = Object.freeze(\[\(.*\)\]);$/\1/p' scripts/lib/content-types.js \
   | tr -d "'\"" | tr ',' ' ' | tr -s ' ' '\n' | sed '/^$/d' | sort || true)
@@ -474,19 +483,60 @@ else
       # The branch sits 4 lines into both real cases; 10 is margin. A restructure that moves it
       # further reads here as "flat loop with a full list" and FAILS -- loud and worth reading,
       # which is the right direction for a heuristic window.
+      # F5: `[a-z ]+` above admits no hyphen. A hyphenated tree name would make its loop line
+      # unmatchable while the SSOT parse handled it fine -- widen both together if that day comes.
       if sed -n "${a10_line},$((a10_line + 10))p" "$a10_file" | grep -qE "= \"($a10_nested_re)\""; then
-        a10_want="$a10_all"; a10_form="full (it branches on a nested tree)"
+        a10_want="$a10_all"; a10_form="full: a \`= \"<nested tree>\"\` branch appears within 10 lines"
       else
-        a10_want="$a10_flat"; a10_form="flat (it never branches on a nested tree)"
+        a10_want="$a10_flat"; a10_form="flat: no \`= \"<nested tree>\"\` branch within 10 lines (a branch written as \`case\`, \`[[ == ]]\`, or with single quotes reads as absent here)"
       fi
       if [ "$a10_list" = "$a10_want" ]; then
-        if [ "$a10_want" = "$a10_all" ]; then a10_full=$((a10_full + 1)); else a10_flatsites=$((a10_flatsites + 1)); fi
+        if [ "$a10_want" = "$a10_all" ]; then
+          a10_full=$((a10_full + 1)); a10_loops_full=$((a10_loops_full + 1))
+        else
+          a10_flatsites=$((a10_flatsites + 1))
+        fi
       else
         echo "FAIL: $a10_file:$a10_line iterates [$(printf '%s' "$a10_list" | tr '\n' ' ')] but must be $a10_form: [$(printf '%s' "$a10_want" | tr '\n' ' ')]"
         failed=1; a10_fail=1
       fi
     done <<< "$a10_hits"
   done
+
+  # Catches TOTAL degradation. It does not catch PARTIAL co-deletion -- one loop losing both its
+  # branch and its list entry while another full loop survives -- and nothing here can, because
+  # co-deletion removes every signal in the file that the loop ever handled the nested tree.
+  # Distinguishing "deliberately stopped handling skills" from "accidentally stopped" needs a
+  # human-declared expectation, i.e. the per-file inventory this check exists to avoid. Tracked
+  # rather than papered over.
+  if [ "$a10_loops_full" -eq 0 ]; then
+    echo "FAIL: A10 found no loop iterating the FULL content-type list -- nested trees are walked nowhere. If that is deliberate, this line is the place to say so."
+    failed=1; a10_fail=1
+  fi
+
+  # B5's reference corpus, a SEVENTH site and the same flat/nested split in a different shape:
+  # two `find` pathspecs whose union must be the SSOT -- `find agents teams guides -name '*.md'`
+  # plus `find skills -name 'SKILL.md'`. Invisible to the loop pattern above, and missed by both
+  # #585's inventory and the first version of this check. Add a fifth mirrored tree and B5's
+  # reference corpus silently omits it, so skills referenced only from that tree read as orphans.
+  a10_find_flat=$(grep -oE "^find [a-z ]+ -name '\*\.md'" scripts/validate-integrity.sh \
+    | sed -E "s/^find //; s/ -name '\*\.md'\$//" | tr -s ' ' '\n' | sed '/^$/d' | sort || true)
+  a10_find_nested=$(grep -oE "^find [a-z ]+ -name 'SKILL\.md'" scripts/validate-integrity.sh \
+    | sed -E "s/^find //; s/ -name 'SKILL\.md'\$//" | tr -s ' ' '\n' | sed '/^$/d' | sort || true)
+  if [ -z "$a10_find_flat" ] || [ -z "$a10_find_nested" ]; then
+    echo "FAIL: A10 could not extract B5's find pathspecs -- that site is UNCHECKED"
+    failed=1; a10_fail=1
+  else
+    a10_checked_find=1
+    if [ "$a10_find_flat" != "$a10_flat" ]; then
+      echo "FAIL: B5's flat find walks [$(printf '%s' "$a10_find_flat" | tr '\n' ' ')] but the non-nested trees are [$(printf '%s' "$a10_flat" | tr '\n' ' ')]"
+      failed=1; a10_fail=1
+    fi
+    if [ "$a10_find_nested" != "$a10_nested" ]; then
+      echo "FAIL: B5's SKILL.md find walks [$(printf '%s' "$a10_find_nested" | tr '\n' ' ')] but the nested trees are [$(printf '%s' "$a10_nested" | tr '\n' ' ')]"
+      failed=1; a10_fail=1
+    fi
+  fi
 
   # A10d: this job must actually RUN when one of the files A10 reads changes.
   #
@@ -539,7 +589,7 @@ else
       | sed -E 's/^Use: //' | tr ',' ' ' | tr -s ' ' '\n' | sed '/^$/d' | sort || true)"
 fi
 
-[ "$a10_fail" -eq 0 ] && echo "OK: $((a10_full + a10_flatsites)) shell/YAML content-type list(s) agree with CONTENT_TYPES ($a10_full full, $a10_flatsites flat)"
+[ "$a10_fail" -eq 0 ] && echo "OK: $((a10_full + a10_flatsites + a10_checked_find * 2)) shell/YAML content-type list(s) agree with CONTENT_TYPES ($a10_loops_full full loop(s), $a10_flatsites flat loop(s), $((a10_full - a10_loops_full)) full surface(s), $((a10_checked_find * 2)) find pathspec(s))"
 
 echo ""
 echo "=== Category B: Structural Integrity ==="

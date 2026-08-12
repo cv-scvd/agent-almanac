@@ -138,14 +138,24 @@ const SOURCE = { skills: 369, agents: 75, teams: 22, guides: 34, total: 500 };
  * A four-tree literal, and it is CORRECT to keep — do not "fix" it to `CONTENT_TYPES` (#585).
  *
  * #578 routed the production consumers through the SSOT and A10 now asserts the shell and YAML
- * ones against it, so a literal here looks like the one that got away. It is the opposite: a
- * fixture that derived its expectation from the SSOT could not detect SSOT corruption. Reorder
- * or truncate `CONTENT_TYPES` and every assertion below would move with it, agreeing with the
- * broken value and reporting green.
+ * ones against it, so a literal here looks like the one that got away. It is not.
  *
- * The rule that separates the two cases: derive when the literal is an INPUT the code acts on,
- * hardcode when it is the EXPECTATION the code is measured against. A test that shares its
- * subject's source of truth is measuring the subject against itself.
+ * `TYPES` is the third ARGUMENT of `renderTranslationsTable`, which production fills with
+ * `CONTENT_TYPES` at `generate-readmes.js:638`. These are unit tests of a pure renderer, and
+ * pinning its input locally is what keeps them unit tests: derive it, and a legitimate fifth
+ * tree turns this file red for a reason that has nothing to do with the renderer. That is
+ * noise, not detection.
+ *
+ * Note what does NOT justify keeping it — an earlier version of this comment claimed a derived
+ * `TYPES` would make the assertions "move with it, agreeing with the broken value and reporting
+ * green". That is backwards. The assertions below are hardcoded regexes over rendered rows
+ * (`| 328/369 | 3/75 | 1/22 | 2/34 |`), so a truncated or reordered SSOT would drop or move a
+ * column and they would go RED. They anchor the table's shape regardless of what is injected,
+ * which is exactly why injecting a literal costs nothing here.
+ *
+ * SSOT corruption is caught elsewhere and does not need catching here: A10 goes red when the
+ * SSOT disagrees with any of the eight shell/YAML sites, and `content-types-propagation.test.js`
+ * pins the JS consumers.
  */
 const TYPES = ['skills', 'agents', 'teams', 'guides'];
 
