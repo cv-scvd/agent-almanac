@@ -32,6 +32,7 @@
  */
 import { readFileSync, readdirSync, statSync, existsSync } from 'fs';
 import { join, relative } from 'path';
+import { CONTENT_TYPES } from './lib/content-types.js';
 
 /**
  * The banned forms and what to use instead.
@@ -59,8 +60,19 @@ const EXEMPT_SKILLS = new Map([
   ['render-icon-pipeline', 'Quotes the banned forms in order to ban them ("Never run ...").'],
 ]);
 
-/** Trees to walk. `docs/` is excluded: it analyses what build.sh calls internally. */
-const TREES = ['skills', 'agents', 'teams', 'guides'];
+/**
+ * Trees to walk, derived from the SSOT (#578). `docs/` is excluded: it analyses what
+ * build.sh calls internally.
+ *
+ * Sharing the constant is justified rather than convenient: this walks both the English
+ * trees and their locale MIRRORS (join(locDir, tree)), and mirrors exist for exactly the
+ * content types. If the two ever needed to diverge, that divergence would itself be the
+ * bug — a content type with a mirror that this gate does not scan.
+ *
+ * Local binding, not a bare re-export: this module reads TREES internally. (Nothing is
+ * exported from here — it is an imported binding aliased to a local const.)
+ */
+const TREES = CONTENT_TYPES;
 
 function parseArgs(argv) {
   const out = { root: process.cwd(), list: false };

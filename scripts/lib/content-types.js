@@ -16,8 +16,12 @@
  *
  * The repo has FIVE content types; `workflows` is the fifth and is deliberately absent here,
  * because it has no `i18n/` mirror and no column in the README translation table. Every
- * consumer of this module is translation machinery. Anyone arriving by the name looking for
- * "all content types" wants the registries, not this.
+ * consumer of this module is translation-adjacent, but NOT all of it is translation machinery:
+ * `check-banned-invocations.js` is a content-integrity gate that happens to walk the mirrors
+ * too. That matters in the REMOVAL direction — drop a tree here because its i18n mirror goes
+ * away, and that gate silently stops scanning the tree's ENGLISH markdown as well, with
+ * nothing red anywhere. Adding is safe; removing must audit the non-translation consumers.
+ * Anyone arriving by the name looking for "all content types" wants the registries, not this.
  *
  * ## Still not the source of EVERY per-type surface
  *

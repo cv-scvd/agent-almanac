@@ -67,6 +67,7 @@ import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { assertNotShallow } from './lib/git-freshness.js';
 import { extractFences, buildEnglishFenceHistory, isGated } from './lib/fences.js';
+import { CONTENT_TYPES } from './lib/content-types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -104,16 +105,35 @@ const ONLY_ID = flagValue('--id', null);
  * says "any translated file" — and the mirrors carry 168 gated fences that a
  * skills-only walk never opens. Covering them is what makes the documented rule
  * true.
+ *
+ * The DIRECTORY LIST is derived from the SSOT (#578), so this gate and the English-history
+ * side in `fences.js` cannot disagree about which trees exist. The nesting flag stays local
+ * because it is a different fact — the layout of one tree, not the set of trees.
+ *
+ * `NESTING` is a record with a THROW, not a Set with a default. The first version used
+ * `NESTED.has(dir)`, which is a silently-defaulting predicate: an unclassified tree gets
+ * `false`, its entries are directories, they fail the `.endsWith('.md')` test in
+ * `collectTargets`, and the tree contributes zero targets — so the gate prints OK having
+ * scanned nothing. There is no per-tree zero-target guard to catch it. That is the
+ * vacuous-pass shape this repo keeps paying for, and the comment claiming the opposite was
+ * worse than the code.
+ *
+ * Throwing at module load means a fifth tree in the SSOT breaks every CI invocation of this
+ * gate until someone declares its layout. Loud is the point.
  */
-const TREES = [
-  { dir: 'skills', nested: true },   // i18n/<loc>/skills/<id>/SKILL.md
-  { dir: 'agents', nested: false },  // i18n/<loc>/agents/<id>.md
-  { dir: 'teams', nested: false },
-  { dir: 'guides', nested: false },
-];
+const NESTING = { skills: true, agents: false, teams: false, guides: false };
+export const TREES = CONTENT_TYPES.map((dir) => {
+  if (!(dir in NESTING)) {
+    throw new Error(
+      `check-i18n-fence-parity: content type '${dir}' has no declared i18n layout. `
+      + 'Add it to NESTING (true if mirrored as <dir>/<id>/FILE.md, false if <dir>/<id>.md).',
+    );
+  }
+  return { dir, nested: NESTING[dir] };
+});
 
 /** Every translated file to compare, as { relPath, absPath, locale, id, tree }. */
-function collectTargets() {
+export function collectTargets() {
   const out = [];
   for (const locale of readdirSync(I18N_DIR)) {
     if (ONLY_LOCALE && locale !== ONLY_LOCALE) continue;
@@ -232,4 +252,10 @@ function main() {
   process.exit(blocking.length > 0 && !WARN_ONLY ? 1 : 0);
 }
 
-main();
+// Guarded so the module can be IMPORTED by a test without running the gate. Without this,
+// importing to check anything executes the whole walk — which is why the fifth-tree check
+// was a regex over source text, asserting token presence rather than behaviour. The pattern
+// matches check-readme-translation-parity.js, and it is what dependency-free.test.js relies on.
+if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
+  main();
+}
