@@ -12,11 +12,29 @@
  * add up, so nothing *lies* and nothing goes red. A gate that stays green while ignoring a
  * whole content tree is the failure this repo keeps rediscovering.
  *
+ * ## Not every content type — the four with i18n mirrors
+ *
+ * The repo has FIVE content types; `workflows` is the fifth and is deliberately absent here,
+ * because it has no `i18n/` mirror and no column in the README translation table. Every
+ * consumer of this module is translation machinery. Anyone arriving by the name looking for
+ * "all content types" wants the registries, not this.
+ *
+ * ## Still not the source of EVERY per-type surface
+ *
+ * A fifth entry added here does not flow through to the positional row schema in
+ * `check-readme-translation-parity.js` — the nine-cell width check, the destructure, and the
+ * `cells = { skills, agents, teams, guides }` literal are hand-written and would not gain a
+ * column. Traced end to end, each of those fails CLOSED (a missing `coverage.<new>` key
+ * throws, exit 2; the width check throws, exit 2), so the drift is loud rather than silent —
+ * which is the property that matters. But this module is the source of the LIST, not of the
+ * table's shape, and saying otherwise would be the overstatement this repo keeps paying for.
+ *
  * ## ZERO IMPORTS, BY CONSTRUCTION — do not add one
  *
- * `check-readme-translation-parity.js` is imported by integrity check B13, and
- * `.github/workflows/validate-integrity.yml` runs with `setup-node` but deliberately NO
- * `npm ci` (the constraint A8 documents). So B13 must reach nothing outside node builtins,
+ * `check-readme-translation-parity.js` is RUN by integrity check B13 as a child process
+ * (`validate-integrity.sh`: `node scripts/check-readme-translation-parity.js`), and
+ * `.github/workflows/validate-integrity.yml` runs that job with `setup-node` but deliberately
+ * NO `npm ci` (the constraint A8 documents). So it must reach nothing outside node builtins,
  * *transitively*. A single `import` added here would break B13 in CI only — green on every
  * developer machine, where `node_modules` exists — which is the worst shape a break can have.
  *
