@@ -69,7 +69,8 @@ const EXEMPT_SKILLS = new Map([
  * content types. If the two ever needed to diverge, that divergence would itself be the
  * bug — a content type with a mirror that this gate does not scan.
  *
- * Local binding, not a bare re-export: this module reads TREES internally.
+ * Local binding, not a bare re-export: this module reads TREES internally. (Nothing is
+ * exported from here — it is an imported binding aliased to a local const.)
  */
 const TREES = CONTENT_TYPES;
 
