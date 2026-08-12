@@ -487,9 +487,10 @@ export function classifyTranslation({ translatedText, locale, english }) {
  * so an uncommitted English edit counts as English too.
  *
  * The walk itself is `walkEnglishHistory` in `english-history.js`, shared with
- * `buildEnglishFenceHistory` (#559). Its two known gaps push this module's four collectors in
- * OPPOSITE directions, so "fix the walk" cannot be decided from here — that table is at the
- * walker, which is the only place that sees all of them.
+ * `buildEnglishFenceHistory` (#559). Its two known gaps push this module's three collectors —
+ * `lines`, `fenceShapes`, `fenceLines` — in OPPOSITE directions, and the two in `fences.js`
+ * differ again, so "fix the walk" cannot be decided from here. That table is at the walker,
+ * which is the only place that sees all five.
  *
  * @param {string} root repository root
  * @returns {Map<string, {lines: Set<string>, fenceShapes: Set<string>, fenceLines: Set<string>}>}

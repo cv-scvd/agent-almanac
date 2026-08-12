@@ -8,15 +8,17 @@
  * nothing — yet in `fences.js` the pool is a *violation* basis, so corrupting it manufactures
  * false fence violations against real translations.
  *
- * The branch was unreachable for a mundane reason: `git cat-file --batch` only emits a
- * `missing` header when a spec names a path absent from that commit, which happens when a
- * commit DELETES a file — and no fixture repo in this suite had ever deleted one. So the
- * fixture below deletes a skill. That is not a synthetic corruption; it is what this repo does
- * whenever a skill is removed, which is why the line was written in the first place.
+ * `git cat-file --batch` emits a `missing` header only for a spec naming a path absent from its
+ * commit — that is, a DELETION commit. `translation-status.test.js` already builds such a
+ * fixture (`'a missing blob does not shift the batch parser onto the wrong key'`), which is
+ * exactly why the mutation dies on that side. So the branch was never unreachable in principle;
+ * it was unreachable through `buildEnglishFenceHistory`, which until #559 took no `root`
+ * argument and closed over the module's own repo root. Nothing could point it at a fixture, so
+ * nothing did.
  *
- * `buildEnglishFenceHistory` also took no `root` argument until #559, closing over the module's
- * own repo root. Nothing could point it at a fixture, so nothing did. These tests exercise it
- * through the parameter that made them possible.
+ * These tests therefore do two things the prose-side test cannot: they exercise the walk through
+ * the fences builder, and they pin the shared walk itself, so the coverage cannot go asymmetric
+ * again by one caller quietly growing a second copy.
  */
 
 import { test } from 'node:test';
@@ -26,7 +28,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { execFileSync, spawnSync } from 'child_process';
 
-import { walkEnglishHistory } from '../lib/english-history.js';
+import { walkEnglishHistory, collectSpecs } from '../lib/english-history.js';
 import { buildEnglishFenceHistory } from '../lib/fences.js';
 import { buildEnglishProseHistory } from '../lib/translation-status.js';
 
@@ -72,17 +74,19 @@ function makeFixture() {
 
 const sorted = (set) => [...set].sort();
 
-test('the fixture really does produce a `missing` header — otherwise it proves nothing', () => {
+test("the walker's own spec list produces a `missing` header — otherwise this proves nothing", () => {
   const dir = makeFixture();
   try {
-    const log = execFileSync('git', ['log', '--format=%x00%H', '--name-only', '--', 'skills'],
-      { cwd: dir, encoding: 'utf8' });
-    const specs = [];
-    let commit = null;
-    for (const line of log.split('\n')) {
-      if (line.startsWith('\x00')) { commit = line.slice(1).trim(); continue; }
-      if (line && commit) specs.push(`${commit}:${line}`);
-    }
+    // `collectSpecs`, not a hand-rolled copy. Rebuilding the spec list inside the test would
+    // prove the FIXTURE emits a missing header while saying nothing about the stream the walker
+    // actually parses, and the two come apart the moment spec-building changes: filter deleted
+    // paths there and the branch below goes dead with every test still green, because alpha's
+    // earlier revision still arrives under its own spec.
+    const specs = collectSpecs(dir);
+    const deletionCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim();
+    assert.ok(specs.includes(`${deletionCommit}:skills/alpha/SKILL.md`),
+      'the walk must look at the deleted path under the commit that deleted it');
+
     const batch = spawnSync('git', ['cat-file', '--batch'],
       { cwd: dir, input: Buffer.from(`${specs.join('\n')}\n`, 'utf8') });
     assert.match(batch.stdout.toString('utf8'), / missing\n/,

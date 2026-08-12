@@ -11,11 +11,15 @@
  *
  * The two copies had asymmetric COVERAGE, and the untested one is the strict-direction
  * consumer. Measured: deleting the `missing|ambiguous` skip from the translation-status copy
- * kills a test; deleting the identical line from the fences copy left the suite green. The
- * enclosing function does run during the suite (the normalizer's fixture repo drives it), so
- * it was the `missing` BRANCH that was uncovered — `git cat-file --batch` emits that header
- * only for a spec naming a path absent from its commit, i.e. a DELETION commit, and no fixture
- * repo in this suite had ever deleted a file. `english-history.test.js` now does.
+ * kills a test; deleting the identical line from the fences copy left the suite green.
+ *
+ * The asymmetry is not that the branch was unreachable in principle. It was already covered on
+ * the prose side — `translation-status.test.js`'s `'a missing blob does not shift the batch
+ * parser onto the wrong key'` builds a repo that deletes a skill, which is what makes
+ * `git cat-file --batch` emit a `missing` header at all (it does so only for a spec naming a
+ * path absent from its commit). The asymmetry is that NO fixture could drive the fences copy,
+ * covered branch or not, because `buildEnglishFenceHistory()` took no `root` (below). Sharing
+ * one walk is what gives the strict consumer the coverage the lenient one already had.
  *
  * That matters because of which way each consumer's errors point. In translation-status.js a
  * misparse shrinks a pool, so a scaffold shows novel lines and reads as translated — lenient.
@@ -49,6 +53,40 @@ import { contentKey } from './content-paths.js';
 const GIT_BUFFER = 2048 * 1024 * 1024;
 
 /**
+ * Every `<commit>:<path>` spec the walk will resolve: one per revision of each English content
+ * file, deduplicated, with non-content paths dropped by `contentKey`.
+ *
+ * Exported so a test can assert what the walk ACTUALLY looks at. Without that, a test can only
+ * rebuild the spec list itself and assert against its own copy — which proves the fixture emits
+ * a `missing` header, not that the walker's stream contains one. Those come apart the moment
+ * spec-building changes: filter deleted paths here and the `missing` branch goes dead while
+ * every test stays green, because a deleted file's earlier revisions still arrive by their own
+ * specs.
+ *
+ * @param {string} root repository root
+ * @returns {string[]} specs in `git log` order, newest commit first
+ */
+export function collectSpecs(root) {
+  const log = execFileSync(
+    'git', ['log', '--format=%x00%H', '--name-only', '--', ...CONTENT_TYPES],
+    { cwd: root, encoding: 'utf8', maxBuffer: GIT_BUFFER },
+  );
+
+  const specs = [];
+  const seen = new Set();
+  let commit = null;
+  for (const line of log.split('\n')) {
+    if (line.startsWith('\x00')) { commit = line.slice(1).trim(); continue; }
+    if (!line || !commit || contentKey(line) === null) continue;
+    const spec = `${commit}:${line}`;
+    if (seen.has(spec)) continue;
+    seen.add(spec);
+    specs.push(spec);
+  }
+  return specs;
+}
+
+/**
  * Call `onBlob(key, text, meta)` for every revision of every English content file, then once
  * more per file for the working tree.
  *
@@ -63,7 +101,7 @@ const GIT_BUFFER = 2048 * 1024 * 1024;
  * `contentKey` normalises, but not for an id rename).
  *
  * Both gaps SHRINK the pool. What a shrunk pool does then depends entirely on which collector
- * is reading it, and the five differ — three tighten, two loosen:
+ * is reading it, and the five differ — two tighten, two loosen, one is untouched:
  *
  *   - **fence bodies** (`buildEnglishFenceHistory`): the pool is a *violation* basis, so a
  *     missing revision manufactures a false violation against a real translation — strict.
@@ -81,27 +119,20 @@ const GIT_BUFFER = 2048 * 1024 * 1024;
  * changed the pool by 0 lines and the verdict set by 0 files. That was measured for the prose
  * side only — re-measure all five before changing the walk.
  *
+ * There is deliberately no `trees` option. An earlier draft had one, defaulting to
+ * `CONTENT_TYPES` and used by nobody — and it could not have worked, because `contentKey`
+ * decides membership against `CONTENT_TYPES` regardless of what the option says. Passing
+ * `{trees: ['docs']}` would have narrowed the `git log` pathspec and then filtered every
+ * resulting path back out, walking nothing and reporting success. That is the guard-proxy shape
+ * CLAUDE.md's `--tree` lesson already names: scope validated against a static list rather than
+ * against what the run actually reached. An unused parameter that cannot be used correctly is
+ * worse than no parameter.
+ *
  * @param {string} root repository root
- * @param {(key: string, text: string, meta: {fromWorkingTree: boolean, path?: string}) => void} onBlob
- * @param {{trees?: readonly string[]}} [options]
+ * @param {(key: string, text: string, meta: {fromWorkingTree: boolean, path: string}) => void} onBlob
  */
-export function walkEnglishHistory(root, onBlob, { trees = CONTENT_TYPES } = {}) {
-  const log = execFileSync(
-    'git', ['log', '--format=%x00%H', '--name-only', '--', ...trees],
-    { cwd: root, encoding: 'utf8', maxBuffer: GIT_BUFFER },
-  );
-
-  const specs = [];
-  const seen = new Set();
-  let commit = null;
-  for (const line of log.split('\n')) {
-    if (line.startsWith('\x00')) { commit = line.slice(1).trim(); continue; }
-    if (!line || !commit || contentKey(line) === null) continue;
-    const spec = `${commit}:${line}`;
-    if (seen.has(spec)) continue;
-    seen.add(spec);
-    specs.push(spec);
-  }
+export function walkEnglishHistory(root, onBlob) {
+  const specs = collectSpecs(root);
 
   if (specs.length) {
     const batch = spawnSync('git', ['cat-file', '--batch'], {
@@ -133,6 +164,9 @@ export function walkEnglishHistory(root, onBlob, { trees = CONTENT_TYPES } = {})
       // A missing or ambiguous object emits a header and NO body. Failing to advance `index`
       // past it shifts every later blob onto the wrong key — a silent, total corruption of the
       // pool. This is the line whose deletion the fences copy could not detect.
+      //
+      // Reached whenever history contains a DELETION: `git log --name-only` lists the deleted
+      // path under the commit that removed it, and `<that commit>:<that path>` does not exist.
       if (/ (missing|ambiguous)$/.test(header)) { index += 1; continue; }
       const size = Number.parseInt(header.split(' ')[2], 10);
       if (!Number.isFinite(size)) break;
@@ -146,7 +180,7 @@ export function walkEnglishHistory(root, onBlob, { trees = CONTENT_TYPES } = {})
     }
   }
 
-  for (const tree of trees) {
+  for (const tree of CONTENT_TYPES) {
     const base = join(root, tree);
     if (!existsSync(base)) continue;
     for (const entry of readdirSync(base)) {

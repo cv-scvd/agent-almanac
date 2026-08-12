@@ -74,18 +74,27 @@ export const isGated = (fence) => !LOCALISABLE_TAGS.has(fence.lang);
  *
  * Re-exported from the SSOT (#568), NOT re-declared. Note the shape: `import` plus
  * `export const`, never `export { CONTENT_TYPES as TREES } from './content-types.js'` — a bare
- * re-export creates no LOCAL binding, and this module reads `TREES` internally in
- * `contentKey`, in the `git log` pathspec, and in the working-tree walk. Measured: 42 of 224
- * tests fail with `ReferenceError: TREES is not defined`.
+ * re-export creates no LOCAL binding.
+ *
+ * Stated as a rule rather than as a fact about this file, because the fact expired. The
+ * original wording said this module reads `TREES` internally "in `contentKey`, in the `git log`
+ * pathspec, and in the working-tree walk" (measured then: 42 of 224 tests failing with
+ * `ReferenceError: TREES is not defined`). #559 moved all three of those out, so today nothing
+ * here reads it and a bare re-export would in fact work. Keep the shape anyway: the next line
+ * added to this module that uses `TREES` would otherwise fail at a distance from the edit, and
+ * a comment justifying a shape by a condition that can silently stop holding is worse than no
+ * comment.
  */
 export const TREES = CONTENT_TYPES;
 
 /**
  * Re-exported, not re-declared: `contentKey` now lives in `content-paths.js` so the shared
  * history walker can key blobs without importing this module, which imports the walker (#559).
- * Six call sites import it from here, and the `import` + `export` pair below keeps every one of
- * them working — note it is deliberately NOT a bare `export { contentKey } from ...`, which
- * would create no local binding, the same trap already documented for `TREES` above.
+ * Four modules import it from here — `normalize-i18n-fences.js`, `lib/translation-status.js`,
+ * `check-yaml-fences.js`, `test/fences.test.js` — and this keeps all four working unchanged.
+ *
+ * Same `import` + `export` shape as `TREES` above, for the same forward-looking reason and with
+ * the same caveat: nothing in this module reads `contentKey` internally today either.
  */
 export { contentKey };
 
@@ -106,7 +115,7 @@ export { contentKey };
  * duplicated walk had no test: nothing could point it at a fixture repo (#559).
  *
  * @param {string} [root] repository root
- * @returns {Map<string, Set<string>> & {current: Map<string, import('./fences.js').Fence[]>}}
+ * @returns {Map<string, Set<string>> & {current: Map<string, Fence[]>}}
  */
 export function buildEnglishFenceHistory(root = ROOT) {
   const history = new Map();
