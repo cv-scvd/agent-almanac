@@ -35,6 +35,19 @@ on:
       # regenerate the counts it decides. Load-bearing since #560, because the
       # README table now derives from those counts too.
       - 'scripts/lib/translation-status.js'
+      # Same reason, and the same mistake waiting to be repeated (#566): the pure half of
+      # generate-readmes.js now lives here, so a change to how a section RENDERS must
+      # regenerate the sections it decides. Nothing would catch the omission — A8 validates
+      # file_pattern and the negations, never generator-input triggers.
+      - 'scripts/lib/readme-sections.js'
+      - 'scripts/lib/content-types.js'
+      # The middle of the chain, and it was skipped while BOTH endpoints were listed:
+      #   generate-translation-status.js -> lib/translation-status.js -> lib/fences.js
+      # fences.js is not a passive re-exporter — extractFences, isGated, contentKey,
+      # fenceShape and hasSwallowedOpener decide stub classification, which sets the
+      # translated/stubs figures the README renders verbatim. A push touching only this file
+      # changed generated output while matching no trigger path.
+      - 'scripts/lib/fences.js'
       # The toolchain is an input too. generate-readmes.js parses YAML with js-yaml, so a
       # Dependabot bump that changes `yaml.load` behaviour changes generated output while
       # touching no content file and no generator -- nothing here matched, so the healer never
