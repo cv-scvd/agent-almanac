@@ -237,7 +237,10 @@ if (command === 'snapshot') {
   if (existsSync(SNAPSHOT_PATH) && !argv.includes('--force')) {
     die(`a snapshot already exists at ${SNAPSHOT_NAME}.\n` +
       'Another guarded run may be in progress — overwriting it would rebaseline its damage.\n' +
-      'Finish that run with `npm run guard:release`, or pass --force.');
+      'It records no owner, so releasing it from here would drop that run\'s baseline as soon\n' +
+      'as the tree happened to compare clean. To inspect the slot without disarming it, run\n' +
+      '`npm run guard:verify`. Let the run that armed it release its own, or pass --force only\n' +
+      'if you know that run is dead.');
   }
   const state = captureState();
   try {
