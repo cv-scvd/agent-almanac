@@ -495,6 +495,33 @@ test('every command this tool suggests is copy-pasteable', async (t) => {
   }
 });
 
+test('the occupied-slot refusal does not send the caller to release a slot it did not arm', async (t) => {
+  // The sibling test above asserts every message names *a* runnable `npm run
+  // guard:` entrypoint. That is not enough here, and the gap shipped: the
+  // original message said `Finish that run with npm run guard:release`, which
+  // satisfies that assertion while advising the one command that disarms
+  // another session's baseline. Release unlinks the snapshot whenever the
+  // comparison is clean, and the snapshot records no owner, so a peer in this
+  // repo clears every check `verify` makes. Reverting the message left all
+  // 301 tests green, which is what makes this assertion the coverage rather
+  // than the demonstration.
+  //
+  // Scoped to this one message deliberately: USAGE legitimately documents
+  // `guard:release`, so asserting corpus-wide would flag the help text.
+  const dir = makeRepo(t);
+  guard(dir, ['snapshot']);
+  const alreadyExists = guard(dir, ['snapshot']).stderr;
+
+  assert.doesNotMatch(alreadyExists, /guard:release/,
+    `the refusal points the arriving session at the one command that disarms the incumbent:\n${alreadyExists}`);
+  assert.match(alreadyExists, /guard:verify/,
+    `the refusal offers no non-destructive way to inspect the slot:\n${alreadyExists}`);
+  // npm swallows a bare `--force`, so the message must name the `--` form or the
+  // caller re-runs plain `snapshot` and hits this same refusal.
+  assert.match(alreadyExists, /guard:snapshot -- --force/,
+    `the refusal names a --force form npm will swallow:\n${alreadyExists}`);
+});
+
 test('a path containing spaces is quoted in the recovery command', async (t) => {
   const parent = mkdtempSync(join(tmpdir(), 'repo guard spaces-'));
   t.after(() => rmSync(parent, { recursive: true, force: true }));

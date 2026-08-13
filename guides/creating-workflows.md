@@ -189,6 +189,53 @@ means a stray write to `CONTINUE_HERE.md` would not be seen.
 until `npm run guard:release`. Both exist because a single global slot otherwise lets a
 nested run rebaseline the outer run's damage into a green.
 
+### Sharing the worktree with a peer session
+
+A second interactive Claude Code session can be running in this same worktree.
+That is not hypothetical: it happened, and a peer's `git add -A` swept another
+session's untracked file into a commit on the wrong branch. Two facts about the
+guard follow from it, and neither is obvious from the commands.
+
+**The snapshot records no owner.** It carries `formatVersion`, the captured
+state, `takenAt`, and `toplevel` — nothing that identifies which session armed
+it. `verify` fails closed on a snapshot from a *different repository* or a
+*different format version*, and those are the only two senses in which a
+snapshot is "foreign" to it. A peer in the same repo clears both checks, so
+`guard:release` from the wrong session drops the incumbent's baseline the moment
+the tree happens to compare clean. Never release a slot you did not arm.
+
+**The guard is a detector, and it must be armed before the thing it detects.**
+It cannot see a peer who was already working when you arrived, because there is
+no baseline from before their edits. So arriving in an occupied worktree is not
+a case the guard covers — it is a case for agreeing on scope.
+
+**And a verify against a slot you did not arm answers a question you did not
+ask.** Clean means the tree has not moved since that snapshot was taken — an
+incumbent whose fan-out has not written yet compares clean — never that the run
+has finished. Verify reports tree movement, not run liveness. Its failure output
+is worse to borrow: on a moved HEAD it prints `git reset --mixed <baseline>`,
+recovery advice written for whoever armed the snapshot, and following it from
+another session drops that session's commit. Use verify to look; do not act on
+what it tells you to do.
+
+The working rule, which is a matching condition rather than a lock:
+
+- **Declare path scope before your first edit**, not before your first commit —
+  by then the collision has already happened. Divide by **paths, not tasks**:
+  the tree is the shared resource, and two agents on unrelated tasks still
+  collide in one file.
+- **Stage explicit paths.** `git add -A`, `git add --all` and `git add .` cannot
+  distinguish your work from a neighbour's untracked file.
+- **Review the whole branch, not the tip**: `git diff origin/<base> --name-only`.
+  A `git show` on your last commit cannot show you what an earlier one swept in.
+- **Leave the neighbour's edges alone.** Additive files, and no rewriting of
+  what is already placed.
+
+A generated artifact is the backstop that actually caught the incident: `check-dreams`
+went red because an extra dream file made the committed atlas stale. Treat unexplained
+staleness in a generated file as evidence the corpus moved, and investigate before
+regenerating — regenerating first would have turned the job green and buried it.
+
 ### Contain the agents
 
 `workflows/_template.mjs` defines a `REPO_SAFETY` preamble — a plain `const`, not
@@ -231,7 +278,7 @@ The Workflow **run model** is generally available on paid Claude Code plans (~v2
 | A mutating stage is rejected / misbehaves | Stage targets an advisory `agentType` but needs to write | Target an `implementing` agent type for any Write/Edit/Bash or `worktree` stage |
 | A "read-only" run left the repo changed | Agents inherit the repo as their cwd; the declared `intent` does not constrain Bash | Apply the containments in [Fanning Out Against a Live Repository](#fanning-out-against-a-live-repository) and bracket the run with `npm run guard:snapshot` / `guard:verify` |
 | `guard:verify` says "no snapshot" | The snapshot was released, or never taken | Re-snapshot and re-run. Never read exit 2 as a pass — it means the comparison did not happen |
-| `guard:snapshot` says one already exists | Another guarded run is open, or an earlier one was never released | Close it with `npm run guard:release`. Do not `--force` unless you know the other run is dead: re-arming rebaselines its damage |
+| `guard:snapshot` says one already exists | Another guarded run is open, or an earlier one was never released | Do **not** run `guard:release` — the snapshot records no owner, so releasing drops whosever baseline it is (see [Sharing the worktree with a peer session](#sharing-the-worktree-with-a-peer-session)). Wait for that run to release its own, or `npm run guard:snapshot -- --force` only if you know it is dead: re-arming rebaselines its damage |
 | `Date.now is not a function` | Used a forbidden non-deterministic call | Pass the value via `args`; vary by index/label instead |
 
 ## Related Resources

@@ -115,6 +115,8 @@ It compares HEAD, branch, worktree status, **the content of every changed or unt
 
 It fails closed — a missing, unreadable, or foreign snapshot exits 2 rather than reporting success, and exit 2 must never be read as a pass. `snapshot` refuses to overwrite and `verify` keeps the snapshot until `guard:release`, so a nested run cannot rebaseline the outer run's damage into a green. **Ignored paths are out of scope** (walking them means hashing `node_modules`), so a stray write to `CONTINUE_HERE.md` would not be seen (#493).
 
+**A peer session may share this worktree**, and two limits follow. The snapshot records **no owner** — "foreign" above means only a different repository or format version — so `guard:release` from a second session in this repo drops the incumbent's baseline as soon as the tree compares clean: never release a slot you did not arm, and read a verify you did not arm as reporting tree movement, not run liveness. And the guard cannot see a peer who was already working when you arrived, because no baseline predates their edits. An occupied worktree is therefore a case for agreeing on path scope before your first *edit*, not for inspecting harder. The rules and their rationale: [Sharing the worktree with a peer session](guides/creating-workflows.md#sharing-the-worktree-with-a-peer-session).
+
 Agents that may run shell commands should also carry the `REPO_SAFETY` preamble from `workflows/_template.mjs` — `mktemp -d` rather than a shared path, `cd "$DIR" || exit 1`, and a `git rev-parse --show-toplevel` assertion before anything destructive. The preamble is documentation; the guard is the control.
 
 ## Adding a New Skill
