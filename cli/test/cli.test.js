@@ -9,7 +9,7 @@ import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execSync } from 'child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, readlinkSync, readFileSync, writeFileSync, symlinkSync } from 'fs';
-import { tmpdir } from 'os';
+import { tmpdir, homedir } from 'os';
 import { resolve } from 'path';
 
 // Direct imports for unit tests.
@@ -18,6 +18,7 @@ import { CopilotAdapter } from '../adapters/copilot.js';
 import { CursorAdapter } from '../adapters/cursor.js';
 import { GeminiAdapter } from '../adapters/gemini.js';
 import { HermesAdapter } from '../adapters/hermes.js';
+import { resolveHermesHome } from '../lib/hermes-home.js';
 import { OpenClawAdapter } from '../adapters/openclaw.js';
 import { OpenCodeAdapter } from '../adapters/opencode.js';
 import { VibeAdapter } from '../adapters/vibe.js';
@@ -481,6 +482,71 @@ describe('universal framework detection (#457)', () => {
   });
 });
 
+// ── hermes home resolution (#604) ───────────────────────────────
+//
+// detect() and both adapter bases used to hardcode homedir()/.hermes. A
+// Windows-native Hermes install lives at %LOCALAPPDATA%\hermes, and every
+// platform honors $HERMES_HOME — the adapter saw neither, and only a manual
+// directory junction made detection fire. These tests pin the resolution
+// order so a revert to the hardcoded path fails: the env-home case would
+// return homedir()/.hermes instead of the fixture, and the win32 case would
+// never reach the LOCALAPPDATA default.
+describe('resolveHermesHome (#604)', () => {
+  let tmpRoot;
+  let savedHermesHome;
+  let savedLocalAppData;
+
+  before(() => {
+    tmpRoot = mkdtempSync(resolve(tmpdir(), 'almanac-hermes-home-'));
+    savedHermesHome = process.env.HERMES_HOME;
+    savedLocalAppData = process.env.LOCALAPPDATA;
+  });
+
+  after(() => {
+    if (savedHermesHome === undefined) delete process.env.HERMES_HOME;
+    else process.env.HERMES_HOME = savedHermesHome;
+    if (savedLocalAppData === undefined) delete process.env.LOCALAPPDATA;
+    else process.env.LOCALAPPDATA = savedLocalAppData;
+    rmSync(tmpRoot, { recursive: true, force: true });
+  });
+
+  it('prefers $HERMES_HOME over every other location', () => {
+    const envHome = resolve(tmpRoot, 'env-home');
+    mkdirSync(envHome, { recursive: true });
+    process.env.HERMES_HOME = envHome;
+    assert.equal(resolveHermesHome(), envHome);
+  });
+
+  it('falls back to ~/.hermes when HERMES_HOME is unset', () => {
+    delete process.env.HERMES_HOME;
+    delete process.env.LOCALAPPDATA; // keep the win32 probe out of the fallback
+    // Pure path arithmetic — the fallback never checks existence, so the WSL
+    // path (~/.hermes inside a WSL home) keeps working with no extra logic.
+    assert.equal(resolveHermesHome(), resolve(homedir(), '.hermes'));
+  });
+
+  it('on win32, uses %LOCALAPPDATA%\\hermes when its config.yaml exists',
+    { skip: process.platform !== 'win32' && 'win32-only branch' }, () => {
+      delete process.env.HERMES_HOME;
+      const localAppData = resolve(tmpRoot, 'lad');
+      const winHome = resolve(localAppData, 'hermes');
+      mkdirSync(winHome, { recursive: true });
+      writeFileSync(resolve(winHome, 'config.yaml'), '# fixture');
+      process.env.LOCALAPPDATA = localAppData;
+      assert.equal(resolveHermesHome(), winHome);
+    });
+
+  it('on win32, skips the %LOCALAPPDATA% default when it has no config.yaml',
+    { skip: process.platform !== 'win32' && 'win32-only branch' }, () => {
+      delete process.env.HERMES_HOME;
+      const localAppData = resolve(tmpRoot, 'lad-empty');
+      mkdirSync(resolve(localAppData, 'hermes'), { recursive: true });
+      process.env.LOCALAPPDATA = localAppData;
+      // An empty leftover dir must not claim detection; the fallback applies.
+      assert.equal(resolveHermesHome(), resolve(homedir(), '.hermes'));
+    });
+});
+
 // ── audit exit codes, end to end (#439) ──────────────────────────
 //
 // The block above covers auditExitCode()'s logic, but it cannot see whether the
@@ -505,6 +571,8 @@ describe('audit exit codes end to end (#439)', () => {
   const cliEntry = resolve(ROOT, 'cli/index.js');
   let tmpRoot;
   let savedHome;
+  let savedHermesHome;
+  let savedLocalAppData;
 
   /** A project fixture copilot detects, via .github/copilot-instructions.md. */
   function project(name) {
@@ -549,11 +617,23 @@ describe('audit exit codes end to end (#439)', () => {
 
     savedHome = process.env.HOME;
     process.env.HOME = resolve(tmpRoot, 'home');
+    // #604: resolveHermesHome() reads HERMES_HOME first, and on win32 probes
+    // %LOCALAPPDATA%\hermes — a dev machine carrying either (this very
+    // integration ran on one) would leak a real Hermes home into the fixture
+    // and flip the exit-code reduction. Both are pinned to the fixture home.
+    savedHermesHome = process.env.HERMES_HOME;
+    savedLocalAppData = process.env.LOCALAPPDATA;
+    process.env.HERMES_HOME = resolve(tmpRoot, 'home', '.hermes');
+    delete process.env.LOCALAPPDATA;
   });
 
   after(() => {
     if (savedHome === undefined) delete process.env.HOME;
     else process.env.HOME = savedHome;
+    if (savedHermesHome === undefined) delete process.env.HERMES_HOME;
+    else process.env.HERMES_HOME = savedHermesHome;
+    if (savedLocalAppData === undefined) delete process.env.LOCALAPPDATA;
+    else process.env.LOCALAPPDATA = savedLocalAppData;
     rmSync(tmpRoot, { recursive: true, force: true });
   });
 
@@ -622,6 +702,8 @@ describe('adapter audits detect broken symlinks', () => {
   ];
 
   const dirFor = (c) => (c.base === 'home' ? resolve(fakeHome, c.dir) : resolve(tmpRoot, c.name, c.dir));
+  let savedHermesHome;
+  let savedLocalAppData;
 
   before(() => {
     rmSync(tmpRoot, { recursive: true, force: true }); // leftover from a crashed run
@@ -642,11 +724,26 @@ describe('adapter audits detect broken symlinks', () => {
     // are steered at the fixture. Restored in after().
     savedHome = process.env.HOME;
     process.env.HOME = fakeHome;
+    // #604: on Windows, os.homedir() ignores $HOME entirely, so the hermes case
+    // could never be steered by HOME alone — it leaked to the real user profile
+    // and failed on any Windows-native checkout. resolveHermesHome() honors
+    // HERMES_HOME on every platform, so pin it at the fixture. Clear
+    // LOCALAPPDATA too, or the win32 probe escapes the fixture the other way;
+    // a dev machine with a real Hermes home (e.g. one running this very
+    // integration) would otherwise poison the counts.
+    savedHermesHome = process.env.HERMES_HOME;
+    savedLocalAppData = process.env.LOCALAPPDATA;
+    process.env.HERMES_HOME = resolve(fakeHome, '.hermes');
+    delete process.env.LOCALAPPDATA;
   });
 
   after(() => {
     if (savedHome === undefined) delete process.env.HOME;
     else process.env.HOME = savedHome;
+    if (savedHermesHome === undefined) delete process.env.HERMES_HOME;
+    else process.env.HERMES_HOME = savedHermesHome;
+    if (savedLocalAppData === undefined) delete process.env.LOCALAPPDATA;
+    else process.env.LOCALAPPDATA = savedLocalAppData;
     rmSync(tmpRoot, { recursive: true, force: true });
   });
 
