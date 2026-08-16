@@ -27,13 +27,23 @@ import {
   buildEnglishProseHistory, classifyTranslation, translationKey, UNJUDGED_REASONS,
 } from './lib/translation-status.js';
 import { TREES } from './lib/fences.js';
+import { SOURCE_COMMIT_FIELD, readFrontmatterField } from './lib/provenance.js';
 
 // Validated against an accept-list, not sniffed with `includes`. `--verdict`, `--verdicts=1`
 // and `-verdicts` all used to parse as "flag absent": the scan ran, ten files were written,
 // no verdict list printed, exit 0 — and the reader concluded there were no stubs to review
 // before starting a bulk delete. `audit-skill-sections.js` already does this correctly.
-const KNOWN_FLAGS = new Set(['--verdicts', '--margins', '--write']);
-const UNKNOWN_FLAGS = process.argv.slice(2).filter((arg) => !KNOWN_FLAGS.has(arg));
+const KNOWN_FLAGS = new Set(['--verdicts', '--margins', '--write', '--root']);
+// `--root` is the only flag here that TAKES a value, so its argument must be excused from the
+// unknown-flag sweep — otherwise the path itself is reported as an unknown argument. Excused by
+// position (the token immediately after `--root`) rather than by shape: a filter like
+// "anything not starting with --" would also swallow a genuine typo such as `verdicts`, which
+// is exactly the silent-misparse class the check above exists to catch.
+const ROOT_VALUE_INDEX = process.argv.indexOf('--root') + 1;
+const UNKNOWN_FLAGS = process.argv.slice(2).filter((arg, i) => {
+  if (KNOWN_FLAGS.has(arg)) return false;
+  return !(ROOT_VALUE_INDEX > 0 && i + 2 === ROOT_VALUE_INDEX);
+});
 if (UNKNOWN_FLAGS.length) {
   console.error(`ERROR: unknown argument(s): ${UNKNOWN_FLAGS.join(' ')}`);
   console.error(`Known flags: ${[...KNOWN_FLAGS].join(', ')}`);
@@ -63,7 +73,18 @@ const WRITE_STATUS = process.argv.includes('--write')
   || (!SHOW_VERDICTS && !SHOW_MARGINS);
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT = resolve(__dirname, '..');
+
+// `--root` exists so the #603 date behaviour can be TESTED rather than demonstrated. Without
+// it this script can only ever run against the repo it sits in, which means the only way to
+// exercise "does the date hold when the counts hold" is to mutate the real corpus and put it
+// back — a demo, not coverage, and one that dirties ten tracked files while it runs.
+// `check-i18n-fence-parity.js` already carries the same flag for the same reason.
+const rootFlag = process.argv.indexOf('--root');
+if (rootFlag >= 0 && (rootFlag + 1 >= process.argv.length || process.argv[rootFlag + 1].startsWith('--'))) {
+  console.error('ERROR: --root requires a value');
+  process.exit(2);
+}
+const ROOT = rootFlag >= 0 ? resolve(process.argv[rootFlag + 1]) : resolve(__dirname, '..');
 const I18N_DIR = resolve(ROOT, 'i18n');
 
 // Load config
@@ -100,11 +121,17 @@ const sourceCounts = {
 
 /**
  * Extract source_commit from translation frontmatter.
+ *
+ * Routes through the shared reader (#552). The regex this replaces was
+ * `/source_commit:\s*["']?([a-f0-9]+)["']?/m` — with no `^` anchor and no frontmatter bound, so
+ * it matched the first `source_commit:` ANYWHERE in the file, including inside a ```yaml fence
+ * demonstrating what translation frontmatter looks like. Two other copies of this reader
+ * existed and all three disagreed; there is now one, and it is anchored to the frontmatter
+ * block. Measured across the corpus at the swap: 2,571 stale before and after, so no file's
+ * verdict turned on the difference today.
  */
 function extractSourceCommit(filePath) {
-  const content = readFileSync(filePath, 'utf8');
-  const match = content.match(/source_commit:\s*["']?([a-f0-9]+)["']?/m);
-  return match ? match[1] : null;
+  return readFrontmatterField(readFileSync(filePath, 'utf8'), SOURCE_COMMIT_FIELD);
 }
 
 // Stub detection lives in ./lib/translation-status.js. It used to be body equality against
@@ -247,6 +274,25 @@ const contentTypes = TREES;
 const locales = config.supported_locales.map(l => l.code);
 const today = new Date().toISOString().split('T')[0];
 
+/**
+ * Read an existing `translation_status.yml`, or null when it is absent or unusable (#603).
+ *
+ * Returns null rather than throwing on a malformed file: the caller treats null as "stamp
+ * today", so a corrupt status file regenerates instead of aborting the run.
+ *
+ * @param {string} statusPath
+ * @returns {{last_updated?: string, coverage?: object}|null}
+ */
+function readStatus(statusPath) {
+  if (!existsSync(statusPath)) return null;
+  try {
+    const parsed = yaml.load(readFileSync(statusPath, 'utf8'));
+    return parsed && typeof parsed === 'object' && parsed.last_updated ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 for (const locale of locales) {
   const localeDir = resolve(I18N_DIR, locale);
   if (!existsSync(localeDir)) {
@@ -296,16 +342,45 @@ for (const locale of locales) {
     unjudged: totalUnjudged,
   };
 
+  const statusPath = resolve(localeDir, 'translation_status.yml');
+
+  // #603: `last_updated` used to stamp the RUN date, so every regeneration dirtied all ten
+  // tracked status files whether or not a single count had moved — 33 of the 61 commits
+  // touching `i18n/de/translation_status.yml` changed nothing but this line. That is not merely
+  // noise: it makes the field mean "when the job last ran", which is not what any reader
+  // assumes it means, and it defeats `guard:verify` by producing a diff out of nothing.
+  //
+  // Now the date moves only when the COUNTS move. Comparing the coverage payload rather than
+  // the rendered YAML keeps the decision independent of dumper formatting; a file that is
+  // missing, unparseable, or shaped differently falls through to today's date, which is the
+  // safe direction — a spurious bump is recoverable, a frozen date is a lie.
+  //
+  // Two residuals, stated so neither is reported as a regression later. The field now means
+  // "when this payload last changed", which is not quite "when translations were last touched":
+  // (a) `pct` derives from the registry totals, so adding one English skill moves the
+  // denominator and bumps the date in all ten locales without any translation activity; and
+  // (b) compensating flips in one run — one file stub→translated while another goes the other
+  // way — leave every count equal and the date still. Both are inherent to comparing counts
+  // rather than tracking events, and both are preferable to stamping the run date.
+  const previous = readStatus(statusPath);
+  const unchanged = previous !== null
+    && JSON.stringify(previous.coverage) === JSON.stringify(coverage);
   const status = {
     locale,
-    last_updated: today,
+    last_updated: unchanged ? previous.last_updated : today,
     coverage,
   };
 
-  const statusPath = resolve(localeDir, 'translation_status.yml');
   if (WRITE_STATUS) {
-    writeFileSync(statusPath, yaml.dump(status, { flowLevel: 3 }));
-    console.log(`GENERATED: ${statusPath.replace(ROOT + '/', '')}`);
+    const rendered = yaml.dump(status, { flowLevel: 3 });
+    // Skip the write when the bytes would not change, so a no-op regeneration leaves the
+    // mtime alone too. `existsSync` guards the first generation of a new locale.
+    if (existsSync(statusPath) && readFileSync(statusPath, 'utf8') === rendered) {
+      console.log(`UNCHANGED: ${statusPath.replace(ROOT + '/', '')}`);
+    } else {
+      writeFileSync(statusPath, rendered);
+      console.log(`GENERATED: ${statusPath.replace(ROOT + '/', '')}`);
+    }
   } else {
     console.log(`INSPECTED: ${statusPath.replace(ROOT + '/', '')} (not written — pass --write to regenerate)`);
   }

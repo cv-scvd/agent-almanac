@@ -51,6 +51,14 @@ on:
       # translated/stubs figures the README renders verbatim. A push touching only this file
       # changed generated output while matching no trigger path.
       - 'scripts/lib/fences.js'
+      # Fourth time this list has been extended for the same reason, so state the rule rather
+      # than the instance: EVERY module generate-translation-status.js imports is an input,
+      # because the counts it writes are what the README table renders. provenance.js owns the
+      # frontmatter reader that resolves `source_commit`, and staleness is computed from that
+      # value -- a change to how it is parsed moves the stale counts with no content file
+      # touched. Added at the commit that introduced the import (#552), which is the whole
+      # lesson of the three comments above.
+      - 'scripts/lib/provenance.js'
       # The toolchain is an input too. generate-readmes.js parses YAML with js-yaml, so a
       # Dependabot bump that changes `yaml.load` behaviour changes generated output while
       # touching no content file and no generator -- nothing here matched, so the healer never

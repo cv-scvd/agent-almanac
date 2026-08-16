@@ -96,6 +96,10 @@ import {
   extractFences, toLines, isGated, buildEnglishFenceHistory, TREES, contentKey,
 } from './lib/fences.js';
 import { assertNotShallow } from './lib/git-freshness.js';
+import {
+  SOURCE_COMMIT_FIELD, FENCE_BASIS_FIELD,
+  readFrontmatterField, stampFrontmatterField, clearFrontmatterField,
+} from './lib/provenance.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -323,14 +327,11 @@ if (WRITE) {
 
 const GIT_BUFFER = 512 * 1024 * 1024;
 
-function frontmatterField(text, field) {
-  const fm = text.replace(/\r\n/g, '\n').match(/^---\n([\s\S]*?)\n---(\n|$)/);
-  if (!fm) return null;
-  const m = new RegExp(`^\\s*${field}:\\s*(\\S.*)$`, 'm').exec(fm[1]);
-  if (!m) return null;
-  // A few source_commit values carry a trailing YAML comment.
-  return m[1].replace(/\s+#.*$/, '').trim().replace(/^["']|["']$/g, '');
-}
+// The frontmatter reader that used to live here moved to `scripts/lib/provenance.js` (#552),
+// which owns both provenance fields and the only reader anchored to the frontmatter block.
+// Three hand-rolled readers existed across this repo and they disagreed — the one in
+// `generate-translation-status.js` is unanchored and reads a `source_commit:` written inside a
+// body fence as metadata.
 
 /** Batch-resolve `<commit>:<englishRel>` blobs in one git process. */
 function readBlobs(specs) {
@@ -404,7 +405,7 @@ for (const locale of SCANNABLE_LOCALES) {
         locale, tree, key, path: translated, english, englishRel,
         relPath: `i18n/${locale}/${englishRel}`,
         text,
-        sourceCommit: frontmatterField(text, 'source_commit'),
+        sourceCommit: readFrontmatterField(text, SOURCE_COMMIT_FIELD),
       });
     }
   }
@@ -527,10 +528,65 @@ for (const t of targets) {
   }
   if (!restoredHere) continue;
 
+  let repairedText = lines.join('\n');
+
+  // #552: record which English revision these fences were verified against — but only when the
+  // claim is true, on both counts that can make it false.
+  //
+  //   1. The repaired file must MIRROR THE BASIS at every gated fence. An earlier version of
+  //      this tested "nothing gated is still divergent", which is a strictly weaker statement
+  //      and the gap is reachable. `everEnglish` is the union of every revision, so that test
+  //      proves each fence matches SOME revision while the stamp names ONE. The splice repairs
+  //      only the divergent fences, so an untouched fence keeps whatever revision it came from:
+  //      given English W=[A1,B1] and X=[A2,B2] and a mirror [localized, B1] whose source_commit
+  //      was bumped to X without retranslation (the #405 shape), the repair yields [A2,B1] —
+  //      X at one ordinal, W at the other — and the weaker test stamped X. That is a false
+  //      claim at the moment of writing, invisible to the parity checker because every body
+  //      does match some revision, and inherited by whatever reads the field next. Pinned by
+  //      `scripts/test/fence-basis-stamp.test.js`, which fails against the weaker test.
+  //   2. The basis must be a real revision. `basisLabel` is `worktree` whenever the fallback
+  //      read English off disk, and the working tree is not a commit — the same distinction the
+  //      report already refuses to blur ("labelled `worktree`, not a commit").
+  //
+  // Otherwise CLEAR the field. A file that still diverges must not keep a claim from an earlier,
+  // then-complete verification: a stale claim reads as verified and is worse than no claim.
+  // Clearing cannot destroy a TRUE claim here, because a file only reaches this point with a
+  // gated fence that matched no revision at all, and English history only grows — so any
+  // pre-existing stamp on it was already stale.
+  const repairedFences = extractFences(repairedText);
+  const stillDivergent = repairedFences.filter((f) => isGated(f) && !everEnglish.has(f.body)).length;
+  // Ordinal comparison is sound here for the same reason the splice was: the count and
+  // tag-alignment guards above already rejected this file otherwise. Re-checking the length is
+  // belt-and-braces against a basis body that itself contains a fence delimiter.
+  const mirrorsBasis = repairedFences.length === basisFences.length
+    && repairedFences.every((f, i) => !isGated(f) || f.body === basisFences[i].body);
+  let basisStamp = null;
+  // `stillDivergent === 0` is kept as a conjunct even though `mirrorsBasis` implies it for any
+  // basis the walk can see. It does NOT imply it in general, and the gap is reachable without
+  // any unusual git state: the pool comes from `git log` over HEAD-reachable history with
+  // default simplification, while the basis blob is resolved with `git cat-file --batch`, which
+  // answers for any object in the store. The walker's own documented merge gap is the lead case
+  // — `--name-only` lists no paths for a merge, so a `source_commit` naming a conflict-resolved
+  // merge has a blob cat-file resolves and the pool never contains. There, `mirrorsBasis` is
+  // true while gated fences remain outside the pool, and stamping would sign a claim this
+  // repo's own gate contradicts on the next run. Refusing costs nothing when the basis is
+  // ordinary and keeps the tool from ever writing a claim the checker will flag.
+  if (stillDivergent === 0 && mirrorsBasis && basisLabel !== 'worktree') {
+    const stamped = stampFrontmatterField(repairedText, FENCE_BASIS_FIELD, basisLabel);
+    // `stamped` is null when the file has no `source_commit` to anchor beside. Repair the body
+    // anyway and leave the field off, rather than guessing a nesting depth.
+    if (stamped !== null) { repairedText = stamped; basisStamp = basisLabel; }
+  } else {
+    repairedText = clearFrontmatterField(repairedText, FENCE_BASIS_FIELD);
+  }
+
   filesChanged++;
   fencesRestored += restoredHere;
   changedByLocale.set(t.locale, (changedByLocale.get(t.locale) || 0) + restoredHere);
-  plan.push({ path: t.path, relPath: t.relPath, text: lines.join('\n'), n: restoredHere, basisLabel });
+  plan.push({
+    path: t.path, relPath: t.relPath, text: repairedText, n: restoredHere,
+    basisLabel, basisStamp, stillDivergent,
+  });
 }
 
 // Validate `--tag` against what the scan actually saw, not against a hand-kept
@@ -558,7 +614,22 @@ if (!PREVIEW && plan.length) {
 }
 
 for (const p of plan) {
-  console.log(`${PREVIEW ? 'would restore' : '   restoring'} ${String(p.n).padStart(2)} fence(s) in ${p.relPath}  (basis ${p.basisLabel})`);
+  // The provenance suffix says which of the three outcomes this file got, because they are not
+  // distinguishable from the fence count: stamped (fully verified against a named revision),
+  // still-divergent (claim withheld or cleared), or a worktree basis (repaired, but from bytes
+  // that are not a commit, so there is nothing honest to record).
+  // `stillDivergent` is tested BEFORE `basisStamp`, not after. A stamp and a non-zero divergence
+  // count are mutually exclusive by the condition above, so reporting the stamp first would only
+  // ever matter if that invariant broke — which is exactly when the operator needs to be told
+  // the file still diverges rather than reassured it was signed.
+  const provenance = p.stillDivergent
+    ? `, no ${FENCE_BASIS_FIELD} (${p.stillDivergent} still divergent)`
+    : p.basisStamp
+      ? `, ${FENCE_BASIS_FIELD}=${p.basisStamp}`
+      : p.basisLabel === 'worktree'
+        ? `, no ${FENCE_BASIS_FIELD} (basis is not a commit)`
+        : `, no ${FENCE_BASIS_FIELD} (mirrors more than one revision)`;
+  console.log(`${PREVIEW ? 'would restore' : '   restoring'} ${String(p.n).padStart(2)} fence(s) in ${p.relPath}  (basis ${p.basisLabel}${provenance})`);
 }
 
 if (!PREVIEW) {

@@ -264,8 +264,14 @@ function comparable(lines) {
  * If one of these survives into what `stripFrontmatter` returned, the frontmatter mask did not
  * close — and `stripFrontmatter` fails OPEN by design, returning the whole text when it cannot
  * find two `---` lines.
+ *
+ * `fence_basis_commit` is here for the same reason its siblings are (#552): it is a short line
+ * of metadata that clears the substantive filter and sits in NO English pool, so an unclosed
+ * mask turns it into one more line of "novel prose" and inflates the file toward TRANSLATED.
+ * Every new provenance field must be added here — see `scripts/lib/provenance.js`, which owns
+ * the field names.
  */
-const FRONTMATTER_KEYS = /^(locale|source_locale|source_commit|translator|translation_date):/;
+const FRONTMATTER_KEYS = /^(locale|source_locale|source_commit|fence_basis_commit|translator|translation_date):/;
 
 /**
  * Did the frontmatter mask fail to close over `body`?
