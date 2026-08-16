@@ -116,6 +116,83 @@ describe('normalize-i18n-fences: what it may claim (#552)', () => {
       `stamped a basis (${X}) that only one of two fences mirrors, or kept the stale deadbee claim`);
   });
 
+  it('refuses a basis whose bytes the history walk cannot see', (t) => {
+    // The off-pool corner. `everEnglish` comes from `git log --name-only -- <trees>`, which is
+    // path-limited and so history-simplified, and which lists NO paths for a merge commit — the
+    // walk's own docstring records that a body existing only as conflict-resolution output
+    // never enters the pool. The basis, by contrast, is resolved with `git cat-file --batch`,
+    // which answers for any object in the store.
+    //
+    // So a `source_commit` naming a merge resolves to bytes the pool does not contain:
+    // `mirrorsBasis` is true while the repaired fences are still outside the pool. Stamping
+    // there would sign a claim the parity gate contradicts on its very next run. Without this
+    // case the `stillDivergent === 0` conjunct is uncovered — measured: deleting it survived
+    // the whole suite.
+    const dir = mkdtempSync(join(tmpdir(), 'fence-stamp-merge-'));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+
+    mkdirSync(join(dir, 'scripts'), { recursive: true });
+    cpSync(join(REPO, SCRIPT), join(dir, SCRIPT));
+    cpSync(join(REPO, 'scripts', 'lib'), join(dir, 'scripts', 'lib'), { recursive: true });
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ type: 'module' }), 'utf8');
+
+    git(dir, ['init', '-b', 'main']);
+    git(dir, ['config', 'user.email', 'test@example.invalid']);
+    git(dir, ['config', 'user.name', 'Fixture']);
+
+    const skill = join(dir, 'skills', 'demo-skill', 'SKILL.md');
+    mkdirSync(dirname(skill), { recursive: true });
+    const write1 = (body) => writeFileSync(skill, [
+      '---', 'name: demo-skill', 'description: A demo skill.', '---', '',
+      '# Demo Skill', '', '```bash', body, '```', '',
+    ].join('\n'), 'utf8');
+
+    write1('echo "A1"');
+    git(dir, ['add', '-A']);
+    git(dir, ['commit', '-m', 'A']);
+
+    git(dir, ['checkout', '-b', 'side']);
+    write1('echo "B1"');
+    git(dir, ['add', '-A']);
+    git(dir, ['commit', '-m', 'B']);
+
+    git(dir, ['checkout', 'main']);
+    write1('echo "C1"');
+    git(dir, ['add', '-A']);
+    git(dir, ['commit', '-m', 'C']);
+
+    // Conflicting merge, resolved to a body present in NEITHER parent.
+    spawnSync('git', ['merge', 'side'], { cwd: dir, encoding: 'utf8' }); // expected to conflict
+    write1('echo "R1"');
+    git(dir, ['add', '-A']);
+    git(dir, ['commit', '--no-edit', '-m', 'merge side, resolved to R1']);
+    const merge = git(dir, ['rev-parse', '--short', 'HEAD']);
+
+    // A later commit, so the working-tree pass contributes D1 rather than R1 — otherwise the
+    // resolution body re-enters the pool through the working tree and the corner closes.
+    write1('echo "D1"');
+    git(dir, ['add', '-A']);
+    git(dir, ['commit', '-m', 'D']);
+
+    const mirror = join(dir, 'i18n', 'de', 'skills', 'demo-skill', 'SKILL.md');
+    mkdirSync(dirname(mirror), { recursive: true });
+    writeFileSync(mirror, [
+      '---', 'name: demo-skill', 'description: Eine Demo.', 'locale: de', 'source_locale: en',
+      `source_commit: ${merge}`, '---', '',
+      '# Demo', '', '```bash', 'echo "LOKALISIERT"', '```', '',
+    ].join('\n'), 'utf8');
+    git(dir, ['add', '-A']);
+    git(dir, ['commit', '-m', 'de mirror']);
+
+    const r = run(dir, ['--write']);
+    assert.equal(r.status, 0, `normalizer failed:\n${r.stdout}\n${r.stderr}`);
+
+    const after = readFileSync(mirror, 'utf8');
+    assert.ok(after.includes('echo "R1"'), 'the repair itself still happens, from the merge blob');
+    assert.equal(field(after, 'fence_basis_commit'), undefined,
+      'must not claim a basis whose bytes the gate cannot find in any walked revision');
+  });
+
   it('stamps when the repaired file mirrors the basis at every gated fence', (t) => {
     const dir = mkdtempSync(join(tmpdir(), 'fence-stamp-ok-'));
     t.after(() => rmSync(dir, { recursive: true, force: true }));
