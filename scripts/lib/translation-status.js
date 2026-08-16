@@ -488,9 +488,9 @@ export function classifyTranslation({ translatedText, locale, english }) {
  *
  * The walk itself is `walkEnglishHistory` in `english-history.js`, shared with
  * `buildEnglishFenceHistory` (#559). Its two known gaps push this module's three collectors —
- * `lines`, `fenceShapes`, `fenceLines` — in OPPOSITE directions, and the two in `fences.js`
+ * `lines`, `fenceShapes`, `fenceLines` — in OPPOSITE directions, and the three in `fences.js`
  * differ again, so "fix the walk" cannot be decided from here. That table is at the walker,
- * which is the only place that sees all five.
+ * which is the only place that sees all six.
  *
  * @param {string} root repository root
  * @returns {Map<string, {lines: Set<string>, fenceShapes: Set<string>, fenceLines: Set<string>}>}
