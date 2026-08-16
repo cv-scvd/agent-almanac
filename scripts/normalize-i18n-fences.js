@@ -96,6 +96,10 @@ import {
   extractFences, toLines, isGated, buildEnglishFenceHistory, TREES, contentKey,
 } from './lib/fences.js';
 import { assertNotShallow } from './lib/git-freshness.js';
+import {
+  SOURCE_COMMIT_FIELD, FENCE_BASIS_FIELD,
+  readFrontmatterField, stampFrontmatterField, clearFrontmatterField,
+} from './lib/provenance.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -323,14 +327,11 @@ if (WRITE) {
 
 const GIT_BUFFER = 512 * 1024 * 1024;
 
-function frontmatterField(text, field) {
-  const fm = text.replace(/\r\n/g, '\n').match(/^---\n([\s\S]*?)\n---(\n|$)/);
-  if (!fm) return null;
-  const m = new RegExp(`^\\s*${field}:\\s*(\\S.*)$`, 'm').exec(fm[1]);
-  if (!m) return null;
-  // A few source_commit values carry a trailing YAML comment.
-  return m[1].replace(/\s+#.*$/, '').trim().replace(/^["']|["']$/g, '');
-}
+// The frontmatter reader that used to live here moved to `scripts/lib/provenance.js` (#552),
+// which owns both provenance fields and the only reader anchored to the frontmatter block.
+// Three hand-rolled readers existed across this repo and they disagreed — the one in
+// `generate-translation-status.js` is unanchored and reads a `source_commit:` written inside a
+// body fence as metadata.
 
 /** Batch-resolve `<commit>:<englishRel>` blobs in one git process. */
 function readBlobs(specs) {
@@ -404,7 +405,7 @@ for (const locale of SCANNABLE_LOCALES) {
         locale, tree, key, path: translated, english, englishRel,
         relPath: `i18n/${locale}/${englishRel}`,
         text,
-        sourceCommit: frontmatterField(text, 'source_commit'),
+        sourceCommit: readFrontmatterField(text, SOURCE_COMMIT_FIELD),
       });
     }
   }
@@ -527,10 +528,41 @@ for (const t of targets) {
   }
   if (!restoredHere) continue;
 
+  let repairedText = lines.join('\n');
+
+  // #552: record which English revision these fences were verified against — but only when the
+  // claim is true, on both counts that can make it false.
+  //
+  //   1. The repair must leave NOTHING gated divergent. A `--tag`-scoped batch repairs one slice
+  //      and leaves the rest, so stamping after it would assert a whole-file verification the
+  //      file has not had. Re-derived from the repaired bytes rather than from `restoredHere`,
+  //      because "I fixed some" and "none remain" are different claims and only the second is
+  //      the one being written down.
+  //   2. The basis must be a real revision. `basisLabel` is `worktree` whenever the fallback
+  //      read English off disk, and the working tree is not a commit — the same distinction the
+  //      report already refuses to blur ("labelled `worktree`, not a commit").
+  //
+  // Otherwise CLEAR the field. A file that still diverges must not keep a claim from an earlier,
+  // then-complete verification: a stale claim reads as verified and is worse than no claim.
+  const stillDivergent = extractFences(repairedText)
+    .filter((f) => isGated(f) && !everEnglish.has(f.body)).length;
+  let basisStamp = null;
+  if (stillDivergent === 0 && basisLabel !== 'worktree') {
+    const stamped = stampFrontmatterField(repairedText, FENCE_BASIS_FIELD, basisLabel);
+    // `stamped` is null when the file has no `source_commit` to anchor beside. Repair the body
+    // anyway and leave the field off, rather than guessing a nesting depth.
+    if (stamped !== null) { repairedText = stamped; basisStamp = basisLabel; }
+  } else {
+    repairedText = clearFrontmatterField(repairedText, FENCE_BASIS_FIELD);
+  }
+
   filesChanged++;
   fencesRestored += restoredHere;
   changedByLocale.set(t.locale, (changedByLocale.get(t.locale) || 0) + restoredHere);
-  plan.push({ path: t.path, relPath: t.relPath, text: lines.join('\n'), n: restoredHere, basisLabel });
+  plan.push({
+    path: t.path, relPath: t.relPath, text: repairedText, n: restoredHere,
+    basisLabel, basisStamp, stillDivergent,
+  });
 }
 
 // Validate `--tag` against what the scan actually saw, not against a hand-kept
@@ -558,7 +590,16 @@ if (!PREVIEW && plan.length) {
 }
 
 for (const p of plan) {
-  console.log(`${PREVIEW ? 'would restore' : '   restoring'} ${String(p.n).padStart(2)} fence(s) in ${p.relPath}  (basis ${p.basisLabel})`);
+  // The provenance suffix says which of the three outcomes this file got, because they are not
+  // distinguishable from the fence count: stamped (fully verified against a named revision),
+  // still-divergent (claim withheld or cleared), or a worktree basis (repaired, but from bytes
+  // that are not a commit, so there is nothing honest to record).
+  const provenance = p.basisStamp
+    ? `, ${FENCE_BASIS_FIELD}=${p.basisStamp}`
+    : p.stillDivergent
+      ? `, no ${FENCE_BASIS_FIELD} (${p.stillDivergent} still divergent)`
+      : `, no ${FENCE_BASIS_FIELD} (basis is not a commit)`;
+  console.log(`${PREVIEW ? 'would restore' : '   restoring'} ${String(p.n).padStart(2)} fence(s) in ${p.relPath}  (basis ${p.basisLabel}${provenance})`);
 }
 
 if (!PREVIEW) {

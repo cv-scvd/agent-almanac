@@ -67,6 +67,7 @@ import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { assertNotShallow } from './lib/git-freshness.js';
 import { extractFences, buildEnglishFenceHistory, isGated, foldedTagSequence } from './lib/fences.js';
+import { FENCE_BASIS_FIELD, readFrontmatterField } from './lib/provenance.js';
 import { CONTENT_TYPES } from './lib/content-types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -228,13 +229,25 @@ function main() {
   let fencesCompared = 0;
   let ungatedDivergences = 0;
   let tagSequenceUnalignable = 0;
+  let staleBasisClaims = 0;
 
   for (const t of collectTargets()) {
     const englishFences = history.get(`${t.tree}/${t.id}`);
     if (!englishFences) continue; // orphan: check-i18n-frontmatter-parity.js owns that
 
     filesCompared++;
-    const translatedFences = extractFences(readFileSync(t.absPath, 'utf8'));
+    const text = readFileSync(t.absPath, 'utf8');
+    const translatedFences = extractFences(text);
+
+    // #552: `fence_basis_commit` is READ here and never consulted before a comparison. The byte
+    // check below stays unconditional — a field that could suppress it would be a bypass, and
+    // the mutation guarding this design (hand-edit a fence body, leave the field alone) has to
+    // stay red. What the field adds is the one thing bytes alone cannot say: whether the file
+    // CLAIMS to have been verified against a named English revision. A claim plus a divergence
+    // is a false claim, and it is strictly worse than no claim, because the next tool to read
+    // the frontmatter believes it.
+    const claimedBasis = readFrontmatterField(text, FENCE_BASIS_FIELD);
+    let divergedHere = 0;
 
     // #481: the retag escape. `isGated` reads the info string off the TRANSLATION, so retagging
     // a frozen ```yaml fence to ```text removes it from the loop below entirely — the set of
@@ -271,6 +284,7 @@ function main() {
       fencesCompared++;
       if (englishFences.has(fence.body)) continue;
       const gated = isGated(fence);
+      if (gated) divergedHere++;
       if (!gated) { ungatedDivergences++; if (!SHOW_ALL) continue; }
       findings.push({
         file: t.relPath,
@@ -294,6 +308,27 @@ function main() {
     // `quick-reference.md` mirrors that `check-translation-freshness.js`
     // independently reports as stale. Any fix must be staleness-immune the way
     // the divergence check is.
+
+    // The false claim (#552). Reported as its own kind rather than folded into the divergence
+    // count, because it accuses the FRONTMATTER, not the body: the bytes are already flagged
+    // above, and what this adds is that the file also asserts they were checked. Not gated —
+    // it cannot make a run fail that the underlying divergence did not already fail — so it
+    // can never be the reason a corpus goes red, only the reason someone stops trusting a
+    // field. Absence of the field is silent by design: absent means unverified, which is the
+    // honest state for every file predating this schema.
+    if (claimedBasis && divergedHere > 0) {
+      staleBasisClaims++;
+      findings.push({
+        file: t.relPath,
+        line: 1,
+        locale: t.locale,
+        skill: t.id,
+        tag: FENCE_BASIS_FIELD,
+        gated: false,
+        kind: 'stale-basis-claim',
+        firstDivergentLine: `frontmatter claims ${FENCE_BASIS_FIELD}: ${claimedBasis}, but ${divergedHere} gated fence(s) match no English revision`,
+      });
+    }
   }
 
   const blocking = findings.filter((f) => f.gated);
@@ -308,6 +343,7 @@ function main() {
       ungatedDivergences,
       tagSequenceFindings: findings.filter((f) => f.kind === 'tag-sequence').length,
       tagSequenceUnalignable,
+      staleBasisClaims,
       findings,
     }, null, 2));
     process.exitCode = blocking.length > 0 && !WARN_ONLY ? 1 : 0;
@@ -369,6 +405,15 @@ function main() {
     // default-deny, so an untagged divergence prints FAIL and is counted above.
     console.log(`\n${ungatedDivergences} divergence(s) in localisable tags (text/markdown/md) — localising those is allowed.`);
     if (!SHOW_ALL) console.log('Use --all to list them.');
+  }
+  if (staleBasisClaims) {
+    // Ungated on purpose: the divergence underneath each of these is already counted above, so
+    // gating them would double-count the same file and could not change any verdict. The value
+    // is that the frontmatter is now known to be lying — a `fence_basis_commit` present on a
+    // file whose fences diverge. Repairing the body clears it automatically; if the body is
+    // legitimately divergent, the field should be removed instead.
+    console.log(`\n${staleBasisClaims} file(s) claim a ${FENCE_BASIS_FIELD} their fences contradict (#552).`);
+    console.log('Absence of the field is not a finding — absent means unverified, which is honest.');
   }
 
   process.exit(blocking.length > 0 && !WARN_ONLY ? 1 : 0);

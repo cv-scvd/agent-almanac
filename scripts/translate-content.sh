@@ -78,8 +78,19 @@ fi
 cp "$SOURCE_FILE" "$TARGET_FILE"
 
 # Add translation frontmatter fields after the existing frontmatter
-# We insert locale, source_locale, source_commit, translator, translation_date
-# into the YAML frontmatter block (before the closing ---)
+# We insert locale, source_locale, source_commit, fence_basis_commit, translator,
+# translation_date into the YAML frontmatter block (before the closing ---)
+#
+# fence_basis_commit (#552) is the revision this file's frozen fences were last verified
+# against, and it is separate from source_commit for a reason a scaffold makes vivid: the two
+# are equal HERE and diverge immediately afterwards. A scaffold is a byte copy, so its fences
+# trivially mirror $SOURCE_COMMIT and the claim is true at birth. From then on a human bumps
+# source_commit by retranslating, while normalize-i18n-fences.js bumps fence_basis_commit by
+# propagating English bytes -- two different events that one field could not record.
+#
+# Stamping it here is what keeps the field's absence meaningful. If new translations were born
+# without it, "absent" would mean both "unverified" and "recent", and it would stop being usable
+# as a backlog signal.
 
 # Find the line number of the second --- (closing frontmatter)
 CLOSE_LINE=$(awk '/^---$/{count++; if(count==2){print NR; exit}}' "$TARGET_FILE")
@@ -95,6 +106,7 @@ if [ "$CONTENT_TYPE" = "skills" ]; then
   locale: $LOCALE\\
   source_locale: en\\
   source_commit: $SOURCE_COMMIT\\
+  fence_basis_commit: $SOURCE_COMMIT\\
   translator: \"Claude + human review\"\\
   translation_date: \"$TODAY\"" "$TARGET_FILE"
 else
@@ -103,9 +115,10 @@ else
 locale: $LOCALE\\
 source_locale: en\\
 source_commit: $SOURCE_COMMIT\\
+fence_basis_commit: $SOURCE_COMMIT\\
 translator: \"Claude + human review\"\\
 translation_date: \"$TODAY\"" "$TARGET_FILE"
 fi
 
-echo "CREATED: $TARGET_FILE (source_commit: $SOURCE_COMMIT)"
+echo "CREATED: $TARGET_FILE (source_commit: $SOURCE_COMMIT, fence_basis_commit: $SOURCE_COMMIT)"
 echo "  Next: translate prose sections, keeping code blocks and IDs in English"

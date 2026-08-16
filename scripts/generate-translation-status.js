@@ -247,6 +247,25 @@ const contentTypes = TREES;
 const locales = config.supported_locales.map(l => l.code);
 const today = new Date().toISOString().split('T')[0];
 
+/**
+ * Read an existing `translation_status.yml`, or null when it is absent or unusable (#603).
+ *
+ * Returns null rather than throwing on a malformed file: the caller treats null as "stamp
+ * today", so a corrupt status file regenerates instead of aborting the run.
+ *
+ * @param {string} statusPath
+ * @returns {{last_updated?: string, coverage?: object}|null}
+ */
+function readStatus(statusPath) {
+  if (!existsSync(statusPath)) return null;
+  try {
+    const parsed = yaml.load(readFileSync(statusPath, 'utf8'));
+    return parsed && typeof parsed === 'object' && parsed.last_updated ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 for (const locale of locales) {
   const localeDir = resolve(I18N_DIR, locale);
   if (!existsSync(localeDir)) {
@@ -296,16 +315,37 @@ for (const locale of locales) {
     unjudged: totalUnjudged,
   };
 
+  const statusPath = resolve(localeDir, 'translation_status.yml');
+
+  // #603: `last_updated` used to stamp the RUN date, so every regeneration dirtied all ten
+  // tracked status files whether or not a single count had moved — 33 of the 61 commits
+  // touching `i18n/de/translation_status.yml` changed nothing but this line. That is not merely
+  // noise: it makes the field mean "when the job last ran", which is not what any reader
+  // assumes it means, and it defeats `guard:verify` by producing a diff out of nothing.
+  //
+  // Now the date moves only when the COUNTS move. Comparing the coverage payload rather than
+  // the rendered YAML keeps the decision independent of dumper formatting; a file that is
+  // missing, unparseable, or shaped differently falls through to today's date, which is the
+  // safe direction — a spurious bump is recoverable, a frozen date is a lie.
+  const previous = readStatus(statusPath);
+  const unchanged = previous !== null
+    && JSON.stringify(previous.coverage) === JSON.stringify(coverage);
   const status = {
     locale,
-    last_updated: today,
+    last_updated: unchanged ? previous.last_updated : today,
     coverage,
   };
 
-  const statusPath = resolve(localeDir, 'translation_status.yml');
   if (WRITE_STATUS) {
-    writeFileSync(statusPath, yaml.dump(status, { flowLevel: 3 }));
-    console.log(`GENERATED: ${statusPath.replace(ROOT + '/', '')}`);
+    const rendered = yaml.dump(status, { flowLevel: 3 });
+    // Skip the write when the bytes would not change, so a no-op regeneration leaves the
+    // mtime alone too. `existsSync` guards the first generation of a new locale.
+    if (existsSync(statusPath) && readFileSync(statusPath, 'utf8') === rendered) {
+      console.log(`UNCHANGED: ${statusPath.replace(ROOT + '/', '')}`);
+    } else {
+      writeFileSync(statusPath, rendered);
+      console.log(`GENERATED: ${statusPath.replace(ROOT + '/', '')}`);
+    }
   } else {
     console.log(`INSPECTED: ${statusPath.replace(ROOT + '/', '')} (not written — pass --write to regenerate)`);
   }

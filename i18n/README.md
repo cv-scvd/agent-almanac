@@ -102,12 +102,42 @@ Every translated file includes these fields in its YAML frontmatter:
 ```yaml
 locale: de                              # Content locale (IETF BCP 47)
 source_locale: en                       # Translated from
-source_commit: abc1234                  # Git short hash of source at translation time
+source_commit: abc1234                  # English revision a HUMAN translated against
+fence_basis_commit: abc1234             # English revision the FENCES were verified against
 translator: "Claude + human review"     # Attribution
 translation_date: "2026-03-15"          # ISO 8601
 ```
 
-These fields enable freshness tracking: when the English source changes after the `source_commit`, the translation is flagged as stale.
+### Why there are two commit fields
+
+They answer different questions, and a mechanical repair pulls them apart (#552).
+
+`source_commit` records **the English revision a human translated against**. Staleness is
+measured from it: when the English source changes after that revision, the translation is
+flagged stale. A tool must never move it — bumping it asserts a translation event that never
+happened, which is precisely the lie `evolve-skill` was found telling in #405.
+
+`fence_basis_commit` records **the English revision this file's frozen fence bodies were last
+verified against**. `normalize-i18n-fences.js` moves it when it propagates English bytes into a
+mirror, because otherwise the frontmatter would contradict the body it just rewrote.
+
+With one field the two are irreconcilable: after a mechanical fence repair, bumping it makes the
+first claim false and leaving it makes the second false. So there are two.
+
+They are equal at birth — a scaffold is a byte copy, so its fences trivially mirror the revision
+it copied — and they diverge from the first edit of either kind.
+
+**Absence of `fence_basis_commit` is not a defect.** Present means "these bytes were checked
+against that revision"; absent means "unverified", which is the honest state for a file whose
+fences match no English revision, and for every file predating the field. A commit is never
+stamped on an unverified file, because writing a false claim into the corpus to be corrected
+later is the exact class of problem this field exists to end.
+
+**It never gates a comparison.** `check-i18n-fence-parity.js` compares fence bytes
+unconditionally. The field is read for reporting, and to catch the one thing bytes alone cannot
+say: a file that *claims* a verified basis while its fences diverge. That is reported as
+`stale-basis-claim` and is deliberately ungated — the divergence underneath it is already
+counted, so it can never change a verdict, only tell you a field is lying.
 
 ## Contributing a Translation
 
