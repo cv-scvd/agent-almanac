@@ -117,18 +117,26 @@ export function collectSpecs(root) {
  *     mask later exposes reads as novel — lenient, the opposite of its neighbour.
  *   - **tag sequences** (`.sequences`, #481): BOTH, and which one depends on which revision went
  *     missing. `compareTagSequence` (`check-i18n-fence-parity.js`) first asks whether the
- *     translation's folded sequence appears in the pool at all, so losing the revision that
- *     matched makes a legitimate translation read as a retag — strict. But when no SURVIVING
- *     revision carries the same fence count the verdict is `unalignable`, which is expressly not
- *     a finding, so losing the last count-matched revision demotes a real retag to unjudged —
- *     lenient. One collector, both directions, which is why the list above is a list and not a
- *     tally: there is no count of "how many tighten" that survives this member.
+ *     translation's folded sequence appears in the pool at all; when it does not, the verdict
+ *     turns on whether any SURVIVING revision carries the same fence count. So losing the
+ *     revision that matched reads as a retag *whenever a same-count revision survives* — a false
+ *     violation against a legitimate translation, strict. Losing the last count-matched revision
+ *     instead yields `unalignable`, which is expressly not a finding, so a real retag is demoted
+ *     to unjudged — lenient. A legitimate translation reaching that same path is demoted too,
+ *     which is the silent coverage loss the `fenceShapes` row above describes rather than either
+ *     direction. Three outcomes, two directions, one collector — which is why the list above is
+ *     a list and not a tally: no count of "how many tighten" survives this member.
  *
  * Recorded measurement (`translation-status.js`, pre-extraction): adding `--diff-merges=separate`
  * changed the pool by 0 lines and the verdict set by 0 files. That was measured for the prose
  * side only — re-measure all six before changing the walk.
  *
- * ## Three call sites reach this walk, not two
+ * ## Three PRODUCTION call sites reach this walk, not two
+ *
+ * Say production, and mean it: `rg walkEnglishHistory` returns a fourth,
+ * `scripts/test/english-history.test.js`, which is deliberately excluded here because this
+ * section is a re-measurement obligation and a test owes nothing to it. An unqualified "three"
+ * is a count the obvious grep refutes — the same shape as the clause above this one.
  *
  * `buildEnglishProseHistory` (`translation-status.js`) and `buildEnglishFenceHistory`
  * (`fences.js`) are the production pair that own the six collectors above. The third is
