@@ -547,6 +547,63 @@ describe('resolveHermesHome (#604)', () => {
     });
 });
 
+// The block above proves the resolver. This one proves the DETECTOR CALLS it,
+// and the two are not interchangeable: with only the unit tests present,
+// reverting cli/lib/detector.js and cli/adapters/hermes.js to their pre-#604
+// `homedir()` form leaves the entire suite green — measured, not assumed. That
+// is the "logic covered, but nothing sees whether the caller invokes it" shape
+// #439 was closed to prevent, in this same file.
+//
+// Deliberately platform-independent: both cases route through HERMES_HOME, so
+// tier 1 short-circuits before homedir() is consulted and nothing depends on
+// $HOME steering os.homedir() — which it does not do on win32, the whole point
+// of #604. A real ~/.hermes on the dev box therefore cannot reach either case.
+describe('detectFrameworks resolves the Hermes home (#604)', () => {
+  let tmpRoot;
+  let projectDir;
+  let savedHermesHome;
+  let savedLocalAppData;
+
+  const hermesDetected = () => detectFrameworks(projectDir).map((d) => d.id).includes('hermes');
+
+  before(() => {
+    tmpRoot = mkdtempSync(resolve(tmpdir(), 'almanac-hermes-detect-'));
+    // Empty project dir: no project-scope rule can fire, so `hermes` in the
+    // result can only have come from the global rule under test.
+    projectDir = resolve(tmpRoot, 'project');
+    mkdirSync(projectDir, { recursive: true });
+    savedHermesHome = process.env.HERMES_HOME;
+    savedLocalAppData = process.env.LOCALAPPDATA;
+    delete process.env.LOCALAPPDATA;
+  });
+
+  after(() => {
+    if (savedHermesHome === undefined) delete process.env.HERMES_HOME;
+    else process.env.HERMES_HOME = savedHermesHome;
+    if (savedLocalAppData === undefined) delete process.env.LOCALAPPDATA;
+    else process.env.LOCALAPPDATA = savedLocalAppData;
+    rmSync(tmpRoot, { recursive: true, force: true });
+  });
+
+  it('detects a Hermes home reachable only through $HERMES_HOME', () => {
+    const envHome = resolve(tmpRoot, 'env-home');
+    mkdirSync(envHome, { recursive: true });
+    writeFileSync(resolve(envHome, 'config.yaml'), '# fixture');
+    process.env.HERMES_HOME = envHome;
+    // Pre-#604 this read homedir()/.hermes, which cannot see envHome.
+    assert.equal(hermesDetected(), true);
+  });
+
+  it('does not detect a $HERMES_HOME without a config.yaml', () => {
+    const bare = resolve(tmpRoot, 'bare-home');
+    mkdirSync(bare, { recursive: true });
+    process.env.HERMES_HOME = bare;
+    // The control: without it, a detector that returned hermes unconditionally
+    // would satisfy the case above.
+    assert.equal(hermesDetected(), false);
+  });
+});
+
 // ── audit exit codes, end to end (#439) ──────────────────────────
 //
 // The block above covers auditExitCode()'s logic, but it cannot see whether the
@@ -670,13 +727,22 @@ describe('audit exit codes end to end (#439)', () => {
 // skills are linked, "broken links" for hermes and opencode, which link agents
 // too.
 //
-// `hermes` and `openclaw` resolve their target from `homedir()` rather than a
-// project dir, so HOME is redirected into the fixture for the whole block.
-// That also pins `vibe`, whose agents dir is home-based — without it, a real
-// ~/.vibe/agents on the dev machine would leak .toml entries into the counts.
+// `openclaw` resolves its target from `homedir()` rather than a project dir,
+// so HOME is redirected into the fixture for the whole block. That also pins
+// `vibe`, whose agents dir is home-based — without it, a real ~/.vibe/agents
+// on the dev machine would leak .toml entries into the counts.
+//
+// `hermes` is steered by HERMES_HOME instead (#604), and its fixture lives
+// OUTSIDE the redirected HOME on purpose. Pinning it at `<fakeHome>/.hermes`
+// would make the env path and the old `homedir()/.hermes` path byte-identical
+// on POSIX, so this case would pass just as well against the wiring #604
+// replaced — a hermeticity fix that reads as coverage without being any. The
+// separate root is what makes reverting hermes.js or detector.js go red here.
 describe('adapter audits detect broken symlinks', () => {
   const tmpRoot = resolve(ROOT, '.tmp-test-audit');
   const fakeHome = resolve(tmpRoot, 'home');
+  // Deliberately NOT under fakeHome — see the note above the describe.
+  const hermesHome = resolve(tmpRoot, 'hermes-env-home');
   const realSkill = resolve(ROOT, 'skills/commit-changes');
   const realAgent = resolve(ROOT, 'agents/code-reviewer.md');
   let savedHome;
@@ -693,7 +759,7 @@ describe('adapter audits detect broken symlinks', () => {
     // while a dangling ~/.hermes/agents/<id>.md audited clean, which is the
     // #438 defect surviving in the content type this adapter's "broken links"
     // wording exists to describe.
-    { name: 'hermes', base: 'home', dir: '.hermes/skills/general', agentDir: '.hermes/agents', ok: '2 items installed', err: '2 broken links', audit: () => new HermesAdapter().audit() },
+    { name: 'hermes', base: 'hermes-home', dir: 'skills/general', agentDir: 'agents', ok: '2 items installed', err: '2 broken links', audit: () => new HermesAdapter().audit() },
     { name: 'openclaw', base: 'home', dir: '.openclaw/workspace', ok: '1 skills in workspace', err: '1 broken skill symlinks', audit: () => new OpenClawAdapter().audit(ROOT, 'project') },
     // opencode already reported broken links before #438; #445 aligned its ok
     // line to valid-only like the rest. One dir is enough here: unlike hermes,
@@ -701,7 +767,12 @@ describe('adapter audits detect broken symlinks', () => {
     { name: 'opencode', base: 'project', dir: '.opencode/skills', ok: '1 items installed', err: '1 broken links', audit: (d) => new OpenCodeAdapter().audit(d, 'project') },
   ];
 
-  const dirFor = (c) => (c.base === 'home' ? resolve(fakeHome, c.dir) : resolve(tmpRoot, c.name, c.dir));
+  // Which root a home-based case hangs off: hermes gets its own, so that the
+  // env path and the homedir() path cannot coincide.
+  const homeRootFor = (c) => (c.base === 'hermes-home' ? hermesHome : fakeHome);
+  const dirFor = (c) => (c.base === 'project'
+    ? resolve(tmpRoot, c.name, c.dir)
+    : resolve(homeRootFor(c), c.dir));
   let savedHermesHome;
   let savedLocalAppData;
 
@@ -714,7 +785,7 @@ describe('adapter audits detect broken symlinks', () => {
       symlinkSync(realSkill, resolve(skillsDir, 'good-skill'));
       symlinkSync(resolve(tmpRoot, 'no-such-target'), resolve(skillsDir, 'ghost-skill'));
       if (c.agentDir) {
-        const agentsDir = resolve(fakeHome, c.agentDir);
+        const agentsDir = resolve(homeRootFor(c), c.agentDir);
         mkdirSync(agentsDir, { recursive: true });
         symlinkSync(realAgent, resolve(agentsDir, 'good-agent.md'));
         symlinkSync(resolve(tmpRoot, 'no-such-agent.md'), resolve(agentsDir, 'ghost-agent.md'));
@@ -731,9 +802,13 @@ describe('adapter audits detect broken symlinks', () => {
     // LOCALAPPDATA too, or the win32 probe escapes the fixture the other way;
     // a dev machine with a real Hermes home (e.g. one running this very
     // integration) would otherwise poison the counts.
+    //
+    // `hermesHome` is outside fakeHome, so this pin also DISCRIMINATES: the
+    // pre-#604 wiring would look under fakeHome/.hermes, find nothing, and
+    // fail the assertions below.
     savedHermesHome = process.env.HERMES_HOME;
     savedLocalAppData = process.env.LOCALAPPDATA;
-    process.env.HERMES_HOME = resolve(fakeHome, '.hermes');
+    process.env.HERMES_HOME = hermesHome;
     delete process.env.LOCALAPPDATA;
   });
 
