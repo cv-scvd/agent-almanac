@@ -27,13 +27,23 @@ import {
   buildEnglishProseHistory, classifyTranslation, translationKey, UNJUDGED_REASONS,
 } from './lib/translation-status.js';
 import { TREES } from './lib/fences.js';
+import { SOURCE_COMMIT_FIELD, readFrontmatterField } from './lib/provenance.js';
 
 // Validated against an accept-list, not sniffed with `includes`. `--verdict`, `--verdicts=1`
 // and `-verdicts` all used to parse as "flag absent": the scan ran, ten files were written,
 // no verdict list printed, exit 0 — and the reader concluded there were no stubs to review
 // before starting a bulk delete. `audit-skill-sections.js` already does this correctly.
-const KNOWN_FLAGS = new Set(['--verdicts', '--margins', '--write']);
-const UNKNOWN_FLAGS = process.argv.slice(2).filter((arg) => !KNOWN_FLAGS.has(arg));
+const KNOWN_FLAGS = new Set(['--verdicts', '--margins', '--write', '--root']);
+// `--root` is the only flag here that TAKES a value, so its argument must be excused from the
+// unknown-flag sweep — otherwise the path itself is reported as an unknown argument. Excused by
+// position (the token immediately after `--root`) rather than by shape: a filter like
+// "anything not starting with --" would also swallow a genuine typo such as `verdicts`, which
+// is exactly the silent-misparse class the check above exists to catch.
+const ROOT_VALUE_INDEX = process.argv.indexOf('--root') + 1;
+const UNKNOWN_FLAGS = process.argv.slice(2).filter((arg, i) => {
+  if (KNOWN_FLAGS.has(arg)) return false;
+  return !(ROOT_VALUE_INDEX > 0 && i + 2 === ROOT_VALUE_INDEX);
+});
 if (UNKNOWN_FLAGS.length) {
   console.error(`ERROR: unknown argument(s): ${UNKNOWN_FLAGS.join(' ')}`);
   console.error(`Known flags: ${[...KNOWN_FLAGS].join(', ')}`);
@@ -63,7 +73,18 @@ const WRITE_STATUS = process.argv.includes('--write')
   || (!SHOW_VERDICTS && !SHOW_MARGINS);
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT = resolve(__dirname, '..');
+
+// `--root` exists so the #603 date behaviour can be TESTED rather than demonstrated. Without
+// it this script can only ever run against the repo it sits in, which means the only way to
+// exercise "does the date hold when the counts hold" is to mutate the real corpus and put it
+// back — a demo, not coverage, and one that dirties ten tracked files while it runs.
+// `check-i18n-fence-parity.js` already carries the same flag for the same reason.
+const rootFlag = process.argv.indexOf('--root');
+if (rootFlag >= 0 && (rootFlag + 1 >= process.argv.length || process.argv[rootFlag + 1].startsWith('--'))) {
+  console.error('ERROR: --root requires a value');
+  process.exit(2);
+}
+const ROOT = rootFlag >= 0 ? resolve(process.argv[rootFlag + 1]) : resolve(__dirname, '..');
 const I18N_DIR = resolve(ROOT, 'i18n');
 
 // Load config
@@ -100,11 +121,17 @@ const sourceCounts = {
 
 /**
  * Extract source_commit from translation frontmatter.
+ *
+ * Routes through the shared reader (#552). The regex this replaces was
+ * `/source_commit:\s*["']?([a-f0-9]+)["']?/m` — with no `^` anchor and no frontmatter bound, so
+ * it matched the first `source_commit:` ANYWHERE in the file, including inside a ```yaml fence
+ * demonstrating what translation frontmatter looks like. Two other copies of this reader
+ * existed and all three disagreed; there is now one, and it is anchored to the frontmatter
+ * block. Measured across the corpus at the swap: 2,571 stale before and after, so no file's
+ * verdict turned on the difference today.
  */
 function extractSourceCommit(filePath) {
-  const content = readFileSync(filePath, 'utf8');
-  const match = content.match(/source_commit:\s*["']?([a-f0-9]+)["']?/m);
-  return match ? match[1] : null;
+  return readFrontmatterField(readFileSync(filePath, 'utf8'), SOURCE_COMMIT_FIELD);
 }
 
 // Stub detection lives in ./lib/translation-status.js. It used to be body equality against

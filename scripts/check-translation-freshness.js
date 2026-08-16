@@ -16,6 +16,7 @@ import { resolve, dirname, basename, join } from 'path';
 import { fileURLToPath } from 'url';
 import { assertNotShallow, createFreshnessChecker, buildLatestCommitMap } from './lib/git-freshness.js';
 import { CONTENT_TYPES } from './lib/content-types.js';
+import { SOURCE_COMMIT_FIELD, readFrontmatterField } from './lib/provenance.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -24,11 +25,18 @@ const WARN_ONLY = process.argv.includes('--warn');
 
 /**
  * Extract source_commit from a translated file's frontmatter.
+ *
+ * The shared reader (#552). The regex this replaces was line-anchored but not
+ * FRONTMATTER-anchored, so a `source_commit:` at column 0 inside a ```yaml fence — the shape
+ * `i18n/README.md` itself documents — read as this file's own metadata. Measured across the
+ * corpus at the swap: 2,571 stale before and after.
+ *
+ * This is the last of three hand-rolled copies of this reader, each with a different regex and
+ * a different bug. That there were three is why `source_commit` could be read one way by the
+ * staleness gate and another by the status generator without anything noticing.
  */
 function extractSourceCommit(filePath) {
-  const content = readFileSync(filePath, 'utf8');
-  const match = content.match(/^\s*source_commit:\s*["']?([a-f0-9]+)["']?/m);
-  return match ? match[1] : null;
+  return readFrontmatterField(readFileSync(filePath, 'utf8'), SOURCE_COMMIT_FIELD);
 }
 
 /**
