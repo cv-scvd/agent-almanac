@@ -135,6 +135,28 @@ describe('fence_basis_commit in the parity gate (#552)', () => {
     assert.ok(out.findings.some((f) => f.kind === 'tag-sequence' && f.gated));
   });
 
+  it('flags a claim on a file no English revision has the fence count for', (t) => {
+    // `unalignable` is not a violation — without a count match there is no position to compare.
+    // It IS a contradicted claim: verified-against-X implies the count equals X's count, so an
+    // unalignable file cannot be carrying X's fences.
+    //
+    // The duplicated fence must repeat a body English HAS, not a novel one. A novel body is a
+    // gated divergence, which fires the body branch first and proves nothing about this path —
+    // the first version of this test did exactly that and asserted the wrong message.
+    const { dir } = makeFixture(t, { basis: 'deadbee', fence: ENGLISH_FENCE });
+    const mirror = join(dir, 'i18n', 'de', 'skills', 'demo-skill', 'SKILL.md');
+    writeFileSync(mirror, `${readFileSync(mirror, 'utf8')}\n\`\`\`bash\n${ENGLISH_FENCE}\n\`\`\`\n`, 'utf8');
+
+    const out = check(dir);
+    const claim = out.findings.find((f) => f.kind === 'stale-basis-claim');
+    assert.ok(claim, 'an unalignable file carrying a claim must be flagged');
+    assert.match(claim.firstDivergentLine, /no English revision has its fence count/);
+    assert.equal(claim.gated, false);
+    // Still not a violation: unalignable must not become one via this route.
+    assert.equal(out.violations, 0);
+    assert.equal(out.tagSequenceUnalignable, 1);
+  });
+
   it('a verified file with matching fences carries its claim cleanly', (t) => {
     const { dir } = makeFixture(t, { basis: 'deadbee', fence: ENGLISH_FENCE });
     const out = check(dir);

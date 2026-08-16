@@ -561,7 +561,17 @@ for (const t of targets) {
   const mirrorsBasis = repairedFences.length === basisFences.length
     && repairedFences.every((f, i) => !isGated(f) || f.body === basisFences[i].body);
   let basisStamp = null;
-  if (mirrorsBasis && basisLabel !== 'worktree') {
+  // `stillDivergent === 0` is kept as a conjunct even though `mirrorsBasis` implies it for any
+  // basis the walk can see. It does NOT imply it in general, and the gap is reachable without
+  // any unusual git state: the pool comes from `git log` over HEAD-reachable history with
+  // default simplification, while the basis blob is resolved with `git cat-file --batch`, which
+  // answers for any object in the store. The walker's own documented merge gap is the lead case
+  // — `--name-only` lists no paths for a merge, so a `source_commit` naming a conflict-resolved
+  // merge has a blob cat-file resolves and the pool never contains. There, `mirrorsBasis` is
+  // true while gated fences remain outside the pool, and stamping would sign a claim this
+  // repo's own gate contradicts on the next run. Refusing costs nothing when the basis is
+  // ordinary and keeps the tool from ever writing a claim the checker will flag.
+  if (stillDivergent === 0 && mirrorsBasis && basisLabel !== 'worktree') {
     const stamped = stampFrontmatterField(repairedText, FENCE_BASIS_FIELD, basisLabel);
     // `stamped` is null when the file has no `source_commit` to anchor beside. Repair the body
     // anyway and leave the field off, rather than guessing a nesting depth.
@@ -608,10 +618,14 @@ for (const p of plan) {
   // distinguishable from the fence count: stamped (fully verified against a named revision),
   // still-divergent (claim withheld or cleared), or a worktree basis (repaired, but from bytes
   // that are not a commit, so there is nothing honest to record).
-  const provenance = p.basisStamp
-    ? `, ${FENCE_BASIS_FIELD}=${p.basisStamp}`
-    : p.stillDivergent
-      ? `, no ${FENCE_BASIS_FIELD} (${p.stillDivergent} still divergent)`
+  // `stillDivergent` is tested BEFORE `basisStamp`, not after. A stamp and a non-zero divergence
+  // count are mutually exclusive by the condition above, so reporting the stamp first would only
+  // ever matter if that invariant broke — which is exactly when the operator needs to be told
+  // the file still diverges rather than reassured it was signed.
+  const provenance = p.stillDivergent
+    ? `, no ${FENCE_BASIS_FIELD} (${p.stillDivergent} still divergent)`
+    : p.basisStamp
+      ? `, ${FENCE_BASIS_FIELD}=${p.basisStamp}`
       : p.basisLabel === 'worktree'
         ? `, no ${FENCE_BASIS_FIELD} (basis is not a commit)`
         : `, no ${FENCE_BASIS_FIELD} (mirrors more than one revision)`;

@@ -324,14 +324,24 @@ function main() {
     // fail" invariant holds either way; what the narrower predicate lost was the ability to say
     // the frontmatter is lying, in precisely the case the escape was invented to hide.
     //
-    // `unalignable` is excluded because it is expressly not a finding: with no count-matched
-    // revision there is no positional claim to contradict.
-    const structureContradicts = Boolean(seqVerdict && !seqVerdict.unalignable);
+    // `unalignable` contradicts a CLAIM even though it is not a violation, and the two questions
+    // are genuinely different. As a violation it is rightly silent: without a count-matched
+    // revision there is no positional correspondence, and a stale translation predating a fence
+    // English later gained lands here. But run the claim question contrapositively — a true
+    // claim means these fences were verified against revision X, so the file's fence count
+    // equals X's count, so SOME revision has that count, so the file is alignable. Therefore
+    // `claimedBasis && unalignable` is a false claim, and unlike the violation question it
+    // carries no staleness confound: the claim is supposed to be current by construction.
+    // It is also the only place this schema can see the #480 deletion gap on a claimed file,
+    // since deleting a frozen fence usually changes the count.
+    const structureContradicts = Boolean(seqVerdict);
     if (claimedBasis && (divergedHere > 0 || structureContradicts)) {
       staleBasisClaims++;
       const because = divergedHere > 0
         ? `${divergedHere} gated fence(s) match no English revision`
-        : 'its fence tag sequence appears in no English revision';
+        : seqVerdict.unalignable
+          ? 'no English revision has its fence count, so the fences cannot be the claimed ones'
+          : 'its fence tag sequence appears in no English revision';
       findings.push({
         file: t.relPath,
         line: 1,

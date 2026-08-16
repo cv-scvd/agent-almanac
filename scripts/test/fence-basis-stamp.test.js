@@ -36,9 +36,11 @@ const english = (a, b) => [
   '# Demo Skill', '', '## One', '', '```bash', a, '```', '', '## Two', '', '```bash', b, '```', '',
 ].join('\n');
 
-const translated = (sourceCommit, a, b) => [
+const translated = (sourceCommit, a, b, staleClaim = null) => [
   '---', 'name: demo-skill', 'description: Eine Demo.', 'locale: de', 'source_locale: en',
-  `source_commit: ${sourceCommit}`, '---', '',
+  `source_commit: ${sourceCommit}`,
+  ...(staleClaim ? [`fence_basis_commit: ${staleClaim}`] : []),
+  '---', '',
   '# Demo', '', '## Eins', '', '```bash', a, '```', '', '## Zwei', '', '```bash', b, '```', '',
 ].join('\n');
 
@@ -75,10 +77,14 @@ function makeFixture(t) {
   git(dir, ['commit', '-m', 'english X']);
   const X = git(dir, ['rev-parse', '--short', 'HEAD']);
 
-  // The mirror: fence 1 localized (divergent), fence 2 still W's body, source_commit at X.
+  // The mirror: fence 1 localized (divergent), fence 2 still W's body, source_commit at X, and
+  // a PRE-EXISTING claim from some earlier run. The stale claim is load-bearing for the test:
+  // without it the clear branch is a no-op here and deleting the `clearFrontmatterField` call
+  // survives the whole suite, leaving the "a partial repair must not keep an old claim" half of
+  // the design uncovered — the half the module's own docs call worse than no claim at all.
   const mirror = join(dir, 'i18n', 'de', 'skills', 'demo-skill', 'SKILL.md');
   mkdirSync(dirname(mirror), { recursive: true });
-  writeFileSync(mirror, translated(X, 'echo "LOKALISIERT"', 'echo "B1"'), 'utf8');
+  writeFileSync(mirror, translated(X, 'echo "LOKALISIERT"', 'echo "B1"', 'deadbee'), 'utf8');
   git(dir, ['add', '-A']);
   git(dir, ['commit', '-m', 'de mirror']);
 
@@ -102,9 +108,12 @@ describe('normalize-i18n-fences: what it may claim (#552)', () => {
     assert.ok(after.includes('echo "B1"'), 'the non-divergent fence is left alone by design');
 
     // Therefore the file mirrors X at ordinal 1 and W at ordinal 2. No single revision
-    // describes it, so there is no true value to write and the field must be absent.
+    // describes it, so there is no true value to write and the field must be absent — which
+    // also means the pre-existing `deadbee` claim must have been DESTROYED, not merely left
+    // un-updated. Both halves are asserted by this one equality: `undefined` fails if the tool
+    // stamped X, and equally if it kept deadbee.
     assert.equal(field(after, 'fence_basis_commit'), undefined,
-      `stamped a basis (${X}) that only one of two fences mirrors — a false claim at birth`);
+      `stamped a basis (${X}) that only one of two fences mirrors, or kept the stale deadbee claim`);
   });
 
   it('stamps when the repaired file mirrors the basis at every gated fence', (t) => {
