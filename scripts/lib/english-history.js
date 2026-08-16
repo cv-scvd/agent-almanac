@@ -101,7 +101,8 @@ export function collectSpecs(root) {
  * `contentKey` normalises, but not for an id rename).
  *
  * Both gaps SHRINK the pool. What a shrunk pool does then depends entirely on which collector
- * is reading it, and the five differ — two tighten, two loosen, one is untouched:
+ * is reading it. Only five of the six sort into buckets — two tighten, two loosen, one is
+ * untouched. The sixth goes BOTH ways, depending on which revision went missing:
  *
  *   - **fence bodies** (`buildEnglishFenceHistory`): the pool is a *violation* basis, so a
  *     missing revision manufactures a false violation against a real translation — strict.
@@ -114,10 +115,29 @@ export function collectSpecs(root) {
  *     removes real coverage rather than raising a flag someone reads.
  *   - **frozen-fence lines** (`.fenceLines`, #561 R2): frozen lines go missing, so content the
  *     mask later exposes reads as novel — lenient, the opposite of its neighbour.
+ *   - **tag sequences** (`.sequences`, #481): BOTH, and which one depends on which revision went
+ *     missing. `compareTagSequence` (`check-i18n-fence-parity.js`) first asks whether the
+ *     translation's folded sequence appears in the pool at all, so losing the revision that
+ *     matched makes a legitimate translation read as a retag — strict. But when no SURVIVING
+ *     revision carries the same fence count the verdict is `unalignable`, which is expressly not
+ *     a finding, so losing the last count-matched revision demotes a real retag to unjudged —
+ *     lenient. One collector, both directions, which is why the list above is a list and not a
+ *     tally: there is no count of "how many tighten" that survives this member.
  *
  * Recorded measurement (`translation-status.js`, pre-extraction): adding `--diff-merges=separate`
  * changed the pool by 0 lines and the verdict set by 0 files. That was measured for the prose
- * side only — re-measure all five before changing the walk.
+ * side only — re-measure all six before changing the walk.
+ *
+ * ## Three call sites reach this walk, not two
+ *
+ * `buildEnglishProseHistory` (`translation-status.js`) and `buildEnglishFenceHistory`
+ * (`fences.js`) are the production pair that own the six collectors above. The third is
+ * `scripts/measure-tag-sequence-parity.js`, and it is deliberately NOT scoped out of this table
+ * for being a measurement script: `fences.js` cites it as the reproducer for the tag-sequence
+ * finding set, so a change to this walk that moves its numbers moves the evidence the gate was
+ * tuned against. It pools sequences inline rather than reusing `.sequences`, and folds tags with
+ * a local copy rather than `foldedTagSequence` — a divergence tracked as #612. Until that closes,
+ * a walk change must be re-measured through it separately; afterwards it inherits the row above.
  *
  * There is deliberately no `trees` option. An earlier draft had one, defaulting to
  * `CONTENT_TYPES` and used by nobody — and it could not have worked, because `contentKey`
