@@ -354,6 +354,14 @@ for (const locale of locales) {
   // the rendered YAML keeps the decision independent of dumper formatting; a file that is
   // missing, unparseable, or shaped differently falls through to today's date, which is the
   // safe direction — a spurious bump is recoverable, a frozen date is a lie.
+  //
+  // Two residuals, stated so neither is reported as a regression later. The field now means
+  // "when this payload last changed", which is not quite "when translations were last touched":
+  // (a) `pct` derives from the registry totals, so adding one English skill moves the
+  // denominator and bumps the date in all ten locales without any translation activity; and
+  // (b) compensating flips in one run — one file stub→translated while another goes the other
+  // way — leave every count equal and the date still. Both are inherent to comparing counts
+  // rather than tracking events, and both are preferable to stamping the run date.
   const previous = readStatus(statusPath);
   const unchanged = previous !== null
     && JSON.stringify(previous.coverage) === JSON.stringify(coverage);

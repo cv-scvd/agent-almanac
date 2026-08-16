@@ -97,7 +97,9 @@ Runs **warn-only** in CI until the backlog clears (#477), then flips to blocking
 
 ## Translation Frontmatter
 
-Every translated file includes these fields in its YAML frontmatter:
+Every translated file includes these fields in its YAML frontmatter, except that
+`fence_basis_commit` is present only on files scaffolded or repaired since #552 — its absence is
+meaningful rather than missing, as explained below:
 
 ```yaml
 locale: de                              # Content locale (IETF BCP 47)

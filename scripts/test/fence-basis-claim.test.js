@@ -13,7 +13,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -115,6 +115,24 @@ describe('fence_basis_commit in the parity gate (#552)', () => {
     assert.equal(gated.length, 1, 'the divergent gated fence must still be a violation');
     assert.equal(gated[0].kind, 'diverged');
     assert.equal(out.violations, 1);
+  });
+
+  it('flags a claim contradicted by a RETAG, not just by a divergent body', (t) => {
+    // The #481 escape: a frozen ```bash fence retagged to ```text leaves the body check
+    // entirely, because gating is read off the translated file. The body divergence is then
+    // UNGATED, so a body-only predicate sees nothing and the frontmatter's claim goes
+    // unchallenged in exactly the case the escape exists to hide.
+    const { dir } = makeFixture(t, { basis: 'deadbee' });
+    const mirror = join(dir, 'i18n', 'de', 'skills', 'demo-skill', 'SKILL.md');
+    writeFileSync(mirror, readFileSync(mirror, 'utf8').replace('```bash', '```text'), 'utf8');
+
+    const out = check(dir);
+    const claim = out.findings.find((f) => f.kind === 'stale-basis-claim');
+    assert.ok(claim, 'a retag must contradict the claim too');
+    assert.match(claim.firstDivergentLine, /tag sequence appears in no English revision/);
+    // The structural finding is still what fails the run; the claim finding stays ungated.
+    assert.equal(claim.gated, false);
+    assert.ok(out.findings.some((f) => f.kind === 'tag-sequence' && f.gated));
   });
 
   it('a verified file with matching fences carries its claim cleanly', (t) => {

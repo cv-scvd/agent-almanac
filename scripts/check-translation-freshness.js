@@ -39,15 +39,10 @@ function extractSourceCommit(filePath) {
   return readFrontmatterField(readFileSync(filePath, 'utf8'), SOURCE_COMMIT_FIELD);
 }
 
-/**
- * Extract locale from a translated file's frontmatter.
- */
-function extractLocale(filePath) {
-  const content = readFileSync(filePath, 'utf8');
-  const match = content.match(/^  locale:\s*["']?([a-zA-Z-]+)["']?/m)
-    || content.match(/^locale:\s*["']?([a-zA-Z-]+)["']?/m);
-  return match ? match[1] : null;
-}
+// `extractLocale` used to sit here: a fourth hand-rolled frontmatter reader, not anchored to the
+// frontmatter block, and called by nothing — the locale comes from the directory walk below.
+// Deleted rather than routed through the shared reader (#552), because an unused reader is a
+// waiting inconsistency: the next person to need a locale would have found two of them.
 
 // A shallow clone would make every translation read as fresh (#279/#362).
 assertNotShallow(ROOT);

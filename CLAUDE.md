@@ -223,7 +223,8 @@ i18n/
 
 - Translate prose sections (descriptions, headings, pitfalls, validation text)
 - Keep in English: `name` (=ID), code blocks, tool names, tags, domain, file paths, config values
-- Every translated file has frontmatter fields: `locale`, `source_locale`, `source_commit`, `translator`, `translation_date`
+- Every translated file has frontmatter fields: `locale`, `source_locale`, `source_commit`, `fence_basis_commit`, `translator`, `translation_date`
+- `source_commit` and `fence_basis_commit` are **not** duplicates (#552). The first is the English revision a *human* translated against — staleness reads it, and a tool must never move it. The second is the revision this file's *frozen fences* were verified against — `normalize-i18n-fences.js` moves it when it propagates English bytes. One field could not record both: after a mechanical fence repair, bumping it makes the first claim false and leaving it makes the second false. Absence of `fence_basis_commit` means "unverified", which is honest and is the state of most of the corpus until the backfill lands; it is never stamped on a file whose fences diverge. Full rationale in `i18n/README.md`.
 - Translated SKILL.md files must stay under 500 lines
 
 #### Which code fences are frozen

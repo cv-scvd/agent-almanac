@@ -316,8 +316,22 @@ function main() {
     // can never be the reason a corpus goes red, only the reason someone stops trusting a
     // field. Absence of the field is silent by design: absent means unverified, which is the
     // honest state for every file predating this schema.
-    if (claimedBasis && divergedHere > 0) {
+    // A claim is contradicted by a divergent BODY or by a divergent STRUCTURE. Counting only
+    // bodies left the retag escape (#481) invisible to this detector: retag a frozen `yaml`
+    // fence to `text` and localise it, and the body check sees only an UNGATED divergence — so
+    // `divergedHere` stays 0 — while the tag-sequence check files a gated finding. The run
+    // still fails on that finding, so the "cannot fail a run the divergence did not already
+    // fail" invariant holds either way; what the narrower predicate lost was the ability to say
+    // the frontmatter is lying, in precisely the case the escape was invented to hide.
+    //
+    // `unalignable` is excluded because it is expressly not a finding: with no count-matched
+    // revision there is no positional claim to contradict.
+    const structureContradicts = Boolean(seqVerdict && !seqVerdict.unalignable);
+    if (claimedBasis && (divergedHere > 0 || structureContradicts)) {
       staleBasisClaims++;
+      const because = divergedHere > 0
+        ? `${divergedHere} gated fence(s) match no English revision`
+        : 'its fence tag sequence appears in no English revision';
       findings.push({
         file: t.relPath,
         line: 1,
@@ -326,7 +340,7 @@ function main() {
         tag: FENCE_BASIS_FIELD,
         gated: false,
         kind: 'stale-basis-claim',
-        firstDivergentLine: `frontmatter claims ${FENCE_BASIS_FIELD}: ${claimedBasis}, but ${divergedHere} gated fence(s) match no English revision`,
+        firstDivergentLine: `frontmatter claims ${FENCE_BASIS_FIELD}: ${claimedBasis}, but ${because}`,
       });
     }
   }
