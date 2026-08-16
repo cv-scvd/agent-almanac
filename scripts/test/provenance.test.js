@@ -170,6 +170,50 @@ describe('provenance: stampFrontmatterField', () => {
   });
 });
 
+describe('provenance: $-patterns in frontmatter are data, not substitutions', () => {
+  // `String.prototype.replace` expands `$$`, `$&`, backtick-$ and `$'` in the replacement even
+  // when the search argument is a plain STRING, and every replacement in this module is derived
+  // from the file's own frontmatter. Before the fix, stamping this fixture spliced the whole
+  // remainder of the file back in and duplicated the body — inside frontmatter, where the fence
+  // gate is blind. Zero corpus files carry such a value today; this is the write path the
+  // backfill runs over ~3,644 of them.
+  const dollars = [
+    '---',
+    'name: demo',
+    'source_commit: abc1234',
+    "description: shell docs mentioning $' and $& and $$ and $`",
+    '---',
+    '',
+    '# Body',
+    '',
+    'SENTINEL-BODY-LINE',
+    '',
+  ].join('\n');
+
+  it('stamps without corrupting a $-bearing frontmatter', () => {
+    const out = stampFrontmatterField(dollars, FENCE_BASIS_FIELD, 'ff00ff0');
+    assert.ok(out);
+    assert.equal(readFrontmatterField(out, FENCE_BASIS_FIELD), 'ff00ff0');
+    assert.equal(readFrontmatterField(out, SOURCE_COMMIT_FIELD), 'abc1234');
+    // The description survives verbatim, and the body appears exactly once.
+    assert.ok(out.includes("description: shell docs mentioning $' and $& and $$ and $`"));
+    assert.equal(out.match(/SENTINEL-BODY-LINE/g).length, 1);
+    assert.equal(out.match(/^---$/gm).length, 2, 'exactly one frontmatter block');
+  });
+
+  it('clears without corrupting a $-bearing frontmatter', () => {
+    const stamped = stampFrontmatterField(dollars, FENCE_BASIS_FIELD, 'ff00ff0');
+    assert.equal(clearFrontmatterField(stamped, FENCE_BASIS_FIELD), dollars,
+      'stamp then clear must round-trip to the original bytes');
+  });
+
+  it('a $-bearing VALUE is written literally', () => {
+    const out = stampFrontmatterField(flat, FENCE_BASIS_FIELD, '$&evil');
+    assert.equal(readFrontmatterField(out, FENCE_BASIS_FIELD), '$&evil');
+    assert.equal(out.match(/SENTINEL/g), null);
+  });
+});
+
 describe('provenance: clearFrontmatterField', () => {
   it('removes the field', () => {
     const stamped = stampFrontmatterField(flat, FENCE_BASIS_FIELD, 'ff00ff0');

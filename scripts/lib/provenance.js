@@ -97,14 +97,32 @@ export function stampFrontmatterField(text, field, value) {
   const block = fm[1];
   const existing = new RegExp(`^([ \\t]*)${field}:.*$`, 'm');
   if (existing.test(block)) {
-    const updated = block.replace(existing, `$1${field}: ${value}`);
-    return normalized.replace(block, updated);
+    const updated = block.replace(existing, (_, indent) => `${indent}${field}: ${value}`);
+    return replaceBlock(normalized, block, updated);
   }
 
   const anchor = new RegExp(`^([ \\t]*)${SOURCE_COMMIT_FIELD}:.*$`, 'm').exec(block);
   if (!anchor) return null;
-  const updated = block.replace(anchor[0], `${anchor[0]}\n${anchor[1]}${field}: ${value}`);
-  return normalized.replace(block, updated);
+  const updated = block.replace(anchor[0], () => `${anchor[0]}\n${anchor[1]}${field}: ${value}`);
+  return replaceBlock(normalized, block, updated);
+}
+
+/**
+ * Splice `updated` in place of `block` inside `text`, with NO `$`-pattern interpretation.
+ *
+ * `String.prototype.replace` expands `$$`, `$&`, `` $` `` and `$'` in the replacement even when
+ * the search argument is a plain string, and every replacement here is derived from the file's
+ * own frontmatter. A `description:` containing `$'` — ordinary shell documentation in this
+ * corpus — spliced the entire remainder of the file back in and duplicated the body, silently,
+ * inside the frontmatter where the fence gate cannot see it. Measured over `i18n/**` at the
+ * time of writing: zero files carry such a value in frontmatter, so nothing is corrupt today.
+ * This is the write path the backfill runs across ~3,644 files, so "zero today" is not a reason
+ * to leave a loaded gun in it.
+ *
+ * A function replacement is the fix: its return value is used verbatim.
+ */
+function replaceBlock(text, block, updated) {
+  return text.replace(block, () => updated);
 }
 
 /**
@@ -131,5 +149,5 @@ export function clearFrontmatterField(text, field) {
   const lines = block.split('\n');
   const kept = lines.filter((line) => !match.test(line));
   if (kept.length === lines.length) return normalized;
-  return normalized.replace(block, kept.join('\n'));
+  return replaceBlock(normalized, block, kept.join('\n'));
 }

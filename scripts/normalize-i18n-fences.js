@@ -533,21 +533,35 @@ for (const t of targets) {
   // #552: record which English revision these fences were verified against — but only when the
   // claim is true, on both counts that can make it false.
   //
-  //   1. The repair must leave NOTHING gated divergent. A `--tag`-scoped batch repairs one slice
-  //      and leaves the rest, so stamping after it would assert a whole-file verification the
-  //      file has not had. Re-derived from the repaired bytes rather than from `restoredHere`,
-  //      because "I fixed some" and "none remain" are different claims and only the second is
-  //      the one being written down.
+  //   1. The repaired file must MIRROR THE BASIS at every gated fence. An earlier version of
+  //      this tested "nothing gated is still divergent", which is a strictly weaker statement
+  //      and the gap is reachable. `everEnglish` is the union of every revision, so that test
+  //      proves each fence matches SOME revision while the stamp names ONE. The splice repairs
+  //      only the divergent fences, so an untouched fence keeps whatever revision it came from:
+  //      given English W=[A1,B1] and X=[A2,B2] and a mirror [localized, B1] whose source_commit
+  //      was bumped to X without retranslation (the #405 shape), the repair yields [A2,B1] —
+  //      X at one ordinal, W at the other — and the weaker test stamped X. That is a false
+  //      claim at the moment of writing, invisible to the parity checker because every body
+  //      does match some revision, and inherited by whatever reads the field next. Pinned by
+  //      `scripts/test/fence-basis-stamp.test.js`, which fails against the weaker test.
   //   2. The basis must be a real revision. `basisLabel` is `worktree` whenever the fallback
   //      read English off disk, and the working tree is not a commit — the same distinction the
   //      report already refuses to blur ("labelled `worktree`, not a commit").
   //
   // Otherwise CLEAR the field. A file that still diverges must not keep a claim from an earlier,
   // then-complete verification: a stale claim reads as verified and is worse than no claim.
-  const stillDivergent = extractFences(repairedText)
-    .filter((f) => isGated(f) && !everEnglish.has(f.body)).length;
+  // Clearing cannot destroy a TRUE claim here, because a file only reaches this point with a
+  // gated fence that matched no revision at all, and English history only grows — so any
+  // pre-existing stamp on it was already stale.
+  const repairedFences = extractFences(repairedText);
+  const stillDivergent = repairedFences.filter((f) => isGated(f) && !everEnglish.has(f.body)).length;
+  // Ordinal comparison is sound here for the same reason the splice was: the count and
+  // tag-alignment guards above already rejected this file otherwise. Re-checking the length is
+  // belt-and-braces against a basis body that itself contains a fence delimiter.
+  const mirrorsBasis = repairedFences.length === basisFences.length
+    && repairedFences.every((f, i) => !isGated(f) || f.body === basisFences[i].body);
   let basisStamp = null;
-  if (stillDivergent === 0 && basisLabel !== 'worktree') {
+  if (mirrorsBasis && basisLabel !== 'worktree') {
     const stamped = stampFrontmatterField(repairedText, FENCE_BASIS_FIELD, basisLabel);
     // `stamped` is null when the file has no `source_commit` to anchor beside. Repair the body
     // anyway and leave the field off, rather than guessing a nesting depth.
@@ -598,7 +612,9 @@ for (const p of plan) {
     ? `, ${FENCE_BASIS_FIELD}=${p.basisStamp}`
     : p.stillDivergent
       ? `, no ${FENCE_BASIS_FIELD} (${p.stillDivergent} still divergent)`
-      : `, no ${FENCE_BASIS_FIELD} (basis is not a commit)`;
+      : p.basisLabel === 'worktree'
+        ? `, no ${FENCE_BASIS_FIELD} (basis is not a commit)`
+        : `, no ${FENCE_BASIS_FIELD} (mirrors more than one revision)`;
   console.log(`${PREVIEW ? 'would restore' : '   restoring'} ${String(p.n).padStart(2)} fence(s) in ${p.relPath}  (basis ${p.basisLabel}${provenance})`);
 }
 
