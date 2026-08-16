@@ -1,15 +1,18 @@
 /**
  * hermes.js — Hermes Agent adapter (Nous Research).
  *
- * Skills: ~/.hermes/skills/<domain>/<id>/ (preserves domain hierarchy)
- * Agents: ~/.hermes/agents/<id>.md
+ * Skills: <hermes-home>/skills/<domain>/<id>/ (preserves domain hierarchy)
+ * Agents: <hermes-home>/agents/<id>.md
  * Global scope only.
+ *
+ * The home is resolved via resolveHermesHome() (#604): $HERMES_HOME, then the
+ * Windows-native default (%LOCALAPPDATA%\hermes, config-verified), then ~/.hermes.
  */
 
 import { existsSync, mkdirSync, symlinkSync, unlinkSync, readdirSync } from 'fs';
 import { resolve } from 'path';
-import { homedir } from 'os';
 import { FrameworkAdapter } from './base.js';
+import { resolveHermesHome } from '../lib/hermes-home.js';
 
 export class HermesAdapter extends FrameworkAdapter {
   static id = 'hermes';
@@ -18,11 +21,11 @@ export class HermesAdapter extends FrameworkAdapter {
   static contentTypes = ['skill', 'agent'];
 
   async detect() {
-    return existsSync(resolve(homedir(), '.hermes/config.yaml'));
+    return existsSync(resolve(resolveHermesHome(), 'config.yaml'));
   }
 
-  _skillsBase() { return resolve(homedir(), '.hermes/skills'); }
-  _agentsBase() { return resolve(homedir(), '.hermes/agents'); }
+  _skillsBase() { return resolve(resolveHermesHome(), 'skills'); }
+  _agentsBase() { return resolve(resolveHermesHome(), 'agents'); }
 
   async install(item, projectDir, scope, options = {}) {
     if (item.type === 'skill') {
