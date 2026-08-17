@@ -190,7 +190,9 @@ metadata:
   labels:
     {{- include "my-app.labels" . | nindent 4 }}
 spec:
+  {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
+  {{- end }}
   template:
     spec:
       containers:
@@ -260,7 +262,7 @@ spec:
     spec:
       containers:
       - name: migration
-        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
         command: ["/app/migrate"]
 # ... (see EXAMPLES.md for test hook, pre-delete backup, NOTES.txt)
 ```
