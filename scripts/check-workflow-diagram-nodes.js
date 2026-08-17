@@ -266,6 +266,18 @@ function listSourceFiles(scope) {
   // which fails the `$`-anchored pattern test and drops the file from the scan
   // silently. That is the dangerous direction: an annotation in such a file
   // becomes invisible and the gate reads clean over a real missing node.
+  //
+  // Measured on a two-file fixture carrying one ASCII and one accented source,
+  // reverting BOTH this flag and the NUL split together (a coherent revert, not
+  // the incoherent one a single-line mutation produces):
+  //
+  //   shipped   2 source file(s), 2 annotation(s)  -> exit 1, flags node_accented
+  //   reverted  1 source file(s), 1 annotation(s)  -> exit 0, "OK: every
+  //                                                   annotated id has a node"
+  //
+  // An exit 0 over a real missing node, with a plausible-looking count beside
+  // it. The `sees an annotation in a file whose name git would quote` test is
+  // the control for this.
   const r = spawnSync('git', ['-C', ROOT, 'ls-files', '-z', '-co', '--exclude-standard', '--', SOURCE_DIR], {
     encoding: 'utf8',
     maxBuffer: 32 * 1024 * 1024,
