@@ -270,9 +270,23 @@ function auditInventory(doc, problems) {
   // other direction, adding that same command to a brand-new workflow would be covered on
   // arrival — a new warn-only gate added silently, which is precisely what this sweep exists to
   // make impossible.
+  //
+  // COMMENT LINES ARE SKIPPED, and that is a repair rather than a loosening. Until #590 the sweep
+  // read every line, so writing *about* `--warn` in a workflow comment reported the comment as an
+  // unlisted warn-only step — which happened the moment someone documented, next to a warn step,
+  // that `--warn` suppresses finding-exits but not refusals. The failure was loud rather than
+  // silent, so nothing was ever missed by it; the cost was that the prose explaining a warn gate
+  // could not sit beside the warn gate, and the cheap way out is to reword the comment, which
+  // deletes the explanation to satisfy the tool.
+  //
+  // Skipping is safe in the direction that matters: a line whose first non-space character is `#`
+  // is a YAML comment or a shell comment inside a `run: |` block, and neither executes. A real
+  // invocation with a trailing comment (`node x.js --warn # note`) does not start with `#` and is
+  // still swept.
   for (const [path, text] of workflows) {
     for (const line of text.split('\n')) {
       if (!line.includes('--warn')) continue;
+      if (line.trim().startsWith('#')) continue;
       // Both prefixes, in order: a step is `- run: cmd` on one line and `run: cmd` under a
       // multi-line `run: |`. One alternation strips only the first and leaves `run:` glued to the
       // command, which does not break the containment test but does put a spurious token in the
