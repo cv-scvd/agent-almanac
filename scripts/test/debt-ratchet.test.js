@@ -186,14 +186,21 @@ describe('debt ratchet (#591)', () => {
     assert.match(out, /which the slice does not ratchet/);
   });
 
-  it('resolves the gate against ITS OWN repo, so a fixture cannot supply its judge', (t) => {
-    // `--root` names a corpus to check, not a source of checkers. If the gate were resolved
-    // against `--root`, a tree could ship a permissive copy of the gate and pass.
+  it('resolves the gate against ITS OWN repo, so a checked tree cannot supply its judge', (t) => {
+    // `--root` names a corpus to check, not a source of checkers. The fixture ships a PERMISSIVE
+    // fake at the same path the ratchet names, which reports a large clean corpus. If the gate
+    // were resolved against `--root`, that fake would clear both the vacuity floor and the member
+    // comparison, and the retag below would go unreported — a tree grading its own homework.
     const dir = fixture(t, { ratchetYaml: slice([]) });
-    writeFileSync(join(dir, 'scripts-decoy.txt'), 'unused', 'utf8');
+    mkdirSync(join(dir, 'scripts'), { recursive: true });
+    writeFileSync(join(dir, 'scripts', 'check-i18n-fence-parity.js'),
+      'console.log(JSON.stringify({ filesCompared: 9999, kinds: ["tag-sequence", "tag-drift"], findings: [] }));\n',
+      'utf8');
+
     const { status, out } = run(dir);
     assert.equal(status, 1, 'the real gate still finds the retag');
-    assert.match(out, /added debt/);
+    assert.match(out, /added debt — i18n\/de\/skills\/demo\/SKILL\.md \[tag-sequence\]/);
+    assert.doesNotMatch(out, /scanned 9999/, 'the fake must not have been the one that ran');
   });
 
   describe('the advisory-gate inventory', () => {
