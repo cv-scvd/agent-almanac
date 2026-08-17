@@ -64,7 +64,6 @@ import { readFileSync, writeFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { spawnSync } from 'child_process';
-import * as yaml from 'js-yaml';
 
 import {
   extractFences, buildEnglishFenceHistory, isGated, foldedTagSequence,
@@ -72,6 +71,7 @@ import {
 } from './lib/fences.js';
 import { collectI18nTargets, validateScope } from './lib/i18n-targets.js';
 import { assertNotShallow } from './lib/git-freshness.js';
+import { auditYaml } from './lib/frontmatter-audit.js';
 import {
   SOURCE_COMMIT_FIELD, FENCE_BASIS_FIELD,
   readFrontmatterField, stampFrontmatterField,
@@ -141,42 +141,10 @@ function git(args, { input } = {}) {
   return r;
 }
 
-/**
- * Parse a stamped file's frontmatter with a real YAML parser and check where the field landed.
- *
- * Deliberately does NOT use `readFrontmatterField`. That reader tolerates any indentation by
- * design, so it reads the field back correctly whether it sits beside `source_commit` or in a
- * different mapping entirely — which means it cannot detect the one placement error that
- * produces valid YAML with the wrong meaning. `js-yaml` sees the structure the reader flattens.
- *
- * @param {string} text whole file contents at the audited ref
- * @returns {string|null} a problem description, or null when the file is sound
- */
-function auditYaml(text) {
-  const fm = text.replace(/\r\n/g, '\n').match(/^---\n([\s\S]*?)\n---(\n|$)/);
-  if (!fm) return 'no frontmatter block';
-  let doc;
-  try {
-    doc = yaml.load(fm[1]);
-  } catch (e) {
-    return `frontmatter is not valid YAML: ${String(e.message).split('\n')[0]}`;
-  }
-  if (!doc || typeof doc !== 'object') return 'frontmatter is not a mapping';
-
-  const atTop = Object.prototype.hasOwnProperty.call(doc, FENCE_BASIS_FIELD);
-  const meta = doc.metadata && typeof doc.metadata === 'object' ? doc.metadata : null;
-  const inMeta = Boolean(meta && Object.prototype.hasOwnProperty.call(meta, FENCE_BASIS_FIELD));
-  if (!atTop && !inMeta) return `${FENCE_BASIS_FIELD} parsed into neither the top level nor metadata`;
-
-  const holder = atTop ? doc : meta;
-  if (!Object.prototype.hasOwnProperty.call(holder, SOURCE_COMMIT_FIELD)) {
-    return `${FENCE_BASIS_FIELD} landed in a different mapping than ${SOURCE_COMMIT_FIELD}`;
-  }
-  if (String(holder[FENCE_BASIS_FIELD]) !== String(holder[SOURCE_COMMIT_FIELD])) {
-    return `${FENCE_BASIS_FIELD} (${holder[FENCE_BASIS_FIELD]}) !== ${SOURCE_COMMIT_FIELD} (${holder[SOURCE_COMMIT_FIELD]})`;
-  }
-  return null;
-}
+// `auditYaml` lives in `lib/frontmatter-audit.js` — it is a fact about where the provenance field
+// sits, and putting it here would have made this script a library nobody can import: its
+// whole body runs at module load (measured: 91 seconds and a full corpus walk), which is the
+// exact un-importability this PR criticised in `check-i18n-fence-parity.js`.
 
 // ---- --verify: reconstruct the diff rather than read it -------------------
 //

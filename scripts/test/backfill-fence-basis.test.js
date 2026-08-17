@@ -18,6 +18,8 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
+import { auditYaml } from '../lib/frontmatter-audit.js';
+
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SCRIPT = 'scripts/backfill-fence-basis.js';
 
@@ -313,5 +315,54 @@ describe('backfill-fence-basis (#552)', () => {
     const bad = run(dir, ['--verify', '--base', base]);
     assert.equal(bad.status, 1, 'a body change must not pass reconstruction');
     assert.match(bad.stderr, /not base\+stamp/);
+  });
+});
+
+/**
+ * `auditYaml` — the second, non-regex instrument.
+ *
+ * Tested as a function rather than through `--verify`, deliberately and for a reason worth
+ * stating: inside `--verify` the reconstruction check runs first and compares against
+ * `stampFrontmatterField`'s own output, so any diff the tool actually produced arrives here
+ * already correct. This check exists for the case reconstruction is blind to — a defect in the
+ * shared transform — which no fixture can produce without injecting a broken transform. Mutating
+ * its call site consequently survives the suite, measured; that is a property of the design, not
+ * a hole a better fixture would close.
+ */
+describe('auditYaml — placement, not just presence', () => {
+  const nested = (extra = []) => [
+    '---', 'name: demo', 'metadata:', '  locale: de', '  source_commit: abc1234',
+    ...extra, '---', '', '# Body', '',
+  ].join('\n');
+
+  it('accepts a field beside its anchor, nested', () => {
+    assert.equal(auditYaml(nested(['  fence_basis_commit: abc1234'])), null);
+  });
+
+  it('accepts a field beside its anchor, top level', () => {
+    const flat = ['---', 'name: demo', 'source_commit: abc1234', 'fence_basis_commit: abc1234', '---', '', 'x', ''].join('\n');
+    assert.equal(auditYaml(flat), null);
+  });
+
+  it('rejects a field that is valid YAML but in the WRONG mapping', () => {
+    // The failure `readFrontmatterField` cannot see: it is indent-tolerant by design, so it
+    // reads this back correctly while the field now means something else.
+    const wrong = ['---', 'name: demo', 'metadata:', '  locale: de', '  source_commit: abc1234',
+      'fence_basis_commit: abc1234', '---', '', 'x', ''].join('\n');
+    assert.match(auditYaml(wrong), /landed in a different mapping/);
+  });
+
+  it('rejects a value that disagrees with its anchor', () => {
+    assert.match(auditYaml(nested(['  fence_basis_commit: deadbee'])), /!==/);
+  });
+
+  it('rejects frontmatter that no longer parses', () => {
+    const broken = ['---', 'name: demo', 'metadata:', '  source_commit: abc1234',
+      '  fence_basis_commit: [unclosed', '---', '', 'x', ''].join('\n');
+    assert.match(auditYaml(broken), /not valid YAML/);
+  });
+
+  it('rejects a file with no frontmatter at all', () => {
+    assert.match(auditYaml('# just a body\n'), /no frontmatter/);
   });
 });
