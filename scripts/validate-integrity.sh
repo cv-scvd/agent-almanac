@@ -393,7 +393,7 @@ done <<< "$a9_hits"
 # Two legal derivations, not one. `validate-translations.yml:59` iterates `agents teams guides`
 # and is CORRECT to: it globs `"$locale_dir"*.md`, which finds nothing under the nested
 # `skills/<id>/SKILL.md` layout. A rule demanding every loop equal CONTENT_TYPES would fire on
-# it. So the flat form is derived too, from the `NESTING` record in check-i18n-fence-parity.js
+# it. So the flat form is derived too, from the `NESTING` record in scripts/lib/i18n-targets.js
 # -- the same record that throws there on an unclassified tree, which makes it the cross-language
 # source for the nesting fact rather than a second literal invented here.
 #
@@ -422,7 +422,7 @@ a10_checked_find=0
 
 a10_all=$(sed -n 's/^export const CONTENT_TYPES = Object.freeze(\[\(.*\)\]);$/\1/p' scripts/lib/content-types.js \
   | tr -d "'\"" | tr ',' ' ' | tr -s ' ' '\n' | sed '/^$/d' | sort || true)
-a10_nested=$(sed -n 's/^const NESTING = {\(.*\)};$/\1/p' scripts/check-i18n-fence-parity.js \
+a10_nested=$(sed -n 's/^const NESTING = {\(.*\)};$/\1/p' scripts/lib/i18n-targets.js \
   | tr ',' '\n' | grep -E ':[[:space:]]*true' | sed -E 's/^[[:space:]]*//; s/[[:space:]]*:.*//' | sed '/^$/d' | sort || true)
 
 # Compare one extracted list against the full SSOT. Order is ignored -- these are loop and case
@@ -565,7 +565,7 @@ else
     echo "FAIL: A10 could not read validate-integrity.yml's pull_request paths -- trigger coverage UNCHECKED"
     failed=1; a10_fail=1
   else
-    for a10_src in scripts/lib/content-types.js scripts/check-i18n-fence-parity.js \
+    for a10_src in scripts/lib/content-types.js scripts/lib/i18n-targets.js \
                    scripts/validate-integrity.sh scripts/translate-content.sh \
                    .github/workflows/validate-translations.yml; do
       if ! a10_covered "$a10_src"; then

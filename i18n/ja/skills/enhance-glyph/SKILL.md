@@ -12,6 +12,7 @@ allowed-tools: Read Write Edit Bash Grep Glob
 locale: ja
 source_locale: en
 source_commit: 33b561c9
+fence_basis_commit: 33b561c9
 translator: claude
 translation_date: "2026-03-18"
 metadata:

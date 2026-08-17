@@ -66,7 +66,10 @@ import { readFileSync, readdirSync, existsSync, statSync } from 'fs';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { assertNotShallow } from './lib/git-freshness.js';
-import { extractFences, buildEnglishFenceHistory, isGated, foldedTagSequence } from './lib/fences.js';
+import {
+  extractFences, buildEnglishFenceHistory, isGated, foldedTagSequence, compareTagSequence,
+} from './lib/fences.js';
+import { collectI18nTargets, I18N_TREES } from './lib/i18n-targets.js';
 import { FENCE_BASIS_FIELD, readFrontmatterField } from './lib/provenance.js';
 import { CONTENT_TYPES } from './lib/content-types.js';
 
@@ -140,85 +143,39 @@ const ONLY_ID = flagValue('--id', null);
  * Throwing at module load means a fifth tree in the SSOT breaks every CI invocation of this
  * gate until someone declares its layout. Loud is the point.
  */
-const NESTING = { skills: true, agents: false, teams: false, guides: false };
-export const TREES = CONTENT_TYPES.map((dir) => {
-  if (!(dir in NESTING)) {
-    throw new Error(
-      `check-i18n-fence-parity: content type '${dir}' has no declared i18n layout. `
-      + 'Add it to NESTING (true if mirrored as <dir>/<id>/FILE.md, false if <dir>/<id>.md).',
-    );
-  }
-  return { dir, nested: NESTING[dir] };
-});
-
-/** Every translated file to compare, as { relPath, absPath, locale, id, tree }. */
-export function collectTargets() {
-  const out = [];
-  for (const locale of readdirSync(I18N_DIR)) {
-    if (ONLY_LOCALE && locale !== ONLY_LOCALE) continue;
-    for (const { dir, nested } of TREES) {
-      const base = join(I18N_DIR, locale, dir);
-      if (!existsSync(base) || !statSync(base).isDirectory()) continue;
-      for (const entry of readdirSync(base)) {
-        const id = nested ? entry : entry.replace(/\.md$/, '');
-        if (ONLY_ID && id !== ONLY_ID) continue;
-        const absPath = nested ? join(base, entry, 'SKILL.md') : join(base, entry);
-        if (!nested && !entry.endsWith('.md')) continue;
-        if (!existsSync(absPath) || !statSync(absPath).isFile()) continue;
-        out.push({
-          absPath, locale, id, tree: dir,
-          relPath: `i18n/${locale}/${dir}/${nested ? `${entry}/SKILL.md` : entry}`,
-        });
-      }
-    }
-  }
-  return out;
-}
+// The layout SSOT moved to `scripts/lib/i18n-targets.js` with the walk that consumes it, and
+// keeps its throw-on-undeclared-tree behaviour there. Re-exported: `content-types-propagation`
+// asserts this gate agrees with the SSOT about which trees exist, and that assertion is about
+// the gate's view, not the lib's.
+export const TREES = I18N_TREES;
 
 /**
- * Does this translation's folded tag sequence exist in English?
+ * Every translated file to compare, as { relPath, absPath, locale, id, tree }.
  *
- * #481: the retag escape. `isGated` reads the info string off the TRANSLATION, so retagging a
- * frozen ```yaml fence to ```text removes it from the body check entirely — the set of fences
- * under the gate is chosen by the file being gated. Default-deny narrowed that escape to
- * {text, markdown, md} without closing it, and #583 records that the status detector's
- * accidental tripwire for the same escape was removed in #582, leaving this the only cover.
- *
- * Staleness-immune by the same construction as the body check: the sequence must match SOME
- * English revision, never HEAD. A stale translation legitimately carries an older sequence.
- *
- * @param {string[]} mine folded tag sequence of the translation
- * @param {Set<string>|undefined} englishSequences joined folded sequences from every revision
- * @returns {null | {unalignable: true} | {positions: {index: number, english: string, translated: string}[]}}
+ * The walk itself moved to `scripts/lib/i18n-targets.js` (#552) so this gate, the fence
+ * normalizer and the backfill cannot disagree about what the corpus IS. The copies had already
+ * drifted on two points that decide whether a scoped run reporting zero is a pass or a bug.
+ * `--id` stays here: it is this gate's debugging convenience, not a property of the corpus.
  */
-export function compareTagSequence(mine, englishSequences) {
-  if (!englishSequences || englishSequences.has(mine.join(','))) return null;
-
-  // `''.split(',')` is `['']` — length 1, not 0. A source revision with NO fences joins to the
-  // empty string, so the naive length made it look like a one-fence revision, matched it against
-  // every one-fence translation, and compared position 1 against `undefined`. That fabricated 3
-  // findings reading `#1 ->markdown`, and it was caught only because an independent measurement
-  // of the same property disagreed by exactly 3 — not by any test.
-  const lengthOf = (seq) => (seq === '' ? 0 : seq.split(',').length);
-  const sameLength = [...englishSequences].filter((seq) => lengthOf(seq) === mine.length);
-
-  // NOT a violation. With a different number of fences there is no positional correspondence to
-  // claim anything about, and a translation predating a fence English later gained lands here —
-  // calling that a violation reintroduces exactly the staleness confound this gate avoids.
-  if (sameLength.length === 0) return { unalignable: true };
-
-  // Report against the count-matched revision differing in the FEWEST positions — the nearest
-  // legal basis. An arbitrary one inflates a single retag into wholesale divergence.
-  let best = null;
-  for (const candidate of sameLength) {
-    const other = candidate === '' ? [] : candidate.split(',');
-    const diff = mine
-      .map((tag, i) => ({ index: i + 1, english: other[i], translated: tag }))
-      .filter((d) => d.english !== d.translated);
-    if (!best || diff.length < best.length) best = diff;
-  }
-  return { positions: best };
+export function collectTargets() {
+  const { targets } = collectI18nTargets({ root: ROOT, onlyLocale: ONLY_LOCALE });
+  return targets.filter((t) => !ONLY_ID || t.id === ONLY_ID);
 }
+
+// `compareTagSequence` moved to `scripts/lib/fences.js` (#552 backfill). Two reasons, and the
+// second is the load-bearing one:
+//
+//   - the normalizer must consult it before it may stamp `fence_basis_commit`, and two copies
+//     of the retag test would be the drift this schema exists to end;
+//   - THIS MODULE CANNOT BE IMPORTED AS A LIBRARY. `flagValue('--root'|'--limit'|'--locale'|
+//     '--id')` runs at module scope against the IMPORTER's argv, so a consumer whose own
+//     command line carries `--locale` (or any of them) has its flags silently reinterpreted,
+//     and one carrying a value-less form exits 2 during the import. A predicate every writer
+//     needs cannot live behind that.
+//
+// Re-exported so the gate's own callers and `scripts/test/tag-sequence-parity.test.js` keep
+// their import path.
+export { compareTagSequence };
 
 function main() {
   assertNotShallow(ROOT);

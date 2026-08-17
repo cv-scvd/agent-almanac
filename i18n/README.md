@@ -98,8 +98,8 @@ Runs **warn-only** in CI until the backlog clears (#477), then flips to blocking
 ## Translation Frontmatter
 
 Every translated file includes these fields in its YAML frontmatter, except that
-`fence_basis_commit` is present only on files scaffolded or repaired since #552 — its absence is
-meaningful rather than missing, as explained below:
+`fence_basis_commit` is carried only by files that can prove it — 3,415 of 3,644 as of the #552
+backfill. Its absence is meaningful rather than missing, as explained below:
 
 ```yaml
 locale: de                              # Content locale (IETF BCP 47)
@@ -130,10 +130,30 @@ They are equal at birth — a scaffold is a byte copy, so its fences trivially m
 it copied — and they diverge from the first edit of either kind.
 
 **Absence of `fence_basis_commit` is not a defect.** Present means "these bytes were checked
-against that revision"; absent means "unverified", which is the honest state for a file whose
-fences match no English revision, and for every file predating the field. A commit is never
-stamped on an unverified file, because writing a false claim into the corpus to be corrected
-later is the exact class of problem this field exists to end.
+against that revision"; absent means "unverified". A commit is never stamped on an unverified
+file, because writing a false claim into the corpus to be corrected later is the exact class of
+problem this field exists to end.
+
+After the #552 backfill, 229 files have no claim, and the split is worth knowing because only
+one part of it is a defect:
+
+| | files | what it means |
+|---|---|---|
+| fence count differs from its `source_commit` | 148 | English gained or lost a fence since |
+| fence tag sequence differs | 45 | usually a retag |
+| a gated fence body differs | 36 | usually a translated code block |
+
+Only **31** of the 229 are genuinely divergent — fences matching *no* English revision, which is
+the #477 backlog. The other **198** are clean files that simply do not mirror the commit they
+name: `evolve-*` bumps `source_commit` without retranslating (#405, #616), so the recorded
+revision no longer describes the bytes. Those regain a claim automatically once #616 lands and
+the backfill is re-run; it is add-only and idempotent, so re-running is safe at any time.
+
+```bash
+npm run backfill:fence-basis                      # preview, writes nothing
+npm run backfill:fence-basis -- --write
+npm run backfill:fence-basis -- --verify --base <ref>   # audit a landed diff
+```
 
 **It never gates a comparison.** `check-i18n-fence-parity.js` compares fence bytes
 unconditionally. The field is read for reporting, and to catch the one thing bytes alone cannot

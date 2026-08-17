@@ -193,6 +193,78 @@ describe('normalize-i18n-fences: what it may claim (#552)', () => {
       'must not claim a basis whose bytes the gate cannot find in any walked revision');
   });
 
+  it('refuses a basis whose fence SEQUENCE the gate cannot find, not only whose bodies it cannot', (t) => {
+    // The off-pool corner has two axes and the first fix only closed one.
+    //
+    // `stillDivergent` tests BODY membership in the pool. A conflict-resolved merge can pick
+    // bodies that each already exist in a parent while assembling them into a fence ORDER or
+    // COUNT that no single revision ever had. Bodies pooled, sequence novel: `stillDivergent`
+    // is 0, `mirrorsBasis` is true, and the old condition stamped it — whereupon
+    // `compareTagSequence` finds no revision with that folded sequence and the parity gate
+    // immediately reports the claim as false. The writer and the gate disagreeing about the
+    // same file is the thing this schema exists to prevent.
+    const dir = mkdtempSync(join(tmpdir(), 'fence-stamp-seq-'));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+
+    mkdirSync(join(dir, 'scripts'), { recursive: true });
+    cpSync(join(REPO, SCRIPT), join(dir, SCRIPT));
+    cpSync(join(REPO, 'scripts', 'lib'), join(dir, 'scripts', 'lib'), { recursive: true });
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ type: 'module' }), 'utf8');
+
+    git(dir, ['init', '-b', 'main']);
+    git(dir, ['config', 'user.email', 'test@example.invalid']);
+    git(dir, ['config', 'user.name', 'Fixture']);
+
+    const skill = join(dir, 'skills', 'demo-skill', 'SKILL.md');
+    mkdirSync(dirname(skill), { recursive: true });
+    // Each revision carries ONE fence; the merge assembles two. Every body is therefore pooled
+    // while the two-fence sequence exists in no walked revision.
+    const one = (tag, body) => [
+      '---', 'name: demo-skill', 'description: A demo skill.', '---', '',
+      '# Demo Skill', '', '```' + tag, body, '```', '',
+    ].join('\n');
+
+    writeFileSync(skill, one('bash', 'echo "X"'), 'utf8');
+    git(dir, ['add', '-A']); git(dir, ['commit', '-m', 'A: bash X']);
+
+    git(dir, ['checkout', '-b', 'side']);
+    writeFileSync(skill, one('yaml', 'key: Y'), 'utf8');
+    git(dir, ['add', '-A']); git(dir, ['commit', '-m', 'B: yaml Y']);
+
+    git(dir, ['checkout', 'main']);
+    writeFileSync(skill, one('bash', 'echo "C"'), 'utf8');
+    git(dir, ['add', '-A']); git(dir, ['commit', '-m', 'C']);
+
+    spawnSync('git', ['merge', 'side'], { cwd: dir, encoding: 'utf8' }); // conflicts
+    writeFileSync(skill, [
+      '---', 'name: demo-skill', 'description: A demo skill.', '---', '',
+      '# Demo Skill', '', '```bash', 'echo "X"', '```', '', '```yaml', 'key: Y', '```', '',
+    ].join('\n'), 'utf8');
+    git(dir, ['add', '-A']); git(dir, ['commit', '--no-edit', '-m', 'merge: both fences']);
+    const merge = git(dir, ['rev-parse', '--short', 'HEAD']);
+
+    writeFileSync(skill, one('bash', 'echo "D"'), 'utf8');
+    git(dir, ['add', '-A']); git(dir, ['commit', '-m', 'D']);
+
+    // Mirror at the merge, first fence localized so the file enters the repair plan.
+    const mirror = join(dir, 'i18n', 'de', 'skills', 'demo-skill', 'SKILL.md');
+    mkdirSync(dirname(mirror), { recursive: true });
+    writeFileSync(mirror, [
+      '---', 'name: demo-skill', 'description: Eine Demo.', 'locale: de', 'source_locale: en',
+      `source_commit: ${merge}`, '---', '',
+      '# Demo', '', '```bash', 'echo "LOKALISIERT"', '```', '', '```yaml', 'key: Y', '```', '',
+    ].join('\n'), 'utf8');
+    git(dir, ['add', '-A']); git(dir, ['commit', '-m', 'de mirror']);
+
+    const r = run(dir, ['--write']);
+    assert.equal(r.status, 0, `normalizer failed:\n${r.stdout}\n${r.stderr}`);
+
+    const after = readFileSync(mirror, 'utf8');
+    assert.ok(after.includes('echo "X"'), 'the repair itself still happens, from the merge blob');
+    assert.equal(field(after, 'fence_basis_commit'), undefined,
+      'stamped a basis whose fence SEQUENCE appears in no walked revision — the gate will call this claim false');
+  });
+
   it('stamps when the repaired file mirrors the basis at every gated fence', (t) => {
     const dir = mkdtempSync(join(tmpdir(), 'fence-stamp-ok-'));
     t.after(() => rmSync(dir, { recursive: true, force: true }));
