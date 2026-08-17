@@ -295,6 +295,30 @@ describe('debt ratchet (#591)', () => {
       assert.equal(status, 0, out);
     });
 
+    it('does not read a comment about --warn as an unlisted warn-only step', (t) => {
+      // Found by tripping it: documenting, in a comment beside a warn step, that `--warn`
+      // suppresses finding-exits but not refusals made the sweep report the comment. Loud rather
+      // than silent, so nothing was missed — but the cheap fix is to reword the comment, which
+      // deletes the explanation to satisfy the tool. Comments do not execute; the sweep skips them.
+      const dir = fixture(t, {
+        ratchetYaml: slice([{ file: MIRROR, kind: 'tag-sequence' }]),
+        workflow: [
+          'jobs:',
+          '  x:',
+          '    steps:',
+          '      # `--warn` reports and exits 0, so this step cannot fail on a finding.',
+          '      - run: node scripts/demo.js --warn',
+          '      - run: node scripts/other.js --warn # still swept: not a comment line',
+          '',
+        ].join('\n'),
+      });
+      const { status, out } = run(dir);
+      // The comment is ignored; the trailing-comment invocation is NOT.
+      assert.equal(status, 1, out);
+      assert.doesNotMatch(out, /does not list: # /);
+      assert.match(out, /does not list: node scripts\/other\.js --warn/);
+    });
+
     it('REFUSES a ratchet with no inventory at all', (t) => {
       const dir = fixture(t, { ratchetYaml: slice([{ file: MIRROR, kind: 'tag-sequence' }]).replace(INVENTORY, '') });
       const { status, out } = run(dir);
