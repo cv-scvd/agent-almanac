@@ -20,6 +20,7 @@ metadata:
   locale: caveman-ultra
   source_locale: en
   source_commit: 33b561c9
+  fence_basis_commit: 33b561c9
   translator: "Julius Brussee homage — caveman"
   translation_date: "2026-05-04"
 ---

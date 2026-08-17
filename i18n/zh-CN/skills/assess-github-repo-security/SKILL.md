@@ -23,6 +23,7 @@ metadata:
   locale: zh-CN
   source_locale: en
   source_commit: 84a3c915
+  fence_basis_commit: 84a3c915
   translator: "Claude + human review"
   translation_date: "2026-07-16"
 ---
