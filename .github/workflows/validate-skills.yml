@@ -216,10 +216,13 @@ jobs:
       # `viz/public/data/workflow.mmd` (#590, dependency-free slice).
       #
       # It lives in THIS workflow rather than a viz-shaped one because the step
-      # below is what gives it teeth, and a warn-only gate whose ratchet runs in
-      # a different workflow is a ratchet that does not run on the changes it
-      # ratchets. The trigger paths at the top of this file were widened for the
-      # same reason.
+      # below is what gives it teeth: `--warn` suppresses finding-exits, so no
+      # parity finding can turn THIS step red, and the ratchet is what a new one
+      # turns red instead. A warn-only gate whose ratchet runs in a different
+      # workflow is a ratchet that does not run on the changes it ratchets, so
+      # the trigger paths at the top of this file were widened for the same
+      # reason. (`--warn` does not suppress a REFUSAL: the script exits 2 on a
+      # question it cannot answer honestly, and this step goes red on those.)
       #
       # WARN-ONLY, and the reason is not a backlog this time — it is one node.
       # `mode_campfire` is annotated in `viz/js/campfire.js` and has no node in

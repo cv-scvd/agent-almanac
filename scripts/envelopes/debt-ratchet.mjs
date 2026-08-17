@@ -95,6 +95,22 @@ export const cases = [
     expect: 'added debt — viz/public/data/workflow.mmd::mode_hive [orphan-node]',
   },
   {
+    label: 'ADDED DEBT: a PUT annotation added, with no node for it in the committed diagram',
+    // The OTHER direction, and the one contributors will actually hit. `debt-ratchet.yml` tells a
+    // future reader that adding an annotation means adding a member line in the same commit;
+    // before this case that consequence was proven at unit level and inferred at corpus level
+    // from symmetry with the deletion case above. The ratchet's kind filter, key encoding and
+    // member diff all sit between the unit tests and the command CI runs, so symmetry was an
+    // assumption rather than a measurement.
+    file: 'viz/js/graph.js',
+    find: '// put id:"mode_2d", label:"Canvas-based 2D force-directed layout (force-graph)", node_type:"process", input:"active_module"',
+    replace: [
+      '// put id:"mode_2d", label:"Canvas-based 2D force-directed layout (force-graph)", node_type:"process", input:"active_module"',
+      '// put id:"mode_2d_probe", label:"A mode nobody generated a node for", node_type:"process", input:"active_module"',
+    ].join('\n'),
+    expect: 'added debt — viz/js/graph.js::mode_2d_probe [missing-node]',
+  },
+  {
     label: 'DOCUMENTED LIMIT: a new body divergence does NOT move the ratchet',
     // `EXPOSE 3000` -> `EXPOSE 3001` inside a frozen ```dockerfile fence. The gate reports a new
     // gated violation (and a stale-basis-claim, since this file carries fence_basis_commit), and

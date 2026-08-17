@@ -98,6 +98,12 @@ slices:
   # The consequence to know before adding a PUT annotation: until #601 unblocks regeneration, a new
   # annotation adds a `missing-node` finding and this list must gain a line in the same commit.
   # That friction is the mechanism, not a side effect of it.
+  #
+  # The named exit is enforced socially, not mechanically, and that is worth saying out loud. The
+  # gate compares node SETS, not provenance: hand-adding a `mode_campfire` node to the generated
+  # `.mmd` and deleting the member below leaves every check green, while "do not edit manually" in
+  # the file's own header is the only thing standing against it. Paying this member down means
+  # regenerating under #601, not editing the artifact until the gate stops complaining.
   - id: viz-diagram-node-parity
     gate_argv: [scripts/check-workflow-diagram-nodes.js]
     kinds: [missing-node, orphan-node]

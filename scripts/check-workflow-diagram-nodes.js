@@ -133,12 +133,39 @@ const SOURCE_DIR = 'viz';
 const memberKey = (path, node) => `${path}::${node}`;
 
 /**
+ * The id alphabet, defined ONCE because the two sides must not disagree.
+ *
+ * Annotations are read with `[^"]+`, which accepts far more than the diagram
+ * line parser can capture. `put id:"3d_view"` or `put id:"mode-x"` — both
+ * legal mermaid — would produce a diagram node this parser cannot see, so the
+ * annotation reads as `missing-node` forever while its node sits in the file
+ * unparsed. Worse than a wrong number: the fix for a persistent finding is to
+ * ratchet it, which would write an instrument artifact into `debt-ratchet.yml`
+ * as though it were debt.
+ *
+ * So an id outside this alphabet is a REFUSAL rather than a finding. The
+ * checker declines to answer instead of answering wrongly, and widening the
+ * diagram parser is the change that lifts the restriction — in one place.
+ */
+const ID_SOURCE = '[A-Za-z_][A-Za-z0-9_]*';
+const ID_ONLY = new RegExp(`^${ID_SOURCE}$`);
+
+/**
  * R string literal -> the regex it denotes.
  *
  * `"\\.(js|R)$"` in the file is the six characters `\\.(js` … on disk; the R
  * parser collapses `\\` to `\` before the regex engine ever sees it. Reading
  * the raw bytes and compiling them would give `\\.` — an escaped backslash —
  * which matches nothing here and would report every file as out of scope.
+ *
+ * The supported subset is deliberately narrow and named here so nobody assumes
+ * more: `\\`, `\"`, `\n`, `\t`, `\r`, and `\<char>` for anything else. Numeric
+ * escapes (hex, unicode, octal) are NOT decoded and would yield a
+ * different regex than R's parser produces. Nothing in `build-workflow.R` uses
+ * one, and a pattern that did would need this function extended rather than
+ * trusted. R's regex dialect is TRE, not ECMAScript, so a POSIX class like
+ * `[[:alpha:]]` compiles here with different semantics and silently — another
+ * reason to keep generator patterns to plain suffix anchors.
  */
 function unescapeRString(raw) {
   return raw.replace(/\\(.)/g, (_, c) => {
@@ -147,6 +174,46 @@ function unescapeRString(raw) {
     if (c === 'r') return '\r';
     return c;
   });
+}
+
+/**
+ * Read the string literals of one `c(…)` vector, starting just after its `(`.
+ *
+ * Written as a scanner because the obvious `exclude\s*=\s*c\(([^)]*)\)` stops
+ * at the first `)` — including one inside a string literal — and the failure
+ * is not reliably loud. `c("build\\.js$", "\\.(min)\\.js$")` truncates inside
+ * the second literal, leaves ONE complete literal behind, and the checker then
+ * scans a file the generator excludes. Usually that is noisy: a spurious
+ * `missing-node`. But if the wrongly-scanned file annotates an id that IS in
+ * the diagram and nothing in scope annotates, the lost exclusion SUPPRESSES an
+ * orphan-node finding — a silent pass, caused by a parenthesis, in a file
+ * whose live `pattern` already contains one.
+ *
+ * Anything it does not understand is a refusal, never a partial answer.
+ */
+function readCVector(text, from) {
+  const literals = [];
+  let i = from;
+  while (i < text.length) {
+    const c = text[i];
+    if (c === ')') return { literals, end: i };
+    if (c === ',' || /\s/.test(c)) { i++; continue; }
+    if (c !== '"') {
+      refuse(`${GENERATOR}: \`exclude = c(…)\` contains ${JSON.stringify(text.slice(i, i + 24))}, which is not a double-quoted string literal; this checker will not guess at the generator's exclusions`);
+    }
+    let j = i + 1;
+    let body = '';
+    while (j < text.length) {
+      if (text[j] === '\\') { body += text[j] + (text[j + 1] ?? ''); j += 2; continue; }
+      if (text[j] === '"') break;
+      body += text[j];
+      j++;
+    }
+    if (j >= text.length) refuse(`${GENERATOR}: unterminated string literal in \`exclude = c(…)\``);
+    literals.push(body);
+    i = j + 1;
+  }
+  refuse(`${GENERATOR}: \`exclude = c(…)\` is never closed`);
 }
 
 function compileOrRefuse(source, what) {
@@ -174,12 +241,13 @@ function readGeneratorScope() {
   if (patternMatches.length === 0) refuse(`${GENERATOR}: no \`pattern = "…"\` found; cannot mirror the generator's file selection`);
   if (patternMatches.length > 1) refuse(`${GENERATOR}: ${patternMatches.length} \`pattern = "…"\` assignments; which one selects source files is ambiguous`);
 
-  const excludeMatches = [...text.matchAll(/exclude\s*=\s*c\(([^)]*)\)/g)];
-  if (excludeMatches.length === 0) refuse(`${GENERATOR}: no \`exclude = c(…)\` found; cannot mirror the generator's exclusions`);
-  if (excludeMatches.length > 1) refuse(`${GENERATOR}: ${excludeMatches.length} \`exclude = c(…)\` vectors; which one applies is ambiguous`);
+  const excludeOpeners = [...text.matchAll(/exclude\s*=\s*c\(/g)];
+  if (excludeOpeners.length === 0) refuse(`${GENERATOR}: no \`exclude = c(…)\` found; cannot mirror the generator's exclusions`);
+  if (excludeOpeners.length > 1) refuse(`${GENERATOR}: ${excludeOpeners.length} \`exclude = c(…)\` vectors; which one applies is ambiguous`);
 
-  const excludeSources = [...excludeMatches[0][1].matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((m) => unescapeRString(m[1]));
-  if (excludeSources.length === 0) refuse(`${GENERATOR}: \`exclude = c(…)\` holds no string literals`);
+  const { literals } = readCVector(text, excludeOpeners[0].index + excludeOpeners[0][0].length);
+  if (literals.length === 0) refuse(`${GENERATOR}: \`exclude = c(…)\` holds no string literals`);
+  const excludeSources = literals.map(unescapeRString);
 
   return {
     pattern: compileOrRefuse(unescapeRString(patternMatches[0][1]), 'pattern'),
@@ -193,7 +261,12 @@ function readGeneratorScope() {
  * tree counts before it is committed while ignored trees never do.
  */
 function listSourceFiles(scope) {
-  const r = spawnSync('git', ['-C', ROOT, 'ls-files', '-co', '--exclude-standard', '--', SOURCE_DIR], {
+  // `-z`, not newline-delimited output. Without it git applies `core.quotepath`
+  // and emits a non-ASCII path as `"viz/js/caf\303\251.js"` — quotes included —
+  // which fails the `$`-anchored pattern test and drops the file from the scan
+  // silently. That is the dangerous direction: an annotation in such a file
+  // becomes invisible and the gate reads clean over a real missing node.
+  const r = spawnSync('git', ['-C', ROOT, 'ls-files', '-z', '-co', '--exclude-standard', '--', SOURCE_DIR], {
     encoding: 'utf8',
     maxBuffer: 32 * 1024 * 1024,
   });
@@ -201,8 +274,7 @@ function listSourceFiles(scope) {
   if (r.status !== 0) refuse(`git ls-files failed in ${ROOT} (exit ${r.status}) — ${(r.stderr || '').trim().slice(0, 300)}`);
 
   return r.stdout
-    .split('\n')
-    .map((line) => line.trim())
+    .split('\0')
     .filter(Boolean)
     .filter((relPath) => scope.pattern.test(relPath))
     .filter((relPath) => !scope.excludes.some((re) => re.test(relPath)));
@@ -215,7 +287,11 @@ function collectAnnotations(files) {
     if (!existsSync(abs)) continue; // deleted-but-still-listed; the diagram side will report it
     for (const line of readFileSync(abs, 'utf8').split('\n')) {
       const m = /put\s+id:\s*"([^"]+)"/.exec(line);
-      if (m && !byNode.has(m[1])) byNode.set(m[1], relPath);
+      if (!m) continue;
+      if (!ID_ONLY.test(m[1])) {
+        refuse(`${relPath} annotates id ${JSON.stringify(m[1])}, which is outside the alphabet the diagram parser can read (${ID_ONLY}). It would be reported missing forever while its node sat in ${DIAGRAM} unparsed — see the id-alphabet note in this file's header.`);
+      }
+      if (!byNode.has(m[1])) byNode.set(m[1], relPath);
     }
   }
   return byNode;
@@ -233,8 +309,10 @@ function collectAnnotations(files) {
  * SKIP_PREFIX is deliberately redundant with that anchor, and a mutation
  * deleting it SURVIVES `npm run test:scripts`. That is a measured fact, not a
  * coverage hole to tidy away by removing either half. Enumerated over
- * {anchored, scan-anywhere} x {skip, no skip} x four real diagram lines, the
- * skip changes the answer in exactly ONE of sixteen cells:
+ * {anchored, scan-anywhere} x {skip, no skip} x four lines — three taken from
+ * the committed diagram, plus one CONSTRUCTED unspaced subgraph, since all
+ * eight subgraph lines in the real file are spaced — the skip changes the
+ * answer in exactly ONE of sixteen cells:
  *
  *   scan-anywhere + `subgraph build_data["build-data.js"]` + no skip
  *     -> a phantom node `build_data`, named after the FILE
@@ -245,8 +323,13 @@ function collectAnnotations(files) {
  * pressure: inline definitions on edge lines are documented above as unseen,
  * and the obvious way to add them is to scan anywhere on the line. At that
  * point the unspaced subgraph form — which mermaid accepts and putior does not
- * currently emit — starts contributing nodes. Deleting the list makes that
- * regression silent.
+ * currently emit — starts contributing nodes.
+ *
+ * Credit where it belongs, though: the durable control is the TEST, not this
+ * list. `does not mistake a subgraph declaration for a node, spaced or
+ * unspaced` carries the unspaced fixture, so a scan-anywhere rewrite goes red
+ * whether or not the list survives. The list is what makes the fix already
+ * written when it does.
  */
 const SKIP_PREFIX = /^(%%|subgraph\b|end\b|class\b|classDef\b|style\b|linkStyle\b|flowchart\b|graph\b|direction\b)/;
 
@@ -255,7 +338,7 @@ function collectDiagramNodes(text) {
   for (const line of text.split('\n')) {
     const trimmed = line.trim();
     if (!trimmed || SKIP_PREFIX.test(trimmed)) continue;
-    const m = /^([A-Za-z_][A-Za-z0-9_]*)(\[\[|\(\[|\[|\(|\{)/.exec(trimmed);
+    const m = new RegExp(`^(${ID_SOURCE})(\\[\\[|\\(\\[|\\[|\\(|\\{)`).exec(trimmed);
     if (m) ids.add(m[1]);
   }
   return ids;

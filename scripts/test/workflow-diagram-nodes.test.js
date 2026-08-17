@@ -206,6 +206,35 @@ describe('check-workflow-diagram-nodes — the ruler', () => {
     assert.deepEqual(out.excludes, ['build-workflow\\.js$', 'build-workflow\\.R$']);
   });
 
+  it('reads every exclude literal, including one containing a parenthesis', (t) => {
+    // The `[^)]*` capture this replaced stopped at the `)` INSIDE the second literal, kept the
+    // first, and silently dropped the second — so the checker scanned a file the generator
+    // excludes. Usually noisy; silent when the wrongly-scanned file annotates an id that is in
+    // the diagram and nothing in scope annotates, which suppresses an orphan-node finding.
+    const dir = makeRoot(t, {
+      generator: [
+        'workflow <- putior::put(',
+        '  script_dir,',
+        '  pattern = "\\\\.(js|R)$",',
+        '  exclude = c("build-workflow\\\\.js$", "\\\\.(min)\\\\.js$")',
+        ')',
+      ].join('\n'),
+      sources: {
+        'viz/js/a.js': annotation('node_a'),
+        'viz/js/vendor.min.js': annotation('node_a') + annotation('node_ghost'),
+      },
+    });
+    const out = runJson(dir);
+    assert.deepEqual(out.excludes, ['build-workflow\\.js$', '\\.(min)\\.js$']);
+    assert.deepEqual(out.findings, []);
+  });
+
+  it('refuses an exclude vector holding anything but string literals', (t) => {
+    const r = run(makeRoot(t, { generator: 'pattern = "\\\\.(js|R)$"\nexclude = c(SKIP_ME, "a$")\n' }));
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /not a double-quoted string literal/);
+  });
+
   it('honours the generator file pattern', (t) => {
     const dir = makeRoot(t, {
       sources: {
@@ -229,6 +258,16 @@ describe('check-workflow-diagram-nodes — the ruler', () => {
     const out = runJson(dir);
     assert.deepEqual(out.findings, []);
     assert.equal(out.annotationsFound, 1);
+  });
+
+  it('sees an annotation in a file whose name git would quote', (t) => {
+    // Without `-z`, `core.quotepath` renders this as `"viz/js/caf\303\251.js"` — surrounding
+    // quotes and all — which fails the `$`-anchored pattern test, drops the file, and leaves the
+    // gate reading clean over a real missing node. The silent direction.
+    const dir = makeRoot(t, {
+      sources: { 'viz/js/café.js': annotation('node_a') + annotation('node_accented') },
+    });
+    assert.deepEqual(kinds(runJson(dir)), ['missing-node:node_accented']);
   });
 
   it('reads annotations from R sources as well as JavaScript', (t) => {
@@ -294,6 +333,19 @@ describe('check-workflow-diagram-nodes — refusals', () => {
     const r = run(dir);
     assert.equal(r.status, 2);
     assert.match(r.stderr, /git ls-files failed/);
+  });
+
+  it('refuses an annotation id the diagram parser cannot read', (t) => {
+    // `3d_view` is a legal mermaid id and `put id:"…"` accepts it, but the line parser's id
+    // alphabet does not. Reporting it `missing-node` would be a permanent false finding, and the
+    // repair for a permanent finding is to RATCHET it — writing an instrument artifact into
+    // debt-ratchet.yml as though it were debt. Refusing is the only answer that stays honest.
+    const r = run(makeRoot(t, {
+      sources: { 'viz/js/a.js': annotation('node_a') + annotation('3d_view') },
+      diagram: diagram(['node_a["A"]', '3d_view["3D"]']),
+    }));
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /annotates id "3d_view", which is outside the alphabet/);
   });
 
   it('refuses a flag given no value', (t) => {
