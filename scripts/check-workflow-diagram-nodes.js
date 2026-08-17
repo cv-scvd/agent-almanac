@@ -20,9 +20,10 @@
  * Node identity only. All of the following are invisible to it:
  *
  *   - **Labels.** `bind_modes` reads "Bind mode switching (2D/3D/Hive/Chord/
- *     Flow)" and five is not six — Campfire is bound and unlisted. That text
- *     comes from the annotation in `viz/js/app.js`, so a faithful regeneration
- *     reproduces the wrong label and this check stays green through it.
+ *     Flow)" and five is not six — Campfire is bound and unlisted (#639). That
+ *     text comes from the annotation in `viz/js/app.js`, so a faithful
+ *     regeneration reproduces the wrong label and this check stays green
+ *     through it.
  *   - **`node_type`.** An `input` retyped to `process` moves the node's shape
  *     and its `class` line; the id is unchanged, so nothing here fires.
  *   - **Edges.** `input:`/`output:` chains build the `-->` block. A rewired
@@ -68,13 +69,13 @@
  * "32 vendored annotations" line would have been a number produced by a
  * pattern rather than by the instrument.
  *
- * There is a corollary this tool does NOT resolve: `build-workflow.R` passes
- * putior no exclusion for `renv/` or `node_modules/` at all, so whether a
- * regeneration would ingest anything from them depends on putior's internal
- * filtering. That is unverified — #601 says the lockfile cannot produce a
- * working generator, which is also why this gate ships warn-only. Its claim is
- * therefore about the repository's own `viz/` sources, not about what a
- * regeneration would emit.
+ * There is a corollary this tool does NOT resolve, filed as #637:
+ * `build-workflow.R` passes putior no exclusion for `renv/` or `node_modules/`
+ * at all, so whether a regeneration would ingest anything from them depends on
+ * putior's internal filtering. That is unverified — #601 says the lockfile
+ * cannot produce a working generator, which is also why this gate ships
+ * warn-only. Its claim is therefore about the repository's own `viz/` sources,
+ * not about what a regeneration would emit.
  *
  * Annotations are read as single-line `put id:"…"`. putior's multi-line form
  * is not parsed; nothing in `viz/` uses it.
@@ -126,7 +127,8 @@ const SOURCE_DIR = 'viz';
  * repairing either would leave the other silently covered. Encoding the node
  * into `file` keeps the ratchet exact-set per node without changing its key
  * model. `path` and `node` are published separately so nothing has to parse
- * this back apart.
+ * this back apart. The durable fix — an optional `member` component in the
+ * ratchet's key — is #638.
  */
 const memberKey = (path, node) => `${path}::${node}`;
 
@@ -228,9 +230,23 @@ function collectAnnotations(files) {
  * (`artifact`, `start`, `end`) cannot be observed while #601 blocks a
  * regeneration — a narrow class would silently report their nodes as orphans.
  *
- * `subgraph` is skipped explicitly. `subgraph build_data ["build-data.js"]`
- * would otherwise contribute a node named after the FILE, and every subgraph
- * would then read as an orphan.
+ * SKIP_PREFIX is deliberately redundant with that anchor, and a mutation
+ * deleting it SURVIVES `npm run test:scripts`. That is a measured fact, not a
+ * coverage hole to tidy away by removing either half. Enumerated over
+ * {anchored, scan-anywhere} x {skip, no skip} x four real diagram lines, the
+ * skip changes the answer in exactly ONE of sixteen cells:
+ *
+ *   scan-anywhere + `subgraph build_data["build-data.js"]` + no skip
+ *     -> a phantom node `build_data`, named after the FILE
+ *
+ * Every keyword line putior emits today begins with a bare word and a space,
+ * which `^id<bracket>` already rejects — so the list guards a parser change
+ * rather than today's input. It is kept because the anchor is the half under
+ * pressure: inline definitions on edge lines are documented above as unseen,
+ * and the obvious way to add them is to scan anywhere on the line. At that
+ * point the unspaced subgraph form — which mermaid accepts and putior does not
+ * currently emit — starts contributing nodes. Deleting the list makes that
+ * regression silent.
  */
 const SKIP_PREFIX = /^(%%|subgraph\b|end\b|class\b|classDef\b|style\b|linkStyle\b|flowchart\b|graph\b|direction\b)/;
 

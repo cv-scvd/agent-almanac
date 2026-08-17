@@ -158,14 +158,19 @@ describe('check-workflow-diagram-nodes — the ruler', () => {
     assert.deepEqual(runJson(dir).findings, []);
   });
 
-  it('does not mistake a subgraph declaration for a node', (t) => {
-    // `subgraph build_data ["build-data.js"]` would otherwise contribute a node named
-    // after the file, and every subgraph in the diagram would read as an orphan.
+  it('does not mistake a subgraph declaration for a node, spaced or unspaced', (t) => {
+    // Pins the OUTCOME, and does not claim to cover `SKIP_PREFIX`: a mutant deleting
+    // that list survives this suite, because the line anchor already rejects both forms.
+    // The measured cell where the list matters is scan-anywhere + the unspaced form, and
+    // the parser is not scan-anywhere. The checker's header records the enumeration; the
+    // test is here so that a future parser change has something to break.
     const dir = makeRoot(t, {
       diagram: [
         'flowchart TD',
         '    subgraph build_data ["build-data.js"]',
         '        node_a["A"]',
+        '    end',
+        '    subgraph app["app.js"]',
         '    end',
       ].join('\n'),
     });

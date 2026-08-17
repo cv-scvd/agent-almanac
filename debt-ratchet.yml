@@ -93,7 +93,7 @@ slices:
   # NODE. Two missing nodes in one source file would otherwise collapse into one member under the
   # `file` + `kind` key, and repairing either would leave the other silently covered. The ratchet
   # validates `file` only as a string, so the encoding needs no change here; the durable fix is an
-  # optional `member` key field, tracked separately.
+  # optional `member` key field, tracked in #638.
   #
   # The consequence to know before adding a PUT annotation: until #601 unblocks regeneration, a new
   # annotation adds a `missing-node` finding and this list must gain a line in the same commit.
