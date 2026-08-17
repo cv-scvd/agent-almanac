@@ -1,13 +1,13 @@
 locale: wenyan
-last_updated: '2026-08-16'
+last_updated: '2026-08-17'
 coverage:
   skills:
-    translated: 342
+    translated: 343
     total: 369
-    pct: 92.7
-    stale: 303
+    pct: 93
+    stale: 304
     stubs: 5
-    unjudged: 5
+    unjudged: 4
   agents:
     translated: 0
     total: 75
@@ -30,9 +30,9 @@ coverage:
     stubs: 0
     unjudged: 0
   total:
-    translated: 342
+    translated: 343
     total: 500
-    pct: 68.4
-    stale: 303
+    pct: 68.6
+    stale: 304
     stubs: 5
-    unjudged: 5
+    unjudged: 4
