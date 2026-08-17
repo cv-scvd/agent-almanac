@@ -107,6 +107,18 @@ export function collectI18nTargets({ root, onlyLocale = null, onlyTrees = null, 
         // ENTRY is the file, and a directory named `foo.md` would reach readFileSync and kill
         // the run with EISDIR where the gate skips it.
         if (!existsSync(absPath) || !statSync(absPath).isFile()) continue;
+        // The ENGLISH-side existence test is a real narrowing, and it is recorded rather than
+        // silent. The fence gate's previous walk did not have it, so a translation whose English
+        // source was DELETED but still has walked history was compared; here it drops out of the
+        // walk entirely. Measured neutral today — the gate reports the same 3,644 pairs / 87
+        // gated / 40 files before and after delegating to this module — because no such file
+        // currently exists.
+        //
+        // It is kept because the normalizer needs the English path to exist before it reads it,
+        // and a walk that returns targets one caller cannot use is worse. But it puts deleted
+        // English in the same blind spot #480 already describes for deleted FENCES: a
+        // historical-match gate cannot see a deletion, so the next one will vanish from this
+        // gate unexamined. If #480 is ever addressed, this filter is part of its surface.
         if (!existsSync(english) || !statSync(english).isFile()) continue;
 
         // The two accept-lists are collected at DIFFERENT points, and the difference is the
