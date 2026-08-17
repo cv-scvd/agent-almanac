@@ -457,9 +457,16 @@ export function compareTagSequence(mine, englishSequences) {
  *     closes early and swallows the following `python` fence into a `text` block.
  *   - **drift** — every other tag mismatch: `bash`->`yaml`, a reordering of `javascript`/
  *     `typescript`. Both sides stay frozen, so the body check still covers every fence and the
- *     escape is not in play. Measured population: 6, and all 6 are partial-update drift on stale
- *     files — a translation that took some English changes and not others matches no revision
- *     exactly. The remedy is retranslation, which `check-translation-freshness.js` owns.
+ *     escape is not in play. Measured population: 6, and they split further — 4 are partial-update
+ *     drift on stale files (`harden-github-repo-security`, 3 English commits since their
+ *     `source_commit`), whose remedy is retranslation and belongs to
+ *     `check-translation-freshness.js`; 2 are FRESH files carrying an English subsection at the
+ *     wrong ordinal (`annotate-source-files`, zero English commits since — #626), whose remedy is
+ *     a translation edit and belongs to nobody else.
+ *
+ * That second group is why the class is defined by what it does to the GATE rather than by its
+ * cause. "Drift" is a statement about coverage — no fence left the body check — not a diagnosis.
+ * The causes vary and are triaged per member in `debt-ratchet.yml`.
  *
  * The asymmetry in the test is the point, and it is why this is not `translated !== english`.
  * A mismatch matters here only when the fence LEAVES the gated set; a frozen-to-frozen change

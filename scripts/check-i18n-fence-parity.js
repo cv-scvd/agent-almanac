@@ -248,11 +248,13 @@ function main() {
       // comment in `lib/fences.js` for why the test is asymmetric rather than `a !== b`.
       //
       // Only the escape blocks. Drift is reported as its own non-blocking class, the way
-      // `unalignable` already is, and the reasoning is recorded on #598: its REMEDY is
-      // retranslation, which `check-translation-freshness.js` owns and independently reports on
-      // every one of these files, while its DETECTION is structural and lives only here. So the
-      // class is reported here and enforced there. Reporting it as blocking would be this gate
-      // failing a build over a fact another gate is responsible for and already states.
+      // `unalignable` already is, and the reasoning is recorded on #598. Its DETECTION is
+      // structural and lives only here — the body check is set membership over every body the
+      // English file has ever carried, so a fence at the wrong ordinal still passes it. Its
+      // REMEDY does not live here and varies by member: 4 of the 6 are stale and want
+      // retranslation, which `check-translation-freshness.js` owns and already reports on them;
+      // 2 are fresh files needing a section moved (#626). Blocking on a class this gate can
+      // neither fix nor route would be failing a build over someone else's work.
       //
       // Non-blocking is not unwatched: both kinds are members of the debt ratchet
       // (`debt-ratchet.yml`, #591), which fails on any file entering EITHER class. That is what
@@ -412,10 +414,11 @@ function main() {
     // STRUCTURE — and the two most common causes need different judgement. Measured at
     // introduction across 3,584 count-matched pairs: 9 findings, of which 3 were a frozen tag
     // becoming localisable (the #481 escape proper, and in `escalate-issues` caused by a
-    // 4-backtick opener degraded to 3, which swallows the next fence whole) and 6 were
-    // partial-update drift on stale files. Read the file before repairing it. #598 turned that
-    // hand triage into the mechanical split below, so this block now lists the 3-class only; the
-    // 6-class prints under "tag-DRIFT" and does not block.
+    // 4-backtick opener degraded to 3, which swallows the next fence whole) and 6 were not.
+    // Read the file before repairing it — the 6 were catalogued as partial-update drift and
+    // 2 of them turned out to be fresh files with a misplaced section instead (#626). #598
+    // turned that hand triage into the mechanical split below, so this block now lists the
+    // 3-class only; the 6-class prints under "tag-DRIFT" and does not block.
     console.log(`\n${tagSeq.length} fence tag-sequence finding(s) — a structure appearing in NO English revision.`);
     console.log('These are the retag escape (#481): a frozen tag changed to text/markdown/md leaves');
     console.log('the body check entirely, because gating is read off the translated file.');
@@ -425,13 +428,14 @@ function main() {
   const drift = findings.filter((f) => f.kind === 'tag-drift');
   if (drift.length) {
     // Reported apart from the escapes above and NOT counted as violations (#598). Every position
-    // stays frozen, so no fence left the body check and nothing here is invisible to it; what the
-    // sequence sees is a translation that took some English changes and not others, whose remedy
-    // is retranslation. Listed rather than merely counted because a ratcheted class whose members
-    // nobody can read is the failure mode #591 warns about.
+    // stays frozen, so no fence left the body check and nothing here is invisible to it. The
+    // CAUSE varies — a partial update on a stale file, or a section placed at the wrong ordinal
+    // in a fresh one — which is why the message names both rather than prescribing one remedy.
+    // Listed rather than merely counted because a ratcheted class whose members nobody can read
+    // is the failure mode #591 warns about.
     console.log(`\n${drift.length} fence tag-DRIFT finding(s) — structure diverges, but every tag stays frozen.`);
     console.log('Not violations: no fence left the gate, so the body check still covers all of them.');
-    console.log('Cause is partial update; remedy is retranslation (check-translation-freshness.js).');
+    console.log('Read each one: a stale file wants retranslation, a fresh one wants its structure fixed.');
     for (const f of drift.slice(0, LIMIT)) console.log(`  ${f.file}  ${f.tag}`);
     if (drift.length > LIMIT) console.log(`  ... ${drift.length - LIMIT} more`);
   }

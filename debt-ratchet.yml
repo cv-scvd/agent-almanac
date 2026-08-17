@@ -23,11 +23,14 @@ version: 1
 slices:
   # The #481 retag escape and the tag drift beside it, split by `isRetagEscape` in #598.
   #
-  # Ratchetable because all nine members were individually read and catalogued in #598 before any
-  # of this was built: 3 escapes (a 4-backtick ````markdown opener degraded to 3, swallowing the
-  # following python fence) and 6 partial-update drift on stale files. Both kinds are ratcheted,
-  # including the one that does not block — non-blocking is the reason it needs a ratchet, not a
-  # reason to leave it unwatched.
+  # Ratchetable because all nine members were individually read, catalogued in #598 and re-checked
+  # here: 3 escapes (a 4-backtick ````markdown opener degraded to 3, swallowing the following
+  # python fence) and 6 that do not block. Both kinds are ratcheted, including the one that does
+  # not block — non-blocking is the reason it needs a ratchet, not a reason to leave it unwatched.
+  #
+  # Re-checking changed one of #598's diagnoses, which is the argument for requiring members to be
+  # read: it called the six "partial-update drift on stale files", and two of them are not stale.
+  # They are grouped below by what a repair would actually be.
   - id: i18n-fence-tag-structure
     gate_argv: [scripts/check-i18n-fence-parity.js]
     kinds: [tag-sequence, tag-drift]
@@ -40,14 +43,23 @@ slices:
     as_of: 2026-08-17
     triage: "#598"
     members:
-      # tag-drift — every position stays frozen, so the body check still covers these. Cause is a
-      # partial update; remedy is retranslation, which check-translation-freshness.js owns and
-      # already reports on all six. Detection is structural and lives only in the fence gate,
+      # tag-drift — every position stays frozen, so no fence left the body check and the gate
+      # still compares all of them. Detection is structural and lives only in the fence gate,
       # which is why the class is reported there and enforced here.
+      #
+      # STALE (4). `source_commit: 84a3c915` with 3 English commits since, so the translation took
+      # some English changes and not others and matches no revision exactly. Remedy is
+      # retranslation, which check-translation-freshness.js owns and already reports on all four.
       - { file: i18n/de/skills/harden-github-repo-security/SKILL.md, kind: tag-drift }
       - { file: i18n/es/skills/harden-github-repo-security/SKILL.md, kind: tag-drift }
       - { file: i18n/ja/skills/harden-github-repo-security/SKILL.md, kind: tag-drift }
       - { file: i18n/zh-CN/skills/harden-github-repo-security/SKILL.md, kind: tag-drift }
+      # FRESH (2), and #598 called these stale drift too — they are not. `source_commit: 33b561c9`
+      # with ZERO English commits since, so English has not moved and the divergence is the
+      # translation's own: Step 3's **Block comment syntax** subsection, javascript and typescript
+      # fences included, sits appended after Step 5 and still in English. Remedy is a translation
+      # edit rather than a retranslation, which is why it is #626 rather than repaired in the PR
+      # that ratcheted it.
       - { file: i18n/ja/skills/annotate-source-files/SKILL.md, kind: tag-drift }
       - { file: i18n/zh-CN/skills/annotate-source-files/SKILL.md, kind: tag-drift }
       # tag-sequence — the #481 escape proper: a frozen tag became localisable, so the fence left
