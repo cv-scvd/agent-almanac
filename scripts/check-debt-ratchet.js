@@ -33,9 +33,9 @@
  *
  * Only a class whose members have each been READ. Otherwise "do not add debt" becomes "pay down
  * debt of unknown validity", which is worse than warn-only: the number now carries authority it
- * has not earned. That is why the 78 body divergences of #477 are listed in `debt-ratchet.yml` as
- * unratcheted with their named exit, and only the nine tag-sequence findings triaged in #598 are
- * enforced.
+ * has not earned. That is why the body-divergence class of #477 is listed in `debt-ratchet.yml`
+ * as unratcheted with its named exit, and only the tag-structure findings triaged in #598 are
+ * enforced. Counts belong to the gate; this file names classes.
  *
  * ## Cost
  *
@@ -152,6 +152,15 @@ function assertNotVacuous(slice, report) {
   if (unknown.length) {
     refuse(`slice '${slice.id}': kind(s) ${JSON.stringify(unknown)} are not in the gate's vocabulary ${JSON.stringify(report.kinds)}`);
   }
+  // Membership in the gate's OWN accept-list, not "is it a number". Every other numeric field in
+  // the report is a finding count, which is near zero on a healthy corpus — so naming one as the
+  // scanned field inverts the floor: healthy runs fail it and vacuous runs sail through.
+  if (!Array.isArray(report.scannedFields) || report.scannedFields.length === 0) {
+    refuse(`slice '${slice.id}': gate does not publish which fields measure corpus coverage, so '${slice.scanned_field}' cannot be validated`);
+  }
+  if (!report.scannedFields.includes(slice.scanned_field)) {
+    refuse(`slice '${slice.id}': scanned_field '${slice.scanned_field}' is not one of the gate's coverage fields ${JSON.stringify(report.scannedFields)}`);
+  }
   const scanned = Number(report[slice.scanned_field]);
   if (!Number.isFinite(scanned)) {
     refuse(`slice '${slice.id}': gate report has no numeric '${slice.scanned_field}'`);
@@ -179,6 +188,22 @@ function loadRatchet() {
     }
     if (!Array.isArray(slice.kinds) || slice.kinds.length === 0) {
       refuse(`${RATCHET_FILE}: slice '${slice.id}' ratchets no kinds`);
+    }
+    // `min_scanned` is only ever compared with `<`, and `x < null` is `x < 0` while `x < NaN` is
+    // always false. So a bare `min_scanned:` (YAML null), a zero, a negative, or a typo like
+    // `three-thousand` all DISABLE the floor while leaving the field visibly present — the
+    // anti-vacuity mechanism defeated by the anti-vacuity mechanism's own configuration.
+    if (typeof slice.min_scanned !== 'number' || !Number.isFinite(slice.min_scanned) || slice.min_scanned <= 0) {
+      refuse(`${RATCHET_FILE}: slice '${slice.id}' has min_scanned ${JSON.stringify(slice.min_scanned)}; it must be a positive number or the floor does nothing`);
+    }
+    // `gate_argv` must not steer the gate's own corpus selection. `flagValue` in the gate takes
+    // the FIRST occurrence of a flag, and `runGate` appends `--root` after these, so a `--root`
+    // (or `--locale`/`--id`) here silently wins and the ratchet compares a subset while reporting
+    // that it checked the tree it was pointed at.
+    const STEERING = ['--root', '--locale', '--id', '--limit', '--json', '--warn'];
+    const steering = slice.gate_argv.filter((a) => STEERING.includes(a));
+    if (steering.length) {
+      refuse(`${RATCHET_FILE}: slice '${slice.id}' gate_argv carries ${JSON.stringify(steering)}; the ratchet supplies those itself and a duplicate would win`);
     }
     slice.members = slice.members ?? [];
     for (const m of slice.members) {
@@ -237,6 +262,14 @@ function auditInventory(doc, problems) {
   }
 
   // The reverse sweep. `--warn` is the repo's spelling for "report, exit 0".
+  //
+  // Matched on BOTH the workflow and the command, never the command alone. Command-only matching
+  // fails in both directions, and the second is live in this repo today: two entries share the
+  // command `check-translation-freshness.js --warn` and differ only in workflow, so deleting
+  // either one leaves the sweep green because the survivor "covers" the other file's line. In the
+  // other direction, adding that same command to a brand-new workflow would be covered on
+  // arrival — a new warn-only gate added silently, which is precisely what this sweep exists to
+  // make impossible.
   for (const [path, text] of workflows) {
     for (const line of text.split('\n')) {
       if (!line.includes('--warn')) continue;
@@ -245,7 +278,7 @@ function auditInventory(doc, problems) {
       // command, which does not break the containment test but does put a spurious token in the
       // message a human has to act on.
       const invocation = line.trim().replace(/^-\s*/, '').replace(/^run:\s*/, '');
-      const covered = listed.some((g) => g.command && invocation.includes(g.command));
+      const covered = listed.some((g) => g.workflow === path && g.command && invocation.includes(g.command));
       if (!covered) {
         problems.push(`FAIL debt-ratchet: ${path} runs a warn-only step that debt-ratchet.yml does not list: ${invocation.slice(0, 120)}`);
       }

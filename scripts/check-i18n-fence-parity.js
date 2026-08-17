@@ -194,6 +194,19 @@ export { compareTagSequence };
  */
 export const FINDING_KINDS = ['diverged', 'tag-sequence', 'tag-drift', 'stale-basis-claim'];
 
+/**
+ * Report fields that answer "how much corpus did this run actually walk?", published for the same
+ * reason as `FINDING_KINDS`.
+ *
+ * A consumer needs one of these to tell a clean corpus from a walk that saw nothing, and every
+ * OTHER numeric field in the report is a finding count — which is near zero when things are
+ * healthy, so naming one as the scanned field turns an anti-vacuity floor into a floor that any
+ * healthy run fails and any vacuous run passes. Validating "is it a number" cannot separate the
+ * two: that is the proxy-predicate shape, where the guard tests something adjacent to the rule
+ * the consumer needs.
+ */
+export const SCANNED_FIELDS = ['filesCompared', 'fencesCompared'];
+
 function main() {
   assertNotShallow(ROOT);
 
@@ -365,6 +378,7 @@ function main() {
     console.log(JSON.stringify({
       filesCompared, fencesCompared,
       kinds: FINDING_KINDS,
+      scannedFields: SCANNED_FIELDS,
       violations: blocking.length,
       ungatedDivergences,
       // `tagSequenceFindings` keeps its meaning — the BLOCKING structural findings — because the

@@ -113,7 +113,9 @@ It records a **member list** per ratcheted class and fails on any difference in 
 
 The key is `file` + `kind`, **never** `file` + `tag`. A tag-sequence finding's tag is rebuilt from the count-matched English revision differing in the fewest positions, so an English-only edit rewrites the key and the member leaves the list silently.
 
-**A class may be ratcheted only once every member has been read.** Otherwise "do not add debt" becomes "pay down debt of unknown validity", and the number carries an authority nobody checked. The nine tag-structure findings triaged in #598 are ratcheted; the 78 body divergences of #477 are listed under `unratcheted` with the reason. Reading them is not ceremony — it corrected one of #598's own diagnoses (#626).
+**A class may be ratcheted only once every member has been read.** Otherwise "do not add debt" becomes "pay down debt of unknown validity", and the number carries an authority nobody checked. The tag-structure findings triaged in #598 are ratcheted; the body-divergence class of #477 is listed under `unratcheted` with the reason. Quote the counts from the gate, never from here or from the ratchet file.
+
+Reading them is not ceremony. It corrected two diagnoses that had already been written down: #598 had called two fresh files stale (#626), and the empty escape-class member list turned out to mean "no escape the gate can *see*" — a swallowed opener usually changes the fence count, which lands it in the unjudged `unalignable` pool and produces no finding at all (#628).
 
 The file also carries the **advisory-gate inventory**, checked rather than written down: each listed gate's command must still appear in the workflow it names, and every `--warn` invocation across `.github/workflows/` must be listed, so a new warn-only gate cannot be added silently. Counts are deliberately absent from the unratcheted entries — a number no tool reads is documentation drift. Its blind spot is stated in the file: a step advisory because it simply never exits non-zero carries no token to sweep for.
 

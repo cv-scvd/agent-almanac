@@ -167,6 +167,44 @@ describe('debt ratchet (#591)', () => {
     assert.match(out, /below the declared floor/);
   });
 
+  it('REFUSES a floor that cannot fire — the anti-vacuity guard disabled by its own config', (t) => {
+    // `min_scanned` is only ever compared with `<`. `x < null` is `x < 0` and `x < NaN` is always
+    // false, so each of these leaves the field visibly present and the floor dead. Presence was
+    // the only check.
+    for (const value of ['min_scanned:', 'min_scanned: 0', 'min_scanned: -1', 'min_scanned: three-thousand']) {
+      const dir = fixture(t, { ratchetYaml: slice([]).replace('min_scanned: 1', value) });
+      const { status, out } = run(dir);
+      assert.equal(status, 2, `${value} should be refused, got:\n${out}`);
+      assert.match(out, /it must be a positive number or the floor does nothing/);
+    }
+  });
+
+  it('REFUSES a scanned_field that is not one of the gate\'s coverage fields', (t) => {
+    // `violations` is numeric and near zero on a healthy corpus, so naming it inverts the floor:
+    // healthy runs fail and vacuous runs pass. "Is it a number" cannot tell the two apart.
+    const dir = fixture(t, {
+      ratchetYaml: slice([]).replace('scanned_field: filesCompared', 'scanned_field: violations'),
+    });
+    const { status, out } = run(dir);
+    assert.equal(status, 2, out);
+    assert.match(out, /is not one of the gate's coverage fields/);
+  });
+
+  it('REFUSES gate_argv that steers the gate\'s own corpus selection', (t) => {
+    // The gate's `flagValue` takes the FIRST occurrence and the ratchet appends `--root` after
+    // these, so a `--root` here silently wins: the ratchet compares a subset while reporting that
+    // it checked the tree it was pointed at.
+    const dir = fixture(t, {
+      ratchetYaml: slice([]).replace(
+        'gate_argv: [scripts/check-i18n-fence-parity.js]',
+        'gate_argv: [scripts/check-i18n-fence-parity.js, --locale, de]',
+      ),
+    });
+    const { status, out } = run(dir);
+    assert.equal(status, 2, out);
+    assert.match(out, /the ratchet supplies those itself and a duplicate would win/);
+  });
+
   it('REFUSES an empty or missing ratchet, never reads it as nothing to enforce', (t) => {
     const dir = fixture(t, { ratchetYaml: `version: 1\nslices: []\n${INVENTORY}` });
     assert.equal(run(dir).status, 2);
@@ -228,6 +266,24 @@ describe('debt ratchet (#591)', () => {
       const { status, out } = run(dir);
       assert.equal(status, 1);
       assert.match(out, /debt-ratchet\.yml does not list: node scripts\/brand-new-gate\.js --warn/);
+    });
+
+    it('does not let an entry in ANOTHER workflow cover a --warn step', (t) => {
+      // Command-only matching failed both ways, and one of them is live in the real ratchet file:
+      // two entries carry `check-translation-freshness.js --warn` and differ only in workflow, so
+      // deleting either left the sweep green. The mirror image is worse — the same command added
+      // to a brand-new workflow would be covered on arrival, which is a new warn-only gate added
+      // silently.
+      const dir = fixture(t, {
+        ratchetYaml: slice([{ file: MIRROR, kind: 'tag-sequence' }]).replace(
+          '    workflow: .github/workflows/demo.yml',
+          '    workflow: .github/workflows/somewhere-else.yml',
+        ),
+        workflow: 'jobs:\n  x:\n    steps:\n      - run: node scripts/demo.js --warn\n',
+      });
+      const { status, out } = run(dir);
+      assert.equal(status, 1);
+      assert.match(out, /demo\.yml runs a warn-only step that debt-ratchet\.yml does not list/);
     });
 
     it('passes when every --warn step is listed', (t) => {

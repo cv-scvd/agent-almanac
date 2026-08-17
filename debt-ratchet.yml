@@ -12,8 +12,8 @@
 #
 # A class may be ratcheted only once every member has been READ. A ratchet over unread members
 # turns "do not add debt" into "pay down debt of unknown validity", and the number now carries an
-# authority nobody checked. That is why 78 body divergences sit under `unratcheted` below rather
-# than in a slice: they are #477's backlog and nobody has been through them.
+# authority nobody checked. That is why the body-divergence class sits under `unratcheted` below
+# rather than in a slice: it is #477's backlog and nobody has been through it.
 #
 # Counts are deliberately absent from `unratcheted` and `advisory_gates`. A number no tool reads
 # is documentation drift, which this repo treats as a P1 bug — quote the gate, not this file.
@@ -65,12 +65,21 @@ slices:
       # tag-sequence — the #481 escape proper: a frozen tag became localisable, so the fence left
       # the body check entirely and nothing else in the repo can see it.
       #
-      # ZERO MEMBERS, which is the strongest form this list takes: any escape anywhere in the
-      # corpus is added debt. The three that existed — `escalate-issues` in wenyan, wenyan-lite
-      # and zh-CN, all the same defect, a ````markdown opener degraded to ```markdown so that it
-      # closed early and swallowed the following python fence into a text block — were repaired
-      # in the commit that removed them from here. That is the ratchet's own workflow, exercised
-      # once on the branch that introduced it: paying debt down fails until this file moves too.
+      # ZERO MEMBERS: any escape the gate can SEE is added debt. The three that it saw —
+      # `escalate-issues` in wenyan, wenyan-lite and zh-CN, all the same defect, a ````markdown
+      # opener degraded to ```markdown so that it closed early and swallowed the following python
+      # fence into a text block — were repaired in the commit that removed them from here. That is
+      # the ratchet's own workflow, exercised once on the branch that introduced it: paying debt
+      # down fails until this file moves too.
+      #
+      # "Any escape the gate can see" is narrower than "any escape", and the gap is not small.
+      # `compareTagSequence` returns `unalignable` when no English revision has the file's fence
+      # COUNT, and a swallowed opener usually changes the count — so the same corruption lands in
+      # the 60-file unjudged pool and produces no finding of any kind. The three above were caught
+      # because their degradation happened to PRESERVE the count. Measured while triaging this
+      # list: 7 `write-vignette` mirrors carry a 4-backtick delimiter count English never had, all
+      # sitting in that pool, none reported (#628). An empty member list here is therefore a
+      # strong claim about a class, not about the corpus.
 
 unratcheted:
   # Classes the gate reports that this file deliberately does not enforce, each with the reason
@@ -88,18 +97,31 @@ unratcheted:
   - kind: stale-basis-claim
     gate: node scripts/check-i18n-fence-parity.js
     reason: >-
-      Derived, not independent. A claim is flagged only when a divergence or a structural mismatch
-      already exists, so its count cannot move except as a consequence of a class ratcheted or
-      excluded above. Ratcheting it would double-count the same defect.
-    exit: none needed — it is at zero and can only rise with its cause.
+      Derived, not independent. A claim fires only where a divergence or a structural mismatch
+      already exists, so ratcheting it would count the same defect twice. Note this does NOT mean
+      its count moves only when a ratcheted or unratcheted class moves: `claimedBasis && unalignable`
+      also fires it, and `unalignable` is not a finding at all, so a claimed file that gains a
+      fence moves this number on its own. That is the intended behaviour — the claim question is
+      supposed to be current by construction — but it is a third mover, not two.
+    exit: >-
+      None needed while it stays at zero, which it is — `staleBasisClaims: 0` across 3,415 live
+      claims, from the same `--json` run that produced the member list above. It can only rise
+      with its cause.
 
 advisory_gates:
   # Every warn-only or advisory CI step, with the workflow that runs it and its named exit.
   #
   # This list is CHECKED, not merely written: `check-debt-ratchet.js` asserts each `command` still
   # appears in its `workflow`, and — the direction that matters — that every `--warn` invocation
-  # across `.github/workflows/` is listed here. A new warn-only gate therefore cannot be added
-  # silently. Steps that are advisory without carrying a token (an inline `exit 0`, a script that
+  # across `.github/workflows/` is listed here, MATCHED ON BOTH the workflow and the command. A
+  # new warn-only gate therefore cannot be added silently, and neither can an entry be deleted:
+  # the two `check-translation-freshness.js --warn` entries below differ only in workflow, and
+  # under command-only matching either one covered the other's line.
+  #
+  # `token` is descriptive, read by humans and by nothing else. It records WHY a step is or is not
+  # reachable by the reverse sweep; it does not select the sweep's pattern.
+  #
+  # Steps that are advisory without carrying a token (an inline `exit 0`, a script that
   # simply never fails) have `token: none` and are covered only by the forward assertion.
   - id: i18n-fence-parity
     workflow: .github/workflows/validate-skills.yml

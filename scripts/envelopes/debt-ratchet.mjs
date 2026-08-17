@@ -13,9 +13,9 @@
  * second on the GitHub runner. This is a local tool either way; the number is here so nobody
  * mistakes a long run for a hang.
  *
- * Result at introduction, 2026-08-17:
+ * Result at introduction, 2026-08-17, after an adversarial review added the inventory case:
  *
- *     gate-envelope: 2 killed, 1 survived as documented of 3 case(s).
+ *     gate-envelope: 3 killed, 1 survived as documented of 4 case(s).
  *
  * The documented survivor is the important row. It is the ratchet's scope boundary, measured
  * rather than asserted: adding a body divergence — the #477 class — leaves the ratchet green on
@@ -55,6 +55,26 @@ export const cases = [
     expect: `stale member — ${TARGET} [tag-drift]`,
   },
   {
+    label: 'INVENTORY: deleting an entry whose command another entry also carries',
+    // The reverse sweep matched on the command alone until a review caught it, and this is the
+    // live case that exposed it: two entries carry `check-translation-freshness.js --warn` and
+    // differ only in their workflow, so under command-only matching the surviving entry "covered"
+    // the deleted one's line and the sweep stayed green. Deleting an inventory entry has to be
+    // visible, or the inventory decays silently, which is the failure it exists to prevent.
+    file: 'debt-ratchet.yml',
+    find: [
+      '  - id: translation-freshness-translations',
+      '    workflow: .github/workflows/validate-translations.yml',
+      '    command: node scripts/check-translation-freshness.js --warn',
+      '    token: "--warn"',
+      '    exit: unnamed — "#625"',
+      '    ratcheted: false',
+      '',
+    ].join('\n'),
+    replace: '',
+    expect: '.github/workflows/validate-translations.yml runs a warn-only step',
+  },
+  {
     label: 'DOCUMENTED LIMIT: a new body divergence does NOT move the ratchet',
     // `EXPOSE 3000` -> `EXPOSE 3001` inside a frozen ```dockerfile fence. The gate reports a new
     // gated violation (and a stale-basis-claim, since this file carries fence_basis_commit), and
@@ -63,6 +83,6 @@ export const cases = [
     find: 'EXPOSE 3000',
     replace: 'EXPOSE 3001',
     expect: null,
-    why: 'the #477 divergence class is deliberately unratcheted — its 78 members have not been read, and forcing payment on unread debt is worse than warn-only. #477 flipping the gate to blocking is what covers it.',
+    why: 'the #477 divergence class is deliberately unratcheted — its members have not been read, and forcing payment on unread debt is worse than warn-only. #477 flipping the gate to blocking is what covers it.',
   },
 ];

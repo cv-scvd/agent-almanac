@@ -178,8 +178,8 @@ jobs:
       # state with a named exit" has no mechanism behind it. This gives the gate teeth before the
       # backlog reaches zero, which is the hardest possible precondition and the whole difficulty.
       #
-      # It ratchets only the classes whose members have been READ — the nine tag-structure
-      # findings triaged in #598 — never the 78 body divergences of #477, because forcing payment
+      # It ratchets only the classes whose members have been READ — the tag-structure findings
+      # triaged in #598 — never the body divergences of #477, because forcing payment
       # on unread debt is worse than warn-only: the number acquires an authority nobody checked.
       # `debt-ratchet.yml` records that split with the reasoning.
       #
