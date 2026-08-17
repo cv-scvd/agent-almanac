@@ -57,7 +57,7 @@
  *   node scripts/backfill-fence-basis.js --locale de
  *   node scripts/backfill-fence-basis.js --tree skills,guides
  *   node scripts/backfill-fence-basis.js --json
- *   node scripts/backfill-fence-basis.js --verify --base <sha>  # audit a landed diff
+ *   node scripts/backfill-fence-basis.js --verify --base <sha> [--head <sha>]  # audit a diff
  */
 
 import { readFileSync, writeFileSync } from 'fs';
@@ -86,10 +86,13 @@ const GIT_BUFFER = 512 * 1024 * 1024;
 // silent-misparse class `generate-translation-status.js` records paying for.
 
 const BOOL_FLAGS = new Set(['--write', '--json', '--verify']);
-const VALUE_FLAGS = new Set(['--locale', '--tree', '--root', '--base']);
+const VALUE_FLAGS = new Set(['--locale', '--tree', '--root', '--base', '--head']);
 
 function parseArgs(argv) {
-  const opts = { write: false, json: false, verify: false, locale: null, trees: null, root: null, base: null };
+  const opts = {
+    write: false, json: false, verify: false,
+    locale: null, trees: null, root: null, base: null, head: null,
+  };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (BOOL_FLAGS.has(arg)) {
@@ -148,9 +151,16 @@ function git(args, { input } = {}) {
 // bad diff look good.
 
 if (OPTS.verify) {
-  const names = git(['diff', '--name-only', `${OPTS.base}..HEAD`]);
+  // `--head` defaults to HEAD but must be settable, because the commit being audited is rarely
+  // the branch tip by the time anyone audits it. Hardcoding HEAD made the documented audit
+  // command fail the moment a docs commit landed on top: the range then contains paths outside
+  // `i18n/`, which this loop correctly rejects, and the failure reads as corpus corruption
+  // rather than as the wrong range. An audit that only works for one commit-shaped moment is
+  // the "verification nobody can run" this mode already had to be rescued from once.
+  const HEAD_REF = OPTS.head ?? 'HEAD';
+  const names = git(['diff', '--name-only', `${OPTS.base}..${HEAD_REF}`]);
   if (names.status !== 0) {
-    console.error(`ERROR: git diff against '${OPTS.base}' failed:\n${names.stderr}`);
+    console.error(`ERROR: git diff ${OPTS.base}..${HEAD_REF} failed:\n${names.stderr}`);
     process.exit(2);
   }
   const changed = names.stdout.split('\n').map((s) => s.trim()).filter(Boolean);
@@ -162,18 +172,18 @@ if (OPTS.verify) {
   // makes it a verification nobody runs. `readBlobs` is a hoisted function declaration, so
   // calling it above its definition is deliberate rather than accidental.
   const beforeBlobs = readBlobs(changed.map((rel) => `${OPTS.base}:${rel}`));
-  const afterBlobs = readBlobs(changed.map((rel) => `HEAD:${rel}`));
+  const afterBlobs = readBlobs(changed.map((rel) => `${HEAD_REF}:${rel}`));
 
   for (const rel of changed) {
     if (!rel.startsWith('i18n/')) { problems.push(`${rel}: outside i18n/`); continue; }
     const before = beforeBlobs.get(`${OPTS.base}:${rel}`);
-    const after = afterBlobs.get(`HEAD:${rel}`);
+    const after = afterBlobs.get(`${HEAD_REF}:${rel}`);
     if (before === undefined || after === undefined) { problems.push(`${rel}: added or deleted, not modified`); continue; }
     const sc = readFrontmatterField(before, SOURCE_COMMIT_FIELD);
     if (!sc) { problems.push(`${rel}: no source_commit at base, so no value was derivable`); continue; }
     const expected = stampFrontmatterField(before, FENCE_BASIS_FIELD, sc);
     if (expected === null) { problems.push(`${rel}: not stampable at base`); continue; }
-    if (expected !== after) { problems.push(`${rel}: HEAD is not base+stamp — something else changed`); continue; }
+    if (expected !== after) { problems.push(`${rel}: ${HEAD_REF} is not base+stamp — something else changed`); continue; }
     checked++;
   }
 

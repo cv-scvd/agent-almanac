@@ -156,6 +156,97 @@ describe('backfill-fence-basis (#552)', () => {
     assert.equal(run(dir, ['--verify']).status, 2, '--verify needs --base');
   });
 
+  // ── the two pool conjuncts ────────────────────────────────────────────────
+  //
+  // The fixtures above are single-commit repos where the basis IS head, so both pool checks are
+  // unreachable and mutating either would survive the suite — the "pen that signs the corpus is
+  // the one thing untested" gap, in the tool that signs the corpus. These reach them.
+  //
+  // Both need a basis the walk cannot see. `git log --name-only` is path-limited and therefore
+  // history-simplified, and lists no paths for a merge, while `cat-file` resolves any object —
+  // so a conflict resolution is visible to the basis lookup and invisible to the pool.
+
+  /** Build a repo whose mirror names a MERGE as its source_commit. */
+  function mergeFixture(t, { resolution, mirrorFences }) {
+    const dir = mkdtempSync(join(tmpdir(), 'backfill-merge-'));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+
+    mkdirSync(join(dir, 'scripts'), { recursive: true });
+    cpSync(join(REPO, SCRIPT), join(dir, SCRIPT));
+    cpSync(join(REPO, 'scripts', 'check-i18n-fence-parity.js'), join(dir, 'scripts', 'check-i18n-fence-parity.js'));
+    cpSync(join(REPO, 'scripts', 'lib'), join(dir, 'scripts', 'lib'), { recursive: true });
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ type: 'module' }), 'utf8');
+
+    git(dir, ['init', '-b', 'main']);
+    git(dir, ['config', 'user.email', 'test@example.invalid']);
+    git(dir, ['config', 'user.name', 'Fixture']);
+
+    const skill = join(dir, 'skills', 'demo-skill', 'SKILL.md');
+    mkdirSync(dirname(skill), { recursive: true });
+    const doc = (fences) => [
+      '---', 'name: demo-skill', 'description: A demo skill.', '---', '', '# Demo Skill', '',
+      ...fences.flatMap(([tag, body]) => ['```' + tag, body, '```', '']),
+    ].join('\n');
+
+    writeFileSync(skill, doc([['bash', 'echo "X"']]), 'utf8');
+    git(dir, ['add', '-A']); git(dir, ['commit', '-m', 'A']);
+    git(dir, ['checkout', '-b', 'side']);
+    writeFileSync(skill, doc([['yaml', 'key: Y']]), 'utf8');
+    git(dir, ['add', '-A']); git(dir, ['commit', '-m', 'B']);
+    git(dir, ['checkout', 'main']);
+    writeFileSync(skill, doc([['bash', 'echo "C"']]), 'utf8');
+    git(dir, ['add', '-A']); git(dir, ['commit', '-m', 'C']);
+
+    spawnSync('git', ['merge', 'side'], { cwd: dir, encoding: 'utf8' }); // conflicts
+    writeFileSync(skill, doc(resolution), 'utf8');
+    git(dir, ['add', '-A']); git(dir, ['commit', '--no-edit', '-m', 'merge']);
+    const merge = git(dir, ['rev-parse', '--short', 'HEAD']);
+
+    // A later commit, so the working-tree pass contributes D and not the resolution — without
+    // it the resolution re-enters the pool through the worktree and the corner closes silently.
+    writeFileSync(skill, doc([['bash', 'echo "D"']]), 'utf8');
+    git(dir, ['add', '-A']); git(dir, ['commit', '-m', 'D']);
+
+    const translated = join(dir, 'i18n', 'de', 'skills', 'demo-skill', 'SKILL.md');
+    mkdirSync(dirname(translated), { recursive: true });
+    writeFileSync(translated, [
+      '---', 'name: demo-skill', 'description: Eine Demo.', 'locale: de', 'source_locale: en',
+      `source_commit: ${merge}`, '---', '', '# Demo', '',
+      ...mirrorFences.flatMap(([tag, body]) => ['```' + tag, body, '```', '']),
+    ].join('\n'), 'utf8');
+    git(dir, ['add', '-A']); git(dir, ['commit', '-m', 'de mirror']);
+
+    return { dir, translated };
+  }
+
+  it('withholds when the basis BODY is in no walked revision', (t) => {
+    // One fence throughout, so the folded sequence `bash` is pooled from A/C/D. The merge
+    // resolves to a body present in neither parent, so `mirrorsBasis` holds against the merge
+    // while that body is in no revision the walk can see.
+    const { dir, translated } = mergeFixture(t, {
+      resolution: [['bash', 'echo "R"']],
+      mirrorFences: [['bash', 'echo "R"']],
+    });
+    const r = run(dir, ['--write']);
+    assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}`);
+    assert.equal(field(readFileSync(translated, 'utf8')), undefined);
+    assert.match(r.stdout, /a gated body is in no walked revision/);
+  });
+
+  it('withholds when the basis SEQUENCE is in no walked revision', (t) => {
+    // Bodies X and Y each exist in a parent, so every gated body IS pooled. The merge assembles
+    // them into a two-fence document no single revision ever had, so only the sequence check
+    // can refuse this one.
+    const { dir, translated } = mergeFixture(t, {
+      resolution: [['bash', 'echo "X"'], ['yaml', 'key: Y']],
+      mirrorFences: [['bash', 'echo "X"'], ['yaml', 'key: Y']],
+    });
+    const r = run(dir, ['--write']);
+    assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}`);
+    assert.equal(field(readFileSync(translated, 'utf8')), undefined);
+    assert.match(r.stdout, /fence sequence is in no walked revision/);
+  });
+
   it('--verify reconstructs a landed diff, and rejects one carrying anything else', (t) => {
     const { dir, translated } = makeFixture(t);
     const base = git(dir, ['rev-parse', 'HEAD']);
