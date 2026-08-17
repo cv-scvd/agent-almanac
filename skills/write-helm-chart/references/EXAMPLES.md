@@ -594,3 +594,5 @@ podDisruptionBudget:
   enabled: true
   minAvailable: 2
 ```
+
+`replicaCount: 5` is inert in this file as written. The deployment template above renders `replicas:` only under `{{- if not .Values.autoscaling.enabled }}`, so with `autoscaling.enabled: true` the field is never emitted and the rollout begins at `minReplicas: 3`. It is kept rather than dropped because it is the count that applies the moment autoscaling is switched off — but it is not the production replica count, and the adjacent `minReplicas: 3` is what contradicts that reading.
