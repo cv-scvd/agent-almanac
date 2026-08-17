@@ -68,6 +68,7 @@ import { fileURLToPath } from 'url';
 import { assertNotShallow } from './lib/git-freshness.js';
 import {
   extractFences, buildEnglishFenceHistory, isGated, foldedTagSequence, compareTagSequence,
+  isRetagEscape,
 } from './lib/fences.js';
 import { collectI18nTargets, I18N_TREES } from './lib/i18n-targets.js';
 import { FENCE_BASIS_FIELD, readFrontmatterField } from './lib/provenance.js';
@@ -177,6 +178,22 @@ export function collectTargets() {
 // their import path.
 export { compareTagSequence };
 
+/**
+ * Every `kind` a finding from this gate can carry, emitted in `--json` so a consumer can validate
+ * its own configuration against the producer's vocabulary rather than against a copy of it.
+ *
+ * The reason it exists is `debt-ratchet.yml` (#591), which names the kinds it ratchets. A typo
+ * there — `tag-drfit` — would select zero findings, compare an empty observed set against an
+ * empty declared set, and report a clean ratchet forever: the vacuous pass this repo keeps
+ * paying for, in the one file whose whole job is to make a silent gate loud. Membership in the
+ * producer's own accept-list is the fix; `existsSync`-style proxies are what the rule warns off.
+ *
+ * It does NOT catch a check being deleted outright — the kind would still be declared here while
+ * nothing emits it. That is what the `gate-envelope` case in `scripts/envelopes/` is for: retag a
+ * frozen fence in a file no member list names, and the ratchet must go red.
+ */
+export const FINDING_KINDS = ['diverged', 'tag-sequence', 'tag-drift', 'stale-basis-claim'];
+
 function main() {
   assertNotShallow(ROOT);
 
@@ -186,6 +203,7 @@ function main() {
   let fencesCompared = 0;
   let ungatedDivergences = 0;
   let tagSequenceUnalignable = 0;
+  let tagSequenceDrift = 0;
   let staleBasisClaims = 0;
 
   for (const t of collectTargets()) {
@@ -225,15 +243,33 @@ function main() {
     if (seqVerdict?.unalignable) {
       tagSequenceUnalignable++;
     } else if (seqVerdict) {
+      // #598: the nine findings this check shipped with were two populations wearing one label,
+      // and the label is what made them unratchetable. `isRetagEscape` splits them — see its
+      // comment in `lib/fences.js` for why the test is asymmetric rather than `a !== b`.
+      //
+      // Only the escape blocks. Drift is reported as its own non-blocking class, the way
+      // `unalignable` already is, and the reasoning is recorded on #598: its REMEDY is
+      // retranslation, which `check-translation-freshness.js` owns and independently reports on
+      // every one of these files, while its DETECTION is structural and lives only here. So the
+      // class is reported here and enforced there. Reporting it as blocking would be this gate
+      // failing a build over a fact another gate is responsible for and already states.
+      //
+      // Non-blocking is not unwatched: both kinds are members of the debt ratchet
+      // (`debt-ratchet.yml`, #591), which fails on any file entering EITHER class. That is what
+      // keeps "not this gate's business" from meaning "free to grow".
+      const escape = isRetagEscape(seqVerdict.positions);
+      if (!escape) tagSequenceDrift++;
       findings.push({
         file: t.relPath,
         line: translatedFences[seqVerdict.positions[0].index - 1]?.line ?? 1,
         locale: t.locale,
         skill: t.id,
         tag: seqVerdict.positions.map((p) => `#${p.index} ${p.english}->${p.translated}`).join(', '),
-        gated: true,
-        kind: 'tag-sequence',
-        firstDivergentLine: `fence tag sequence appears in no English revision (${seqVerdict.positions.length} position(s) differ)`,
+        gated: escape,
+        kind: escape ? 'tag-sequence' : 'tag-drift',
+        firstDivergentLine: escape
+          ? `fence tag sequence appears in no English revision — a frozen tag became localisable (${seqVerdict.positions.length} position(s) differ)`
+          : `fence tag sequence appears in no English revision; every position stays frozen (${seqVerdict.positions.length} position(s) differ)`,
       });
     }
 
@@ -291,6 +327,12 @@ function main() {
     // carries no staleness confound: the claim is supposed to be current by construction.
     // It is also the only place this schema can see the #480 deletion gap on a claimed file,
     // since deleting a frozen fence usually changes the count.
+    // Deliberately `Boolean(seqVerdict)`, NOT `seqVerdict && f.gated`. The #598 split changed
+    // which structural mismatches BLOCK; it must not change which ones falsify a claim, and the
+    // two questions have different answers. `mirrorsBasis` requires the exact folded sequence, so
+    // a drift mismatch means the file cannot mirror the revision it names — the claim is false
+    // whether or not the mismatch freed a fence from the gate. Narrowing this to escapes would
+    // silently un-flag the very files #598 catalogued as partial updates.
     const structureContradicts = Boolean(seqVerdict);
     if (claimedBasis && (divergedHere > 0 || structureContradicts)) {
       staleBasisClaims++;
@@ -320,9 +362,14 @@ function main() {
     // than redirected — the exact consumer this mode exists for.
     console.log(JSON.stringify({
       filesCompared, fencesCompared,
+      kinds: FINDING_KINDS,
       violations: blocking.length,
       ungatedDivergences,
+      // `tagSequenceFindings` keeps its meaning — the BLOCKING structural findings — because the
+      // #598 split moved drift out of that population rather than renaming it. Drift gets its own
+      // field so the two are never re-added into one number by a consumer.
       tagSequenceFindings: findings.filter((f) => f.kind === 'tag-sequence').length,
+      tagSequenceDrift,
       tagSequenceUnalignable,
       staleBasisClaims,
       findings,
@@ -366,12 +413,27 @@ function main() {
     // introduction across 3,584 count-matched pairs: 9 findings, of which 3 were a frozen tag
     // becoming localisable (the #481 escape proper, and in `escalate-issues` caused by a
     // 4-backtick opener degraded to 3, which swallows the next fence whole) and 6 were
-    // partial-update drift on stale files. Read the file before repairing it.
+    // partial-update drift on stale files. Read the file before repairing it. #598 turned that
+    // hand triage into the mechanical split below, so this block now lists the 3-class only; the
+    // 6-class prints under "tag-DRIFT" and does not block.
     console.log(`\n${tagSeq.length} fence tag-sequence finding(s) — a structure appearing in NO English revision.`);
     console.log('These are the retag escape (#481): a frozen tag changed to text/markdown/md leaves');
     console.log('the body check entirely, because gating is read off the translated file.');
     for (const f of tagSeq.slice(0, LIMIT)) console.log(`  ${f.file}  ${f.tag}`);
     if (tagSeq.length > LIMIT) console.log(`  ... ${tagSeq.length - LIMIT} more`);
+  }
+  const drift = findings.filter((f) => f.kind === 'tag-drift');
+  if (drift.length) {
+    // Reported apart from the escapes above and NOT counted as violations (#598). Every position
+    // stays frozen, so no fence left the body check and nothing here is invisible to it; what the
+    // sequence sees is a translation that took some English changes and not others, whose remedy
+    // is retranslation. Listed rather than merely counted because a ratcheted class whose members
+    // nobody can read is the failure mode #591 warns about.
+    console.log(`\n${drift.length} fence tag-DRIFT finding(s) — structure diverges, but every tag stays frozen.`);
+    console.log('Not violations: no fence left the gate, so the body check still covers all of them.');
+    console.log('Cause is partial update; remedy is retranslation (check-translation-freshness.js).');
+    for (const f of drift.slice(0, LIMIT)) console.log(`  ${f.file}  ${f.tag}`);
+    if (drift.length > LIMIT) console.log(`  ... ${drift.length - LIMIT} more`);
   }
   if (tagSequenceUnalignable) {
     // Deliberately not a finding. No English revision has that fence COUNT, so there is no

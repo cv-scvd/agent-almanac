@@ -135,6 +135,29 @@ describe('fence_basis_commit in the parity gate (#552)', () => {
     assert.ok(out.findings.some((f) => f.kind === 'tag-sequence' && f.gated));
   });
 
+  it('flags a claim contradicted by DRIFT, which no longer blocks (#598)', (t) => {
+    // The invariant most at risk in the #598 split. Drift stopped being a violation; it must not
+    // stop falsifying a claim. `mirrorsBasis` requires the exact folded sequence, so a file whose
+    // structure matches no revision cannot be carrying the fences of the one it names — true
+    // whether or not the mismatch freed a fence from the gate. Narrowing `structureContradicts`
+    // to escapes would un-flag exactly the partial-update files #598 catalogued, and every other
+    // assertion in this file would stay green.
+    const { dir } = makeFixture(t, { basis: 'deadbee', fence: ENGLISH_FENCE });
+    const mirror = join(dir, 'i18n', 'de', 'skills', 'demo-skill', 'SKILL.md');
+    // ```bash -> ```yaml. Both frozen, body untouched: drift, not an escape.
+    writeFileSync(mirror, readFileSync(mirror, 'utf8').replace('```bash', '```yaml'), 'utf8');
+
+    const out = check(dir);
+    assert.equal(out.tagSequenceDrift, 1, 'the fixture must actually produce drift');
+    assert.equal(out.violations, 0, 'and drift must not fail the run');
+
+    const claim = out.findings.find((f) => f.kind === 'stale-basis-claim');
+    assert.ok(claim, 'drift still contradicts the frontmatter claim');
+    assert.match(claim.firstDivergentLine, /tag sequence appears in no English revision/);
+    assert.equal(claim.gated, false);
+    assert.equal(out.staleBasisClaims, 1);
+  });
+
   it('flags a claim on a file no English revision has the fence count for', (t) => {
     // `unalignable` is not a violation — without a count match there is no position to compare.
     // It IS a contradicted claim: verified-against-X implies the count equals X's count, so an
