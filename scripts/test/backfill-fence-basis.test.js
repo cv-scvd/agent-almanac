@@ -1,0 +1,178 @@
+/**
+ * backfill-fence-basis.test.js — the corpus writer for `fence_basis_commit` (#552).
+ *
+ * This tool writes one line into thousands of tracked files, so the properties worth pinning are
+ * the ones whose failure is silent: stamping a file that cannot prove its claim, overwriting a
+ * claim it did not establish, writing during a preview, and writing into a tree someone was
+ * already editing by hand.
+ *
+ * Driven as a subprocess against throwaway git repos. A unit test of the predicate would pass
+ * against a tool that never calls it.
+ */
+
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, cpSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
+
+const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const SCRIPT = 'scripts/backfill-fence-basis.js';
+
+function git(cwd, args) {
+  const r = spawnSync('git', args, { cwd, encoding: 'utf8' });
+  assert.equal(r.status, 0, `git ${args.join(' ')} failed: ${r.stderr}`);
+  return r.stdout.trim();
+}
+
+const english = (body) => [
+  '---', 'name: demo-skill', 'description: A demo skill.', '---', '',
+  '# Demo Skill', '', '```bash', body, '```', '',
+].join('\n');
+
+const mirror = (sourceCommit, body, extra = []) => [
+  '---', 'name: demo-skill', 'description: Eine Demo.', 'locale: de', 'source_locale: en',
+  `source_commit: ${sourceCommit}`, ...extra, '---', '',
+  '# Demo', '', '```bash', body, '```', '',
+].join('\n');
+
+/**
+ * @param {object} opts
+ * @param {string} [opts.mirrorBody] defaults to the English body, i.e. a verifiable mirror
+ * @param {string[]} [opts.extraFrontmatter]
+ */
+function makeFixture(t, { mirrorBody = 'echo "hello"', extraFrontmatter = [] } = {}) {
+  const dir = mkdtempSync(join(tmpdir(), 'backfill-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+
+  mkdirSync(join(dir, 'scripts'), { recursive: true });
+  cpSync(join(REPO, SCRIPT), join(dir, SCRIPT));
+  cpSync(join(REPO, 'scripts', 'check-i18n-fence-parity.js'), join(dir, 'scripts', 'check-i18n-fence-parity.js'));
+  cpSync(join(REPO, 'scripts', 'lib'), join(dir, 'scripts', 'lib'), { recursive: true });
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ type: 'module' }), 'utf8');
+
+  git(dir, ['init', '-b', 'main']);
+  git(dir, ['config', 'user.email', 'test@example.invalid']);
+  git(dir, ['config', 'user.name', 'Fixture']);
+
+  const skill = join(dir, 'skills', 'demo-skill', 'SKILL.md');
+  mkdirSync(dirname(skill), { recursive: true });
+  writeFileSync(skill, english('echo "hello"'), 'utf8');
+  git(dir, ['add', 'skills']);
+  git(dir, ['commit', '-m', 'english']);
+  const head = git(dir, ['rev-parse', '--short', 'HEAD']);
+
+  const translated = join(dir, 'i18n', 'de', 'skills', 'demo-skill', 'SKILL.md');
+  mkdirSync(dirname(translated), { recursive: true });
+  writeFileSync(translated, mirror(head, mirrorBody, extraFrontmatter), 'utf8');
+  git(dir, ['add', 'i18n']);
+  git(dir, ['commit', '-m', 'de mirror']);
+
+  return { dir, translated, head };
+}
+
+const run = (dir, args = []) => spawnSync(process.execPath, [SCRIPT, ...args], { cwd: dir, encoding: 'utf8' });
+const field = (text) => (text.match(/^\s*fence_basis_commit:\s*(\S+)/m) || [])[1];
+
+describe('backfill-fence-basis (#552)', () => {
+  it('stamps a file that mirrors its source_commit', (t) => {
+    const { dir, translated, head } = makeFixture(t);
+    const r = run(dir, ['--write']);
+    assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}`);
+    assert.equal(field(readFileSync(translated, 'utf8')), head);
+  });
+
+  it('withholds from a file whose gated body differs from its source_commit', (t) => {
+    const { dir, translated } = makeFixture(t, { mirrorBody: 'echo "uebersetzt"' });
+    const r = run(dir, ['--write']);
+    assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}`);
+    assert.equal(field(readFileSync(translated, 'utf8')), undefined,
+      'a file that cannot prove a basis must be left without one');
+    assert.match(r.stdout, /a gated fence body differs/);
+  });
+
+  it('PREVIEW writes nothing', (t) => {
+    const { dir, translated } = makeFixture(t);
+    const before = readFileSync(translated, 'utf8');
+    const r = run(dir, []);
+    assert.equal(r.status, 0);
+    assert.match(r.stdout, /would stamp:\s+1/);
+    assert.equal(readFileSync(translated, 'utf8'), before, 'preview must not touch the corpus');
+  });
+
+  it('never overwrites a field it did not write', (t) => {
+    // The scaffolders stamp at birth. Silently rewriting their claim would make this tool a
+    // second, invisible author of a fact it did not establish.
+    const { dir, translated } = makeFixture(t, { extraFrontmatter: ['fence_basis_commit: deadbee'] });
+    const r = run(dir, ['--write']);
+    assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}`);
+    assert.equal(field(readFileSync(translated, 'utf8')), 'deadbee');
+    assert.match(r.stdout, /already carries the field/);
+  });
+
+  it('is idempotent — a second run stamps nothing', (t) => {
+    const { dir } = makeFixture(t);
+    assert.equal(run(dir, ['--write']).status, 0);
+    // The commit is not incidental: the dirty-scope guard means a second run is only reachable
+    // after the first is committed. Idempotence and that guard are the same property seen from
+    // two sides — the tool will not write twice, and will not write over an unreviewed write.
+    git(dir, ['add', 'i18n']);
+    git(dir, ['commit', '-m', 'backfill']);
+    const second = run(dir, ['--write']);
+    assert.equal(second.status, 0, `${second.stdout}\n${second.stderr}`);
+    assert.match(second.stdout, /stamped:\s+0/);
+    assert.match(second.stdout, /already carries the field/);
+  });
+
+  it('refuses to write into a dirty scope', (t) => {
+    const { dir, translated } = makeFixture(t);
+    writeFileSync(translated, `${readFileSync(translated, 'utf8')}\nhand edit\n`, 'utf8');
+    const r = run(dir, ['--write']);
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /uncommitted change/);
+  });
+
+  it('exits 2 on a scope that reaches nothing, rather than reporting a clean zero', (t) => {
+    const { dir } = makeFixture(t);
+    const badLocale = run(dir, ['--locale', 'nope']);
+    assert.equal(badLocale.status, 2);
+    assert.match(badLocale.stderr, /matched no translated content/);
+
+    const badTree = run(dir, ['--tree', 'teams']);
+    assert.equal(badTree.status, 2);
+    assert.match(badTree.stderr, /matched no translated content/);
+
+    const notATree = run(dir, ['--tree', 'nonsense']);
+    assert.equal(notATree.status, 2);
+    assert.match(notATree.stderr, /no such content tree/);
+  });
+
+  it('rejects unknown and value-less flags', (t) => {
+    const { dir } = makeFixture(t);
+    assert.equal(run(dir, ['--wirte']).status, 2);
+    assert.equal(run(dir, ['--locale']).status, 2);
+    assert.equal(run(dir, ['--verify']).status, 2, '--verify needs --base');
+  });
+
+  it('--verify reconstructs a landed diff, and rejects one carrying anything else', (t) => {
+    const { dir, translated } = makeFixture(t);
+    const base = git(dir, ['rev-parse', 'HEAD']);
+    assert.equal(run(dir, ['--write']).status, 0);
+    git(dir, ['add', 'i18n']);
+    git(dir, ['commit', '-m', 'backfill']);
+
+    const ok = run(dir, ['--verify', '--base', base]);
+    assert.equal(ok.status, 0, `${ok.stdout}\n${ok.stderr}`);
+    assert.match(ok.stdout, /every changed file is exactly its base content plus one/);
+
+    // Now smuggle a body change into a second commit and confirm the reconstruction catches it.
+    writeFileSync(translated, readFileSync(translated, 'utf8').replace('echo "hello"', 'echo "sneaky"'), 'utf8');
+    git(dir, ['add', 'i18n']);
+    git(dir, ['commit', '-m', 'sneaky body change']);
+    const bad = run(dir, ['--verify', '--base', base]);
+    assert.equal(bad.status, 1, 'a body change must not pass reconstruction');
+    assert.match(bad.stderr, /not base\+stamp/);
+  });
+});

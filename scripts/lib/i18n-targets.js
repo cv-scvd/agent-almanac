@@ -1,0 +1,173 @@
+/**
+ * i18n-targets.js — the one walk over translated content (#552).
+ *
+ * Three tools need "every translated file, optionally scoped to a locale or a set of trees":
+ * the parity gate, the fence normalizer, and the backfill. Each had grown its own copy, and the
+ * copies were not interchangeable — one recorded which trees it reached before applying the
+ * `--tree` filter, one after; one checked `isFile`, one only `existsSync`. Those differences are
+ * not stylistic. They decide whether a scoped run that reaches nothing reports a clean-looking
+ * zero or exits 2, which is the guard-proxy failure `--tree` was added to prevent.
+ *
+ * ## The accept-lists are returned, not computed by the caller
+ *
+ * `localesReached` and `treesReached` are collected DURING the walk, after the existence checks
+ * and BEFORE the scope filters. That ordering is the whole point:
+ *
+ *   - after existence, so "reached" means "carries translated content" rather than "has a
+ *     directory of that name";
+ *   - before filtering, so the accept-list describes what this run COULD have reached rather
+ *     than what it selected — otherwise validating `--tree` against it is circular and always
+ *     passes.
+ *
+ * Validating a scope flag against a static list instead of against these is what let
+ * `--locale wenyan --tree guides` satisfy each guard independently and scan nothing: six of the
+ * ten locales carry `skills/` alone.
+ */
+
+import { readdirSync, existsSync, statSync, readFileSync } from 'fs';
+import { resolve, join } from 'path';
+
+import { contentKey } from './content-paths.js';
+import { CONTENT_TYPES } from './content-types.js';
+
+/**
+ * How each content tree is MIRRORED under `i18n/<locale>/`.
+ *
+ * A record with a THROW, not a Set with a default. The first version of this used
+ * `NESTED.has(dir)`, which is a silently-defaulting predicate: an unclassified tree gets
+ * `false`, its entries are directories, they fail the `.endsWith('.md')` test downstream, and
+ * the tree contributes zero targets — so a gate prints OK having scanned nothing. There is no
+ * per-tree zero-target guard to catch it.
+ *
+ * Throwing at module load means a fifth tree in the SSOT breaks every consumer until someone
+ * declares its layout. Loud is the point. Moved here from `check-i18n-fence-parity.js` so the
+ * gate, the normalizer and the backfill cannot disagree about the corpus layout.
+ */
+const NESTING = { skills: true, agents: false, teams: false, guides: false };
+
+/** @type {{dir: string, nested: boolean}[]} */
+export const I18N_TREES = CONTENT_TYPES.map((dir) => {
+  if (!(dir in NESTING)) {
+    throw new Error(
+      `i18n-targets: content type '${dir}' has no declared i18n layout. `
+      + 'Add it to NESTING (true if mirrored as <dir>/<id>/FILE.md, false if <dir>/<id>.md).',
+    );
+  }
+  return { dir, nested: NESTING[dir] };
+});
+
+/**
+ * Every translated file, richly described.
+ *
+ * @param {object} opts
+ * @param {string} opts.root repository root
+ * @param {string|null} [opts.onlyLocale] restrict to one locale
+ * @param {Set<string>|null} [opts.onlyTrees] restrict to these content trees
+ * @param {boolean} [opts.withText] read each file (the callers that classify always do)
+ * @returns {{
+ *   targets: Array<{locale: string, tree: string, id: string, key: string, absPath: string,
+ *                   english: string, englishRel: string, relPath: string, text?: string}>,
+ *   localesReached: Set<string>, treesReached: Set<string>, localesPresent: string[],
+ * }}
+ */
+export function collectI18nTargets({ root, onlyLocale = null, onlyTrees = null, withText = false }) {
+  const i18nDir = resolve(root, 'i18n');
+  const targets = [];
+  const localesReached = new Set();
+  const treesReached = new Set();
+
+  const localesPresent = existsSync(i18nDir)
+    ? readdirSync(i18nDir).filter((entry) => {
+      // `_config.yml`, `README.md`, `glossaries/` are not locales. Directory-ness is the test,
+      // plus the underscore convention the rest of the repo already uses.
+      if (entry.startsWith('_') || entry === 'glossaries') return false;
+      return statSync(join(i18nDir, entry)).isDirectory();
+    })
+    : [];
+
+  for (const locale of localesPresent) {
+    for (const { dir: tree, nested } of I18N_TREES) {
+      const base = join(i18nDir, locale, tree);
+      if (!existsSync(base) || !statSync(base).isDirectory()) continue;
+
+      for (const entry of readdirSync(base)) {
+        // `contentKey` decides what counts as content at all, so `_template.md`, `README.md`
+        // and `_registry.yml` fall out here rather than needing a second list that could drift
+        // from the gate's.
+        const englishRel = nested ? `${tree}/${entry}/SKILL.md` : `${tree}/${entry}`;
+        const key = contentKey(englishRel);
+        if (key === null) continue;
+
+        const absPath = join(i18nDir, locale, englishRel);
+        const english = join(root, englishRel);
+        // `isFile`, not merely `existsSync`. For skills the entry is a directory and the file is
+        // `SKILL.md`, so existence alone was safe by construction; on the mirror branch the
+        // ENTRY is the file, and a directory named `foo.md` would reach readFileSync and kill
+        // the run with EISDIR where the gate skips it.
+        if (!existsSync(absPath) || !statSync(absPath).isFile()) continue;
+        if (!existsSync(english) || !statSync(english).isFile()) continue;
+
+        localesReached.add(locale);
+        treesReached.add(tree);
+
+        if (onlyLocale && locale !== onlyLocale) continue;
+        if (onlyTrees && !onlyTrees.has(tree)) continue;
+
+        const target = {
+          locale,
+          tree,
+          id: nested ? entry : entry.replace(/\.md$/, ''),
+          key,
+          absPath,
+          english,
+          englishRel,
+          relPath: `i18n/${locale}/${englishRel}`,
+        };
+        if (withText) target.text = readFileSync(absPath, 'utf8');
+        targets.push(target);
+      }
+    }
+  }
+
+  return { targets, localesReached, treesReached, localesPresent };
+}
+
+/**
+ * Reject a scope flag that reached nothing, naming what WAS reachable.
+ *
+ * Shared so the three callers cannot disagree about when a scoped run is vacuous. Returns an
+ * array of error lines; empty means the scope is good. The caller exits 2 — this module does not
+ * call `process.exit`, because a library that kills the process cannot be tested.
+ *
+ * @param {object} opts
+ * @param {string|null} opts.onlyLocale
+ * @param {Set<string>|null} opts.onlyTrees
+ * @param {Set<string>} opts.localesReached
+ * @param {Set<string>} opts.treesReached
+ * @returns {string[]}
+ */
+export function validateScope({ onlyLocale, onlyTrees, localesReached, treesReached }) {
+  const errors = [];
+  if (onlyLocale && !localesReached.has(onlyLocale)) {
+    errors.push(`ERROR: --locale '${onlyLocale}' matched no translated content.`);
+    errors.push('Nothing would be scanned, and the run would report a clean-looking zero.');
+    errors.push(`Reachable here: ${[...localesReached].sort().join(', ') || '(none)'}`);
+    return errors;
+  }
+  if (onlyTrees) {
+    const known = new Set(I18N_TREES.map((t) => t.dir));
+    const unknown = [...onlyTrees].filter((t) => !known.has(t));
+    if (unknown.length) {
+      errors.push(`ERROR: --tree names no such content tree: ${unknown.join(', ')}`);
+      errors.push(`Known trees: ${[...known].sort().join(', ')}`);
+      return errors;
+    }
+    const unreached = [...onlyTrees].filter((t) => !treesReached.has(t));
+    if (unreached.length) {
+      errors.push(`ERROR: --tree matched no translated content${onlyLocale ? ` in locale '${onlyLocale}'` : ''}: ${unreached.join(', ')}`);
+      errors.push('Nothing would be scanned, and the run would report a clean-looking zero.');
+      errors.push(`Reachable here: ${[...treesReached].sort().join(', ') || '(none)'}`);
+    }
+  }
+  return errors;
+}

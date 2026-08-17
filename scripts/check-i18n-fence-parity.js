@@ -69,6 +69,7 @@ import { assertNotShallow } from './lib/git-freshness.js';
 import {
   extractFences, buildEnglishFenceHistory, isGated, foldedTagSequence, compareTagSequence,
 } from './lib/fences.js';
+import { collectI18nTargets, I18N_TREES } from './lib/i18n-targets.js';
 import { FENCE_BASIS_FIELD, readFrontmatterField } from './lib/provenance.js';
 import { CONTENT_TYPES } from './lib/content-types.js';
 
@@ -142,39 +143,23 @@ const ONLY_ID = flagValue('--id', null);
  * Throwing at module load means a fifth tree in the SSOT breaks every CI invocation of this
  * gate until someone declares its layout. Loud is the point.
  */
-const NESTING = { skills: true, agents: false, teams: false, guides: false };
-export const TREES = CONTENT_TYPES.map((dir) => {
-  if (!(dir in NESTING)) {
-    throw new Error(
-      `check-i18n-fence-parity: content type '${dir}' has no declared i18n layout. `
-      + 'Add it to NESTING (true if mirrored as <dir>/<id>/FILE.md, false if <dir>/<id>.md).',
-    );
-  }
-  return { dir, nested: NESTING[dir] };
-});
+// The layout SSOT moved to `scripts/lib/i18n-targets.js` with the walk that consumes it, and
+// keeps its throw-on-undeclared-tree behaviour there. Re-exported: `content-types-propagation`
+// asserts this gate agrees with the SSOT about which trees exist, and that assertion is about
+// the gate's view, not the lib's.
+export const TREES = I18N_TREES;
 
-/** Every translated file to compare, as { relPath, absPath, locale, id, tree }. */
+/**
+ * Every translated file to compare, as { relPath, absPath, locale, id, tree }.
+ *
+ * The walk itself moved to `scripts/lib/i18n-targets.js` (#552) so this gate, the fence
+ * normalizer and the backfill cannot disagree about what the corpus IS. The copies had already
+ * drifted on two points that decide whether a scoped run reporting zero is a pass or a bug.
+ * `--id` stays here: it is this gate's debugging convenience, not a property of the corpus.
+ */
 export function collectTargets() {
-  const out = [];
-  for (const locale of readdirSync(I18N_DIR)) {
-    if (ONLY_LOCALE && locale !== ONLY_LOCALE) continue;
-    for (const { dir, nested } of TREES) {
-      const base = join(I18N_DIR, locale, dir);
-      if (!existsSync(base) || !statSync(base).isDirectory()) continue;
-      for (const entry of readdirSync(base)) {
-        const id = nested ? entry : entry.replace(/\.md$/, '');
-        if (ONLY_ID && id !== ONLY_ID) continue;
-        const absPath = nested ? join(base, entry, 'SKILL.md') : join(base, entry);
-        if (!nested && !entry.endsWith('.md')) continue;
-        if (!existsSync(absPath) || !statSync(absPath).isFile()) continue;
-        out.push({
-          absPath, locale, id, tree: dir,
-          relPath: `i18n/${locale}/${dir}/${nested ? `${entry}/SKILL.md` : entry}`,
-        });
-      }
-    }
-  }
-  return out;
+  const { targets } = collectI18nTargets({ root: ROOT, onlyLocale: ONLY_LOCALE });
+  return targets.filter((t) => !ONLY_ID || t.id === ONLY_ID);
 }
 
 // `compareTagSequence` moved to `scripts/lib/fences.js` (#552 backfill). Two reasons, and the
