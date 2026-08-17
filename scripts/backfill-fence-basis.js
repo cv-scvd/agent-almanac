@@ -157,16 +157,23 @@ if (OPTS.verify) {
   const problems = [];
   let checked = 0;
 
+  // Two batched `cat-file` reads, not two `git show` per file. The naive form spawns 2N git
+  // processes — at corpus scale that is ~6,800 spawns and the audit does not finish, which
+  // makes it a verification nobody runs. `readBlobs` is a hoisted function declaration, so
+  // calling it above its definition is deliberate rather than accidental.
+  const beforeBlobs = readBlobs(changed.map((rel) => `${OPTS.base}:${rel}`));
+  const afterBlobs = readBlobs(changed.map((rel) => `HEAD:${rel}`));
+
   for (const rel of changed) {
     if (!rel.startsWith('i18n/')) { problems.push(`${rel}: outside i18n/`); continue; }
-    const before = git(['show', `${OPTS.base}:${rel}`]);
-    const after = git(['show', `HEAD:${rel}`]);
-    if (before.status !== 0 || after.status !== 0) { problems.push(`${rel}: added or deleted, not modified`); continue; }
-    const sc = readFrontmatterField(before.stdout, SOURCE_COMMIT_FIELD);
+    const before = beforeBlobs.get(`${OPTS.base}:${rel}`);
+    const after = afterBlobs.get(`HEAD:${rel}`);
+    if (before === undefined || after === undefined) { problems.push(`${rel}: added or deleted, not modified`); continue; }
+    const sc = readFrontmatterField(before, SOURCE_COMMIT_FIELD);
     if (!sc) { problems.push(`${rel}: no source_commit at base, so no value was derivable`); continue; }
-    const expected = stampFrontmatterField(before.stdout, FENCE_BASIS_FIELD, sc);
+    const expected = stampFrontmatterField(before, FENCE_BASIS_FIELD, sc);
     if (expected === null) { problems.push(`${rel}: not stampable at base`); continue; }
-    if (expected !== after.stdout) { problems.push(`${rel}: HEAD is not base+stamp — something else changed`); continue; }
+    if (expected !== after) { problems.push(`${rel}: HEAD is not base+stamp — something else changed`); continue; }
     checked++;
   }
 
