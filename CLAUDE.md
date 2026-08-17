@@ -101,6 +101,26 @@ Three traps it exists to catch, all of which have shipped here:
 
 The same asymmetry applies to the *subject* of a check: a green gate proves something about the gate, and an unexplained **stale generated file** proves something about the corpus. `check-readmes` going stale is how a stray fixture commit was caught after `git status` read clean — investigate such staleness before regenerating it away.
 
+## Ratcheting a Warn-Only Gate
+
+A warn-only gate cannot fail, so every commit under it is locally legal and nothing forbids its backlog from rising. "Warn is a temporary state with a named exit" names the exit without forcing any move toward it. `debt-ratchet.yml` is what forces it:
+
+```bash
+npm run ratchet
+```
+
+It records a **member list** per ratcheted class and fails on any difference in either direction — a finding the list does not name is added debt, and a member the gate no longer reports means the file must move in the same commit. Exact-set, never `observed <= declared`: a `<=` ratchet is green when one member is repaired and a different one appears, and "matches some earlier state" is the shape that keeps deletions green forever.
+
+The key is `file` + `kind`, **never** `file` + `tag`. A tag-sequence finding's tag is rebuilt from the count-matched English revision differing in the fewest positions, so an English-only edit rewrites the key and the member leaves the list silently.
+
+**A class may be ratcheted only once every member has been read.** Otherwise "do not add debt" becomes "pay down debt of unknown validity", and the number carries an authority nobody checked. The tag-structure findings triaged in #598 are ratcheted; the body-divergence class of #477 is listed under `unratcheted` with the reason. Quote the counts from the gate, never from here or from the ratchet file.
+
+Reading them is not ceremony. It corrected two diagnoses that had already been written down: #598 had called two fresh files stale (#626), and the empty escape-class member list turned out to mean "no escape the gate can *see*" — a swallowed opener usually changes the fence count, which lands it in the unjudged `unalignable` pool and produces no finding at all (#628).
+
+The file also carries the **advisory-gate inventory**, checked rather than written down: each listed gate's command must still appear in the workflow it names, and every `--warn` invocation across `.github/workflows/` must be listed, so a new warn-only gate cannot be added silently. Counts are deliberately absent from the unratcheted entries — a number no tool reads is documentation drift. Its blind spot is stated in the file: a step advisory because it simply never exits non-zero carries no token to sweep for.
+
+Negative evidence is `scripts/envelopes/debt-ratchet.mjs` (`npm run gate-envelope`), which mutates the real corpus against `npm run ratchet` — the command CI runs, not the inner script. Its `expect: null` case pins the scope boundary as a measurement: a new body divergence must **not** move the ratchet.
+
 ## Guarding a Multi-Agent Run
 
 `git status` cannot see a subagent that **committed**. Bracket any fan-out with Bash access in this repo:
@@ -293,6 +313,18 @@ Runs **warn-only** in CI until the backlog clears (#477), then flips to blocking
 Warn is a temporary state with a named exit, not the design. Quote the current
 count from the checker rather than from here — it was 1,307 at introduction and
 drops with each batch.
+
+Warn-only does not mean unbounded, though it did until #591. The gate's
+tag-structure findings are ratcheted in `debt-ratchet.yml` and `npm run ratchet`
+blocks on a rise — see § Ratcheting a Warn-Only Gate. The body-divergence class
+is deliberately outside that, because its members have not been read.
+
+The tag-structure classes are two, split by `isRetagEscape` (#598). A
+**tag-sequence** finding is the #481 escape — a frozen tag became localisable, so
+the fence left the body check entirely — and it blocks. A **tag-drift** finding
+changes tags without freeing any fence, so the body check still covers every one
+of them; it is reported, ratcheted, and does not block. Its cause varies by
+member: read the file rather than assuming staleness.
 
 ### Translation Workflow
 

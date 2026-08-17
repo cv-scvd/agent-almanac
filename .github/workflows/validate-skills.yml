@@ -2,9 +2,9 @@ name: Validate Skills
 on:
   push:
     branches: [main]
-    paths: ['skills/**', 'i18n/**', 'agents/**', 'teams/**', 'guides/**', 'scripts/**', 'package.json', 'package-lock.json', '.github/workflows/validate-skills.yml']
+    paths: ['skills/**', 'i18n/**', 'agents/**', 'teams/**', 'guides/**', 'scripts/**', 'package.json', 'package-lock.json', 'debt-ratchet.yml', '.github/workflows/validate-skills.yml']
   pull_request:
-    paths: ['skills/**', 'i18n/**', 'agents/**', 'teams/**', 'guides/**', 'scripts/**', 'package.json', 'package-lock.json', '.github/workflows/validate-skills.yml']
+    paths: ['skills/**', 'i18n/**', 'agents/**', 'teams/**', 'guides/**', 'scripts/**', 'package.json', 'package-lock.json', 'debt-ratchet.yml', '.github/workflows/validate-skills.yml']
   workflow_dispatch:
 
 permissions:
@@ -171,3 +171,28 @@ jobs:
       # rather than passing vacuously (#279/#362).
       - name: Check i18n code-fence parity (warn only until #477)
         run: node scripts/check-i18n-fence-parity.js --warn
+
+      # The debt ratchet (#591). BLOCKING, and it is the reason the step above can stay warn.
+      #
+      # A warn-only gate cannot fail, so nothing stops its backlog from rising and "temporary
+      # state with a named exit" has no mechanism behind it. This gives the gate teeth before the
+      # backlog reaches zero, which is the hardest possible precondition and the whole difficulty.
+      #
+      # It ratchets only the classes whose members have been READ — the tag-structure findings
+      # triaged in #598 — never the body divergences of #477, because forcing payment
+      # on unread debt is worse than warn-only: the number acquires an authority nobody checked.
+      # `debt-ratchet.yml` records that split with the reasoning.
+      #
+      # It runs the fence walk a SECOND time rather than reading a JSON file the step above could
+      # have written, which buys the absence of a stale-input vacuous pass in the one tool whose
+      # entire job is to make a silent gate loud.
+      #
+      # The cost is near zero HERE and is not near zero everywhere. Measured on this runner, both
+      # the step above and this one walk 22,970 fences across 3,644 files in under a second; the
+      # same walk takes about two minutes on a WSL/NTFS checkout, where every git object read
+      # crosses a filesystem boundary. Quote the runner when arguing about the price.
+      #
+      # `debt-ratchet.yml` is in this workflow's trigger paths, so editing the ratchet re-runs the
+      # check that reads it.
+      - name: Ratchet the warn-only fence-gate debt (#591)
+        run: npm run ratchet

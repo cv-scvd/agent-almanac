@@ -22,7 +22,9 @@ import { execFileSync, spawnSync } from 'child_process';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
-import { foldedTagSequence, extractFences, buildEnglishFenceHistory } from '../lib/fences.js';
+import {
+  foldedTagSequence, extractFences, buildEnglishFenceHistory, isRetagEscape,
+} from '../lib/fences.js';
 import { compareTagSequence } from '../check-i18n-fence-parity.js';
 
 const fence = (tag, body) => ['```' + tag, body, '```', ''].join('\n');
@@ -209,6 +211,71 @@ test('END TO END: the checker reports a retag as a blocking finding and exits 1'
     const warned = run('--warn');
     assert.equal(warned.status, 0);
     assert.equal(JSON.parse(warned.stdout).tagSequenceFindings, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('isRetagEscape separates the two populations #598 catalogued', () => {
+  // The escape is a fence LEAVING the gated set. Both other directions keep it inside, so the
+  // body check still covers them and nothing is hidden.
+  assert.equal(isRetagEscape([{ index: 1, english: 'python', translated: 'text' }]), true);
+  assert.equal(isRetagEscape([{ index: 1, english: 'bash', translated: 'yaml' }]), false,
+    'frozen -> frozen loses no coverage');
+  assert.equal(isRetagEscape([{ index: 1, english: 'text', translated: 'python' }]), false,
+    'the reverse direction ADDS coverage; it is drift, not an escape');
+  assert.equal(isRetagEscape([{ index: 1, english: 'md', translated: 'markdown' }]), false,
+    'both sides localisable is not an escape either');
+  // One escape among several drift positions still blocks: the file is the unit of judgement.
+  assert.equal(isRetagEscape([
+    { index: 1, english: 'bash', translated: 'yaml' },
+    { index: 4, english: 'python', translated: 'md' },
+  ]), true);
+});
+
+test('isRetagEscape treats a brace fence as frozen — the escape must not survive its own fix', () => {
+  // `foldedTagSequence` emits `{` for ```{r} precisely so this classifies as an escape. If the
+  // fold ever collapsed braces to `text` this would silently become drift and stop blocking.
+  assert.equal(isRetagEscape([{ index: 1, english: '{', translated: 'text' }]), true);
+  assert.equal(isRetagEscape([{ index: 1, english: '{', translated: 'r' }]), false);
+});
+
+test('END TO END: a frozen-to-frozen retag is DRIFT — reported, not blocking', () => {
+  // #598 finding 2/3: `bash`->`yaml` in `harden-github-repo-security`, and the javascript/
+  // typescript reordering in `annotate-source-files`. Neither frees a fence from the gate, so
+  // the body check still covers every one of them; the cause is a partial update and the remedy
+  // is retranslation. Driven through the real checker because the split lives in its wiring.
+  const dir = mkdtempSync(join(tmpdir(), 'aa-e2e-drift-'));
+  try {
+    const git = (...args) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' });
+    git('init', '-q', '-b', 'main');
+    git('config', 'user.email', 'test@example.com');
+    git('config', 'user.name', 'test');
+    mkdirSync(join(dir, 'skills', 'demo'), { recursive: true });
+    const englishDoc = `# Demo\n\n${fence('yaml', 'a: 1')}${fence('bash', 'ls')}`;
+    writeFileSync(join(dir, 'skills', 'demo', 'SKILL.md'), englishDoc);
+    git('add', '-A'); git('commit', '-qm', 'english');
+
+    // `bash` -> `sh`: a tag no English revision carries at that position, both sides frozen.
+    // The BODY is byte-identical, isolating the sequence path from the body path.
+    mkdirSync(join(dir, 'i18n', 'de', 'skills', 'demo'), { recursive: true });
+    writeFileSync(join(dir, 'i18n', 'de', 'skills', 'demo', 'SKILL.md'),
+      englishDoc.replace('```bash', '```sh'));
+
+    const r = spawnSync(process.execPath, [CHECKER, '--root', dir, '--json'], { encoding: 'utf8' });
+    const report = JSON.parse(r.stdout);
+
+    assert.equal(report.tagSequenceDrift, 1, 'the mismatch must still be SEEN');
+    assert.equal(report.tagSequenceFindings, 0, 'but it is not the escape');
+    assert.equal(report.violations, 0, 'and it must not fail the run');
+    assert.equal(r.status, 0);
+
+    const drift = report.findings.find((f) => f.kind === 'tag-drift');
+    assert.ok(drift, 'drift is a reported finding, not a silent discard');
+    assert.equal(drift.gated, false);
+    assert.match(drift.tag, /#2 bash->sh/);
+    // Never re-merged into the blocking population by a consumer reading `unalignable`.
+    assert.equal(report.tagSequenceUnalignable, 0);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
