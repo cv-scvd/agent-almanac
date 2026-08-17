@@ -397,3 +397,81 @@ export function extractFences(text) {
 
   return out;
 }
+/**
+ * Does this translation's folded tag sequence exist in English?
+ *
+ * #481: the retag escape. `isGated` reads the info string off the TRANSLATION, so retagging a
+ * frozen ```yaml fence to ```text removes it from the body check entirely — the set of fences
+ * under the gate is chosen by the file being gated. Default-deny narrowed that escape to
+ * {text, markdown, md} without closing it, and #583 records that the status detector's
+ * accidental tripwire for the same escape was removed in #582, leaving this the only cover.
+ *
+ * Staleness-immune by the same construction as the body check: the sequence must match SOME
+ * English revision, never HEAD. A stale translation legitimately carries an older sequence.
+ *
+ * @param {string[]} mine folded tag sequence of the translation
+ * @param {Set<string>|undefined} englishSequences joined folded sequences from every revision
+ * @returns {null | {unalignable: true} | {positions: {index: number, english: string, translated: string}[]}}
+ */
+export function compareTagSequence(mine, englishSequences) {
+  if (!englishSequences || englishSequences.has(mine.join(','))) return null;
+
+  // `''.split(',')` is `['']` — length 1, not 0. A source revision with NO fences joins to the
+  // empty string, so the naive length made it look like a one-fence revision, matched it against
+  // every one-fence translation, and compared position 1 against `undefined`. That fabricated 3
+  // findings reading `#1 ->markdown`, and it was caught only because an independent measurement
+  // of the same property disagreed by exactly 3 — not by any test.
+  const lengthOf = (seq) => (seq === '' ? 0 : seq.split(',').length);
+  const sameLength = [...englishSequences].filter((seq) => lengthOf(seq) === mine.length);
+
+  // NOT a violation. With a different number of fences there is no positional correspondence to
+  // claim anything about, and a translation predating a fence English later gained lands here —
+  // calling that a violation reintroduces exactly the staleness confound this gate avoids.
+  if (sameLength.length === 0) return { unalignable: true };
+
+  // Report against the count-matched revision differing in the FEWEST positions — the nearest
+  // legal basis. An arbitrary one inflates a single retag into wholesale divergence.
+  let best = null;
+  for (const candidate of sameLength) {
+    const other = candidate === '' ? [] : candidate.split(',');
+    const diff = mine
+      .map((tag, i) => ({ index: i + 1, english: other[i], translated: tag }))
+      .filter((d) => d.english !== d.translated);
+    if (!best || diff.length < best.length) best = diff;
+  }
+  return { positions: best };
+}
+
+/**
+ * Does `mine` mirror `basis` — the same document, fence for fence?
+ *
+ * The predicate BOTH writers of `fence_basis_commit` consult before they may stamp it
+ * (`normalize-i18n-fences.js` after a repair, `backfill-fence-basis.js` over the corpus). It
+ * lives here, once, because two tools disagreeing about what "verified" means is exactly the
+ * agreement-between-files failure the field was introduced to end.
+ *
+ * Three conjuncts, and none is redundant:
+ *
+ *   - same fence COUNT, so ordinal correspondence exists at all;
+ *   - same folded tag SEQUENCE. Without it a fence retagged from ```yaml to ```text but
+ *     carrying the identical body reads as a mirror — the #481 escape surviving through the
+ *     very check meant to close it. `foldedTagSequence`, not a local `lang === '' ? 'text'`
+ *     fold, because the latter cannot tell ```{r} from an untagged fence (#612);
+ *   - every GATED body byte-equal at its ordinal. Ungated fences are exempt by design: the
+ *     claim is about frozen content, and localising a `text` block is allowed.
+ *
+ * This says nothing about whether the basis is one the history walk can SEE. That is a separate
+ * question with its own answer — see the callers, which additionally require the bodies and the
+ * folded sequence to be present in the walked pool. A basis resolved by `git cat-file` but
+ * absent from `git log --name-only` output is real (merges, other branches) and stamping it
+ * signs a claim the parity gate contradicts on its next run.
+ *
+ * @param {Fence[]} mine fences of the translated file
+ * @param {Fence[]} basis fences of the English blob being claimed
+ * @returns {boolean}
+ */
+export function mirrorsBasis(mine, basis) {
+  if (mine.length !== basis.length) return false;
+  if (foldedTagSequence(mine).join(',') !== foldedTagSequence(basis).join(',')) return false;
+  return mine.every((f, i) => !isGated(f) || f.body === basis[i].body);
+}

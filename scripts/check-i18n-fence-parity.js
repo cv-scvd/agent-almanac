@@ -66,7 +66,9 @@ import { readFileSync, readdirSync, existsSync, statSync } from 'fs';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { assertNotShallow } from './lib/git-freshness.js';
-import { extractFences, buildEnglishFenceHistory, isGated, foldedTagSequence } from './lib/fences.js';
+import {
+  extractFences, buildEnglishFenceHistory, isGated, foldedTagSequence, compareTagSequence,
+} from './lib/fences.js';
 import { FENCE_BASIS_FIELD, readFrontmatterField } from './lib/provenance.js';
 import { CONTENT_TYPES } from './lib/content-types.js';
 
@@ -175,50 +177,20 @@ export function collectTargets() {
   return out;
 }
 
-/**
- * Does this translation's folded tag sequence exist in English?
- *
- * #481: the retag escape. `isGated` reads the info string off the TRANSLATION, so retagging a
- * frozen ```yaml fence to ```text removes it from the body check entirely — the set of fences
- * under the gate is chosen by the file being gated. Default-deny narrowed that escape to
- * {text, markdown, md} without closing it, and #583 records that the status detector's
- * accidental tripwire for the same escape was removed in #582, leaving this the only cover.
- *
- * Staleness-immune by the same construction as the body check: the sequence must match SOME
- * English revision, never HEAD. A stale translation legitimately carries an older sequence.
- *
- * @param {string[]} mine folded tag sequence of the translation
- * @param {Set<string>|undefined} englishSequences joined folded sequences from every revision
- * @returns {null | {unalignable: true} | {positions: {index: number, english: string, translated: string}[]}}
- */
-export function compareTagSequence(mine, englishSequences) {
-  if (!englishSequences || englishSequences.has(mine.join(','))) return null;
-
-  // `''.split(',')` is `['']` — length 1, not 0. A source revision with NO fences joins to the
-  // empty string, so the naive length made it look like a one-fence revision, matched it against
-  // every one-fence translation, and compared position 1 against `undefined`. That fabricated 3
-  // findings reading `#1 ->markdown`, and it was caught only because an independent measurement
-  // of the same property disagreed by exactly 3 — not by any test.
-  const lengthOf = (seq) => (seq === '' ? 0 : seq.split(',').length);
-  const sameLength = [...englishSequences].filter((seq) => lengthOf(seq) === mine.length);
-
-  // NOT a violation. With a different number of fences there is no positional correspondence to
-  // claim anything about, and a translation predating a fence English later gained lands here —
-  // calling that a violation reintroduces exactly the staleness confound this gate avoids.
-  if (sameLength.length === 0) return { unalignable: true };
-
-  // Report against the count-matched revision differing in the FEWEST positions — the nearest
-  // legal basis. An arbitrary one inflates a single retag into wholesale divergence.
-  let best = null;
-  for (const candidate of sameLength) {
-    const other = candidate === '' ? [] : candidate.split(',');
-    const diff = mine
-      .map((tag, i) => ({ index: i + 1, english: other[i], translated: tag }))
-      .filter((d) => d.english !== d.translated);
-    if (!best || diff.length < best.length) best = diff;
-  }
-  return { positions: best };
-}
+// `compareTagSequence` moved to `scripts/lib/fences.js` (#552 backfill). Two reasons, and the
+// second is the load-bearing one:
+//
+//   - the normalizer must consult it before it may stamp `fence_basis_commit`, and two copies
+//     of the retag test would be the drift this schema exists to end;
+//   - THIS MODULE CANNOT BE IMPORTED AS A LIBRARY. `flagValue('--root'|'--limit'|'--locale'|
+//     '--id')` runs at module scope against the IMPORTER's argv, so a consumer whose own
+//     command line carries `--locale` (or any of them) has its flags silently reinterpreted,
+//     and one carrying a value-less form exits 2 during the import. A predicate every writer
+//     needs cannot live behind that.
+//
+// Re-exported so the gate's own callers and `scripts/test/tag-sequence-parity.test.js` keep
+// their import path.
+export { compareTagSequence };
 
 function main() {
   assertNotShallow(ROOT);

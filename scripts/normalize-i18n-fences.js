@@ -94,6 +94,7 @@ import { fileURLToPath } from 'url';
 import { spawnSync } from 'child_process';
 import {
   extractFences, toLines, isGated, buildEnglishFenceHistory, TREES, contentKey,
+  foldedTagSequence, compareTagSequence, mirrorsBasis,
 } from './lib/fences.js';
 import { assertNotShallow } from './lib/git-freshness.js';
 import {
@@ -555,23 +556,30 @@ for (const t of targets) {
   // pre-existing stamp on it was already stale.
   const repairedFences = extractFences(repairedText);
   const stillDivergent = repairedFences.filter((f) => isGated(f) && !everEnglish.has(f.body)).length;
-  // Ordinal comparison is sound here for the same reason the splice was: the count and
-  // tag-alignment guards above already rejected this file otherwise. Re-checking the length is
-  // belt-and-braces against a basis body that itself contains a fence delimiter.
-  const mirrorsBasis = repairedFences.length === basisFences.length
-    && repairedFences.every((f, i) => !isGated(f) || f.body === basisFences[i].body);
+  // `mirrorsBasis` lives in `lib/fences.js` so this writer and `backfill-fence-basis.js` cannot
+  // drift about what "verified" means. Note it is STRICTER than the pre-splice guards: it also
+  // requires the folded tag sequence to equal the basis, where the splice gate used a local
+  // `alignmentTag` fold that cannot tell ```{r} from an untagged fence (#612).
+  //
+  // The stamp needs the basis to be one the GATE can see, on both axes the gate checks:
+  //
+  //   - `stillDivergent === 0` — every gated BODY is in the walked pool;
+  //   - `sequencePooled` — the folded SEQUENCE appears in some walked revision.
+  //
+  // Neither is implied by `mirrorsBasis`, because the pool comes from `git log --name-only` over
+  // path-limited, history-simplified history that lists no paths for merges, while the basis
+  // blob is resolved with `git cat-file --batch`, which answers for any object in the store.
+  // Bodies and sequence are genuinely separate holes: a conflict-resolved merge can assemble
+  // fences whose bodies each already exist in a parent into an ORDER or COUNT no single revision
+  // ever had. Closing only the body axis left that case stamping a basis the gate immediately
+  // reports as a false claim — measured, and pinned by the merge-reorder fixture in
+  // `scripts/test/fence-basis-stamp.test.js`.
+  const sequencePooled = compareTagSequence(
+    foldedTagSequence(repairedFences), history.sequences.get(t.key),
+  ) === null;
   let basisStamp = null;
-  // `stillDivergent === 0` is kept as a conjunct even though `mirrorsBasis` implies it for any
-  // basis the walk can see. It does NOT imply it in general, and the gap is reachable without
-  // any unusual git state: the pool comes from `git log` over HEAD-reachable history with
-  // default simplification, while the basis blob is resolved with `git cat-file --batch`, which
-  // answers for any object in the store. The walker's own documented merge gap is the lead case
-  // — `--name-only` lists no paths for a merge, so a `source_commit` naming a conflict-resolved
-  // merge has a blob cat-file resolves and the pool never contains. There, `mirrorsBasis` is
-  // true while gated fences remain outside the pool, and stamping would sign a claim this
-  // repo's own gate contradicts on the next run. Refusing costs nothing when the basis is
-  // ordinary and keeps the tool from ever writing a claim the checker will flag.
-  if (stillDivergent === 0 && mirrorsBasis && basisLabel !== 'worktree') {
+  if (stillDivergent === 0 && sequencePooled && mirrorsBasis(repairedFences, basisFences)
+      && basisLabel !== 'worktree') {
     const stamped = stampFrontmatterField(repairedText, FENCE_BASIS_FIELD, basisLabel);
     // `stamped` is null when the file has no `source_commit` to anchor beside. Repair the body
     // anyway and leave the field off, rather than guessing a nesting depth.
