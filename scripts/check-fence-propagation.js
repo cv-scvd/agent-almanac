@@ -157,10 +157,17 @@ const englishSeq = foldedTagSequence(englishFences).join(',');
 // drift that stops being harmless the day `i18n/glossaries/skills/<id>/` or an `i18n/_archive/`
 // exists — at which point this tool and the parity corpus would silently disagree about what
 // "the mirrors" are. Membership in the consumer's own accept-list, never a proxy for it.
-// Filtered on BOTH id and tree. `onlyTrees` already narrows the walk, but making
-// correctness depend on it means nothing here states which pair is being compared:
-// with `--tree guides` on an id that also exists under `skills/`, dropping
-// `onlyTrees` silently pulled in the skill's mirrors too, and no fixture noticed.
+// Filtered on BOTH id and tree, deliberately redundantly. `onlyTrees` narrows the
+// walk and the predicate states what is being compared; either alone is sufficient,
+// which is the point — with `--tree guides` on an id that also exists under
+// `skills/`, dropping `onlyTrees` silently pulled in the skill's mirrors and no
+// fixture noticed.
+//
+// Coverage note, so the redundancy is not "tidied away" later: mutating either
+// guard alone SURVIVES, because the other still holds. Mutating both together is
+// killed by `compares only the named tree when an id exists in two of them`. The
+// pair is covered; neither member is, and that is the correct reading rather than
+// two uncovered lines.
 const mirrors = collectI18nTargets({ root: ROOT, onlyTrees: new Set([tree]) })
   .targets.filter((t) => t.id === opts.id && t.tree === tree)
   .map((t) => ({ locale: t.locale, path: t.absPath, relPath: t.relPath }));
