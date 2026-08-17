@@ -157,8 +157,12 @@ const englishSeq = foldedTagSequence(englishFences).join(',');
 // drift that stops being harmless the day `i18n/glossaries/skills/<id>/` or an `i18n/_archive/`
 // exists — at which point this tool and the parity corpus would silently disagree about what
 // "the mirrors" are. Membership in the consumer's own accept-list, never a proxy for it.
+// Filtered on BOTH id and tree. `onlyTrees` already narrows the walk, but making
+// correctness depend on it means nothing here states which pair is being compared:
+// with `--tree guides` on an id that also exists under `skills/`, dropping
+// `onlyTrees` silently pulled in the skill's mirrors too, and no fixture noticed.
 const mirrors = collectI18nTargets({ root: ROOT, onlyTrees: new Set([tree]) })
-  .targets.filter((t) => t.id === opts.id)
+  .targets.filter((t) => t.id === opts.id && t.tree === tree)
   .map((t) => ({ locale: t.locale, path: t.absPath, relPath: t.relPath }));
 
 if (mirrors.length === 0) {

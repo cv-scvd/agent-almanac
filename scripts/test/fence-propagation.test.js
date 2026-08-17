@@ -225,6 +225,23 @@ describe('check-fence-propagation (#551)', () => {
     assert.deepEqual(out.findings, []);
   });
 
+  it('compares only the named tree when an id exists in two of them', (t) => {
+    // Built to kill a surviving mutant: the mirror filter keyed on id ALONE, so its
+    // correctness rested entirely on `onlyTrees`. Dropping that argument widened the
+    // walk to every tree and no fixture noticed. Here the guide is clean and the
+    // same-named skill lags — a run scoped to `guides` must report nothing.
+    const dir = makeRoot(t, { english: skill(LIVE), mirrors: { de: LIVE }, tree: 'guides', id: 'twin' });
+    mkdirSync(join(dir, 'skills', 'twin'), { recursive: true });
+    writeFileSync(join(dir, 'skills', 'twin', 'SKILL.md'), skill(MOVED), 'utf8');
+    mkdirSync(join(dir, 'i18n', 'de', 'skills', 'twin'), { recursive: true });
+    writeFileSync(join(dir, 'i18n', 'de', 'skills', 'twin', 'SKILL.md'), skill(LIVE), 'utf8');
+
+    const { status, out } = run(dir, ['--id', 'twin', '--tree', 'guides']);
+    assert.equal(status, 0, 'the lagging skill mirror belongs to the other tree');
+    assert.equal(out.mirrorsFound, 1);
+    assert.deepEqual(out.findings, []);
+  });
+
   it('counts alignable mirrors separately from mirrors found', (t) => {
     // Conflating the two overstates coverage: a run that refused every mirror
     // would otherwise report the full count as compared.
