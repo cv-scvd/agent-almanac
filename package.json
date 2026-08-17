@@ -54,6 +54,7 @@
     "validate:i18n-parity": "node scripts/check-i18n-frontmatter-parity.js",
     "validate:readme-parity": "node scripts/check-readme-translation-parity.js",
     "validate:i18n-fences": "node scripts/check-i18n-fence-parity.js",
+    "ratchet": "node scripts/check-debt-ratchet.js",
     "validate:yaml-fences": "node scripts/check-yaml-fences.js",
     "check:placeholder-drift": "node scripts/check-placeholder-drift.js",
     "normalize:i18n-fences": "node scripts/normalize-i18n-fences.js",

@@ -1,0 +1,137 @@
+# Debt ratchet — #591
+#
+# A warn-only gate cannot fail, so every commit under it is locally legal and nothing forbids the
+# backlog from growing. CLAUDE.md calls warn "a temporary state with a named exit"; the exit is
+# named but not forced. This file is what forces it: a ratcheted class may not gain a member, and
+# may not lose one without this file moving in the same commit.
+#
+# Checked by `npm run ratchet` (`scripts/check-debt-ratchet.js`), blocking in CI. Read that
+# script's header for why the key is `file` + `kind` and never `file` + `tag`.
+#
+# THE RULE ABOUT WHAT MAY GO IN HERE
+#
+# A class may be ratcheted only once every member has been READ. A ratchet over unread members
+# turns "do not add debt" into "pay down debt of unknown validity", and the number now carries an
+# authority nobody checked. That is why 78 body divergences sit under `unratcheted` below rather
+# than in a slice: they are #477's backlog and nobody has been through them.
+#
+# Counts are deliberately absent from `unratcheted` and `advisory_gates`. A number no tool reads
+# is documentation drift, which this repo treats as a P1 bug — quote the gate, not this file.
+
+version: 1
+
+slices:
+  # The #481 retag escape and the tag drift beside it, split by `isRetagEscape` in #598.
+  #
+  # Ratchetable because all nine members were individually read and catalogued in #598 before any
+  # of this was built: 3 escapes (a 4-backtick ````markdown opener degraded to 3, swallowing the
+  # following python fence) and 6 partial-update drift on stale files. Both kinds are ratcheted,
+  # including the one that does not block — non-blocking is the reason it needs a ratchet, not a
+  # reason to leave it unwatched.
+  - id: i18n-fence-tag-structure
+    gate_argv: [scripts/check-i18n-fence-parity.js]
+    kinds: [tag-sequence, tag-drift]
+    # Anti-vacuity floor, NOT a count: a run that scanned fewer files than this cannot have seen
+    # the corpus, and would report an empty observed set for the wrong reason. It is well under
+    # the real 3,644 so that adding or removing translations never touches this file.
+    scanned_field: filesCompared
+    min_scanned: 3000
+    source: node scripts/check-i18n-fence-parity.js --json
+    as_of: 2026-08-17
+    triage: "#598"
+    members:
+      # tag-drift — every position stays frozen, so the body check still covers these. Cause is a
+      # partial update; remedy is retranslation, which check-translation-freshness.js owns and
+      # already reports on all six. Detection is structural and lives only in the fence gate,
+      # which is why the class is reported there and enforced here.
+      - { file: i18n/de/skills/harden-github-repo-security/SKILL.md, kind: tag-drift }
+      - { file: i18n/es/skills/harden-github-repo-security/SKILL.md, kind: tag-drift }
+      - { file: i18n/ja/skills/harden-github-repo-security/SKILL.md, kind: tag-drift }
+      - { file: i18n/zh-CN/skills/harden-github-repo-security/SKILL.md, kind: tag-drift }
+      - { file: i18n/ja/skills/annotate-source-files/SKILL.md, kind: tag-drift }
+      - { file: i18n/zh-CN/skills/annotate-source-files/SKILL.md, kind: tag-drift }
+      # tag-sequence — the #481 escape proper: a frozen tag became localisable, so the fence left
+      # the body check entirely and nothing else in the repo can see it. All three are the same
+      # defect, a ````markdown opener degraded to ```markdown in `escalate-issues`.
+      - { file: i18n/wenyan/skills/escalate-issues/SKILL.md, kind: tag-sequence }
+      - { file: i18n/wenyan-lite/skills/escalate-issues/SKILL.md, kind: tag-sequence }
+      - { file: i18n/zh-CN/skills/escalate-issues/SKILL.md, kind: tag-sequence }
+
+unratcheted:
+  # Classes the gate reports that this file deliberately does not enforce, each with the reason
+  # and the condition that would change it.
+  - kind: diverged
+    gate: node scripts/check-i18n-fence-parity.js
+    reason: >-
+      The #477 backlog. Its members have not been read — half the affected files are mixed-tag
+      content forks needing re-translation, some of it regulated (#478) — so ratcheting it would
+      force payment on debt of unknown validity. It is the one class where "do not add" cannot be
+      separated from "pay down", because a legitimate English fence edit that IS propagated to all
+      ten mirrors adds nothing, while one that is not adds ten at once.
+    exit: "#477 clears the backlog and flips the gate itself to blocking, at which point this
+      class needs no ratchet."
+  - kind: stale-basis-claim
+    gate: node scripts/check-i18n-fence-parity.js
+    reason: >-
+      Derived, not independent. A claim is flagged only when a divergence or a structural mismatch
+      already exists, so its count cannot move except as a consequence of a class ratcheted or
+      excluded above. Ratcheting it would double-count the same defect.
+    exit: none needed — it is at zero and can only rise with its cause.
+
+advisory_gates:
+  # Every warn-only or advisory CI step, with the workflow that runs it and its named exit.
+  #
+  # This list is CHECKED, not merely written: `check-debt-ratchet.js` asserts each `command` still
+  # appears in its `workflow`, and — the direction that matters — that every `--warn` invocation
+  # across `.github/workflows/` is listed here. A new warn-only gate therefore cannot be added
+  # silently. Steps that are advisory without carrying a token (an inline `exit 0`, a script that
+  # simply never fails) have `token: none` and are covered only by the forward assertion.
+  - id: i18n-fence-parity
+    workflow: .github/workflows/validate-skills.yml
+    command: node scripts/check-i18n-fence-parity.js --warn
+    token: "--warn"
+    exit: "#477 — flips to blocking in the PR that clears the final divergence batch."
+    ratcheted: partially — see the `i18n-fence-tag-structure` slice above.
+  - id: translation-freshness-skills
+    workflow: .github/workflows/validate-skills.yml
+    command: node scripts/check-translation-freshness.js --warn
+    token: "--warn"
+    exit: unnamed — "#625"
+    ratcheted: false
+  - id: translation-freshness-translations
+    workflow: .github/workflows/validate-translations.yml
+    command: node scripts/check-translation-freshness.js --warn
+    token: "--warn"
+    exit: unnamed — "#625"
+    ratcheted: false
+  - id: orphan-translations
+    workflow: .github/workflows/validate-translations.yml
+    command: "orphan translation i18n/"
+    token: none
+    exit: unnamed — "#625"
+    ratcheted: false
+  - id: content-style-repo-wide
+    workflow: .github/workflows/validate-content-style.yml
+    command: node scripts/check-content-style.js --all
+    token: none
+    exit: >-
+      none needed. The pull-request counterpart (`--added`) blocks, so this run is a push-time
+      backstop rather than deferred debt. Recorded so the judgement is on the record (#625).
+    ratcheted: false
+  - id: skill-eval-coverage
+    workflow: .github/workflows/validate-tests.yml
+    command: node scripts/eval-coverage.js
+    token: none
+    exit: >-
+      "#424" — the machine-scored eval runner. `--min <pct>` raises a floor once coverage climbs.
+      Repointed from #435, which shipped this report and closed.
+    ratcheted: false
+  - id: translated-skill-line-length-allowlist
+    workflow: .github/workflows/validate-skills.yml
+    command: OVERRUN_ALLOWLIST=()
+    token: none
+    exit: >-
+      The allowlist is the debt and it is currently empty, so the WARN branch is unreachable. The
+      exit is keeping it that way; prefer extracting to references/EXAMPLES.md over adding an
+      entry. Listed because an empty allowlist is a state, not an absence.
+    ratcheted: false
