@@ -57,6 +57,7 @@
     "ratchet": "node scripts/check-debt-ratchet.js",
     "validate:yaml-fences": "node scripts/check-yaml-fences.js",
     "check:placeholder-drift": "node scripts/check-placeholder-drift.js",
+    "check:fence-propagation": "node scripts/check-fence-propagation.js",
     "normalize:i18n-fences": "node scripts/normalize-i18n-fences.js",
     "backfill:fence-basis": "node scripts/backfill-fence-basis.js",
     "validate:content-style": "node scripts/check-content-style.js --all",
