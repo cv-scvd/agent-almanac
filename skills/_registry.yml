@@ -1,7 +1,7 @@
 version: "1.6"
 generated: "2026-04-07"
 standard: "agentskills.io/specification"
-total_skills: 369
+total_skills: 370
 
 domains:
   r-packages:
@@ -330,6 +330,11 @@ domains:
         complexity: basic
         language: multi
         description: Configure a Git repository with proper .gitignore and conventions
+      - id: coordinate-peer-sessions
+        path: coordinate-peer-sessions/SKILL.md
+        complexity: intermediate
+        language: multi
+        description: Coordinate with a peer interactive session sharing one git worktree — declare path scope before the first edit, survive a contended index lock, and read a guard slot you did not arm
       - id: commit-changes
         path: commit-changes/SKILL.md
         complexity: basic
