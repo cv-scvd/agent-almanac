@@ -7,9 +7,11 @@
  * but survives the npm indirection cannot pass unnoticed. Every case mutates a real translation
  * or the real ratchet file, against the real 3,644-file corpus.
  *
- * Each run takes about two and a half minutes (the fence gate walks every English revision), so
- * the whole envelope is roughly fifteen. That is the cost of measuring the thing CI runs rather
- * than a fast proxy for it.
+ * Each run takes about two and a half minutes on a WSL/NTFS checkout (the fence gate walks every
+ * English revision, and git object reads cross a filesystem boundary there), so the whole envelope
+ * is roughly fifteen. On a native filesystem it is seconds — the same walk finishes in under a
+ * second on the GitHub runner. This is a local tool either way; the number is here so nobody
+ * mistakes a long run for a hang.
  *
  * Result at introduction, 2026-08-17:
  *

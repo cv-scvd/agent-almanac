@@ -184,8 +184,13 @@ jobs:
       # `debt-ratchet.yml` records that split with the reasoning.
       #
       # It runs the fence walk a SECOND time rather than reading a JSON file the step above could
-      # have written. That costs about two minutes and buys the absence of a stale-input vacuous
-      # pass, in the one tool whose entire job is to make a silent gate loud.
+      # have written, which buys the absence of a stale-input vacuous pass in the one tool whose
+      # entire job is to make a silent gate loud.
+      #
+      # The cost is near zero HERE and is not near zero everywhere. Measured on this runner, both
+      # the step above and this one walk 22,970 fences across 3,644 files in under a second; the
+      # same walk takes about two minutes on a WSL/NTFS checkout, where every git object read
+      # crosses a filesystem boundary. Quote the runner when arguing about the price.
       #
       # `debt-ratchet.yml` is in this workflow's trigger paths, so editing the ratchet re-runs the
       # check that reads it.
