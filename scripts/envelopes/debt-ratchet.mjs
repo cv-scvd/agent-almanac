@@ -17,6 +17,10 @@
  *
  *     gate-envelope: 3 killed, 1 survived as documented of 4 case(s).
  *
+ * Re-measured the same day, once #590 added a second ratcheted slice:
+ *
+ *     gate-envelope: 4 killed, 1 survived as documented of 5 case(s).
+ *
  * The documented survivor is the important row. It is the ratchet's scope boundary, measured
  * rather than asserted: adding a body divergence — the #477 class — leaves the ratchet green on
  * purpose, because that class is unratcheted and #591 forbids ratcheting members nobody has read.
