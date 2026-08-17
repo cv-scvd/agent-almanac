@@ -10,18 +10,20 @@
  *
  * ## The accept-lists are returned, not computed by the caller
  *
- * `localesReached` and `treesReached` are collected DURING the walk, after the existence checks
- * and BEFORE the scope filters. That ordering is the whole point:
+ * Both are collected DURING the walk and after the existence checks, so "reached" means "carries
+ * translated content" rather than "has a directory of that name". But they are collected at
+ * different points relative to the scope filters, and that asymmetry is the guard:
  *
- *   - after existence, so "reached" means "carries translated content" rather than "has a
- *     directory of that name";
- *   - before filtering, so the accept-list describes what this run COULD have reached rather
- *     than what it selected — otherwise validating `--tree` against it is circular and always
- *     passes.
+ *   - `localesReached` before any filter — `--locale` asks whether a locale carries content at
+ *     all, which no tree filter should narrow;
+ *   - `treesReached` after the LOCALE filter and before the tree filter — `--tree` asks whether
+ *     a tree would be reached *by this run*, and collecting it corpus-wide makes the check
+ *     circular for combined scopes. Collecting it before filtering (as the first version of
+ *     this module did) let `--locale wenyan --tree guides` satisfy each guard independently and
+ *     scan nothing at exit 0: six of the ten locales carry `skills/` alone.
  *
- * Validating a scope flag against a static list instead of against these is what let
- * `--locale wenyan --tree guides` satisfy each guard independently and scan nothing: six of the
- * ten locales carry `skills/` alone.
+ * Validating a scope flag against a static list rather than against these has the same failure,
+ * one level up.
  */
 
 import { readdirSync, existsSync, statSync, readFileSync } from 'fs';
@@ -107,10 +109,23 @@ export function collectI18nTargets({ root, onlyLocale = null, onlyTrees = null, 
         if (!existsSync(absPath) || !statSync(absPath).isFile()) continue;
         if (!existsSync(english) || !statSync(english).isFile()) continue;
 
+        // The two accept-lists are collected at DIFFERENT points, and the difference is the
+        // whole guard rather than a detail.
+        //
+        // `localesReached` is corpus-wide: the question `--locale` asks is "does this locale
+        // carry translated content at all", which no tree filter should narrow.
+        //
+        // `treesReached` is LOCALE-SCOPED — collected after the locale filter — because the
+        // question `--tree` asks is "would this tree be reached BY THIS RUN". Collecting it
+        // corpus-wide made each guard pass on its own while their composition scanned nothing:
+        // `--locale wenyan --tree guides` found `wenyan` reachable (it has skills) and `guides`
+        // reachable (de/es/ja/zh-CN have it), and reported `scanned: 0` at exit 0. Six of the
+        // ten locales carry `skills/` alone, so that composition is not exotic. This is the
+        // exact bug `normalize-i18n-fences.js` was fixed for and names in its own comment, and
+        // the first version of this lib reintroduced it while claiming to prevent it.
         localesReached.add(locale);
-        treesReached.add(tree);
-
         if (onlyLocale && locale !== onlyLocale) continue;
+        treesReached.add(tree);
         if (onlyTrees && !onlyTrees.has(tree)) continue;
 
         const target = {

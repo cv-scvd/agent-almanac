@@ -64,6 +64,7 @@ import { readFileSync, writeFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { spawnSync } from 'child_process';
+import * as yaml from 'js-yaml';
 
 import {
   extractFences, buildEnglishFenceHistory, isGated, foldedTagSequence,
@@ -140,6 +141,43 @@ function git(args, { input } = {}) {
   return r;
 }
 
+/**
+ * Parse a stamped file's frontmatter with a real YAML parser and check where the field landed.
+ *
+ * Deliberately does NOT use `readFrontmatterField`. That reader tolerates any indentation by
+ * design, so it reads the field back correctly whether it sits beside `source_commit` or in a
+ * different mapping entirely — which means it cannot detect the one placement error that
+ * produces valid YAML with the wrong meaning. `js-yaml` sees the structure the reader flattens.
+ *
+ * @param {string} text whole file contents at the audited ref
+ * @returns {string|null} a problem description, or null when the file is sound
+ */
+function auditYaml(text) {
+  const fm = text.replace(/\r\n/g, '\n').match(/^---\n([\s\S]*?)\n---(\n|$)/);
+  if (!fm) return 'no frontmatter block';
+  let doc;
+  try {
+    doc = yaml.load(fm[1]);
+  } catch (e) {
+    return `frontmatter is not valid YAML: ${String(e.message).split('\n')[0]}`;
+  }
+  if (!doc || typeof doc !== 'object') return 'frontmatter is not a mapping';
+
+  const atTop = Object.prototype.hasOwnProperty.call(doc, FENCE_BASIS_FIELD);
+  const meta = doc.metadata && typeof doc.metadata === 'object' ? doc.metadata : null;
+  const inMeta = Boolean(meta && Object.prototype.hasOwnProperty.call(meta, FENCE_BASIS_FIELD));
+  if (!atTop && !inMeta) return `${FENCE_BASIS_FIELD} parsed into neither the top level nor metadata`;
+
+  const holder = atTop ? doc : meta;
+  if (!Object.prototype.hasOwnProperty.call(holder, SOURCE_COMMIT_FIELD)) {
+    return `${FENCE_BASIS_FIELD} landed in a different mapping than ${SOURCE_COMMIT_FIELD}`;
+  }
+  if (String(holder[FENCE_BASIS_FIELD]) !== String(holder[SOURCE_COMMIT_FIELD])) {
+    return `${FENCE_BASIS_FIELD} (${holder[FENCE_BASIS_FIELD]}) !== ${SOURCE_COMMIT_FIELD} (${holder[SOURCE_COMMIT_FIELD]})`;
+  }
+  return null;
+}
+
 // ---- --verify: reconstruct the diff rather than read it -------------------
 //
 // The total check that replaces reading 3,415 files. For every path the commit range touched,
@@ -184,6 +222,15 @@ if (OPTS.verify) {
     const expected = stampFrontmatterField(before, FENCE_BASIS_FIELD, sc);
     if (expected === null) { problems.push(`${rel}: not stampable at base`); continue; }
     if (expected !== after) { problems.push(`${rel}: ${HEAD_REF} is not base+stamp — something else changed`); continue; }
+
+    // Second, INDEPENDENT instrument. The reconstruction above shares `stampFrontmatterField`
+    // with the writer, so a deterministic defect in that transform corrupts both sides
+    // identically and verifies green — the `$'`-splice class it has already had once. Every
+    // other reader in this chain is a regex, so nothing asserted that 3,415 frontmatters still
+    // PARSE, or that the field landed in the same mapping as its anchor rather than in a
+    // different block that happens to be valid YAML. A real parser answers both.
+    const yamlProblem = auditYaml(after);
+    if (yamlProblem) { problems.push(`${rel}: ${yamlProblem}`); continue; }
     checked++;
   }
 
@@ -236,6 +283,18 @@ const scopeErrors = validateScope({
 });
 if (scopeErrors.length) {
   for (const line of scopeErrors) console.error(line);
+  process.exit(2);
+}
+
+// Belt-and-braces behind `validateScope`. That function answers "is each flag reachable"; this
+// answers "did this run actually reach anything", which is the property that matters and the one
+// a future scope flag could break without touching the guard above. A run that scans nothing
+// must never report success — a clean-looking zero is the failure mode every scope guard in this
+// repo exists to prevent.
+if (targets.length === 0) {
+  console.error('ERROR: this scope selected no translated files. Nothing would be examined.');
+  console.error(`Reachable locales: ${[...localesReached].sort().join(', ') || '(none)'}`);
+  console.error(`Reachable trees:   ${[...treesReached].sort().join(', ') || '(none)'}`);
   process.exit(2);
 }
 
@@ -353,18 +412,32 @@ for (const t of targets) {
 // ungated, and CI runs the gate with `--warn`, so such a file would merge green twice over.
 
 const planned = new Set(plan.map((p) => p.relPath));
-const flagged = targets.filter((t) => {
+// Two populations, because conflating them misstates whose authority is being invoked.
+//
+// `gateFlagged` is what `check-i18n-fence-parity.js` actually REPORTS: a divergent gated body,
+// or a tag-sequence verdict that is not `unalignable`. `unalignable` is expressly not a finding
+// there — with no count-matched revision there is no positional claim to make — so counting it
+// as "flagged by gate" would claim the gate says something it does not.
+//
+// `unverifiable` is the wider set this tool refuses to stamp, which includes the unalignable
+// files. Refusing more than the gate flags is correct and deliberate: the gate decides what is
+// a violation, this tool decides what it is willing to CLAIM, and the second is stricter.
+const gateFlagged = [];
+const unverifiable = [];
+for (const t of targets) {
   const pool = history.get(t.key);
-  if (!pool) return false;
+  if (!pool) continue;
   const fences = extractFences(t.text);
   const bodyBad = fences.some((f) => isGated(f) && !pool.has(f.body));
-  const seqBad = compareTagSequence(foldedTagSequence(fences), history.sequences.get(t.key)) !== null;
-  return bodyBad || seqBad;
-}).map((t) => t.relPath);
+  const seq = compareTagSequence(foldedTagSequence(fences), history.sequences.get(t.key));
+  if (bodyBad || (seq !== null && !seq.unalignable)) gateFlagged.push(t.relPath);
+  if (bodyBad || seq !== null) unverifiable.push(t.relPath);
+}
+const flagged = gateFlagged;
 
-const leaked = flagged.filter((f) => planned.has(f));
+const leaked = unverifiable.filter((f) => planned.has(f));
 if (leaked.length) {
-  console.error(`ERROR: ${leaked.length} file(s) the gate flags would be stamped. The predicate is wrong.`);
+  console.error(`ERROR: ${leaked.length} unverifiable file(s) would be stamped. The predicate is wrong.`);
   for (const f of leaked.slice(0, 10)) console.error(`  ${f}`);
   process.exit(2);
 }
@@ -380,7 +453,8 @@ if (OPTS.json) {
     scanned: targets.length,
     stamp: plan.length,
     withheld: Object.fromEntries(withheld),
-    flaggedByGate: flagged.length,
+    flaggedByGate: gateFlagged.length,
+    unverifiable: unverifiable.length,
     leaked: leaked.length,
     byLocale: Object.fromEntries([...byLocale.entries()].sort()),
   }, null, 2));
@@ -393,7 +467,8 @@ if (OPTS.json) {
   console.log(`\nscanned:         ${targets.length}`);
   console.log(`${PREVIEW ? 'would stamp:    ' : 'stamped:        '} ${plan.length}`);
   console.log(`withheld:        ${targets.length - plan.length}`);
-  console.log(`flagged by gate: ${flagged.length}  (0 leaked into the plan — asserted)`);
+  console.log(`flagged by gate: ${gateFlagged.length}  (what check-i18n-fence-parity reports)`);
+  console.log(`unverifiable:    ${unverifiable.length}  (wider: adds unalignable; 0 leaked into the plan — asserted)`);
   if (byLocale.size) {
     console.log(`by locale:       ${[...byLocale.entries()].sort().map(([k, v]) => `${k}=${v}`).join('  ')}`);
   }
@@ -406,4 +481,11 @@ if (!PREVIEW && plan.length) {
   for (const p of plan) writeFileSync(p.path, p.text, 'utf8');
 }
 
-console.log(`\n${PREVIEW ? 'PREVIEW — nothing written (pass --write to apply)' : 'Wrote changes'}`);
+// NOT in `--json` mode. This line used to print unconditionally, which appended prose after the
+// JSON document and made the machine-readable output unparseable — `JSON.parse` on it throws
+// `Unexpected non-whitespace character after JSON`. A `--json` mode whose output is not JSON is
+// the same class of defect as a verification nobody can run: the feature exists and does not
+// work, and only a consumer discovers it.
+if (!OPTS.json) {
+  console.log(`\n${PREVIEW ? 'PREVIEW — nothing written (pass --write to apply)' : 'Wrote changes'}`);
+}

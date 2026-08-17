@@ -12,7 +12,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, cpSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, cpSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -52,6 +52,10 @@ function makeFixture(t, { mirrorBody = 'echo "hello"', extraFrontmatter = [] } =
   cpSync(join(REPO, 'scripts', 'check-i18n-fence-parity.js'), join(dir, 'scripts', 'check-i18n-fence-parity.js'));
   cpSync(join(REPO, 'scripts', 'lib'), join(dir, 'scripts', 'lib'), { recursive: true });
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ type: 'module' }), 'utf8');
+  // The tool imports js-yaml for its independent placement audit, so the fixture needs a
+  // resolvable node_modules. Symlinked rather than installed: the point is to exercise the
+  // REAL import path, and an `npm i` per fixture would make the suite unusable.
+  symlinkSync(join(REPO, 'node_modules'), join(dir, 'node_modules'), 'dir');
 
   git(dir, ['init', '-b', 'main']);
   git(dir, ['config', 'user.email', 'test@example.invalid']);
@@ -149,6 +153,46 @@ describe('backfill-fence-basis (#552)', () => {
     assert.match(notATree.stderr, /no such content tree/);
   });
 
+  it('exits 2 when a COMBINED scope reaches nothing, not just when each flag is reachable alone', (t) => {
+    // The composition bug, which each flag passing on its own cannot catch. Locale `de` carries
+    // skills; locale `es` carries guides. Corpus-wide, both `de` and `guides` are "reached", so
+    // a guard collecting reached-trees before the locale filter waves `--locale de --tree
+    // guides` through and scans nothing at exit 0. That is the exact case
+    // `normalize-i18n-fences.js` was fixed for, and the first version of the shared walk
+    // reintroduced it — measured against the real corpus with `--locale wenyan --tree guides`.
+    const { dir } = makeFixture(t);
+    const guide = join(dir, 'guides', 'demo-guide.md');
+    mkdirSync(dirname(guide), { recursive: true });
+    writeFileSync(guide, ['---', 'title: Demo', 'description: A demo guide.', '---', '', '# Demo', ''].join('\n'), 'utf8');
+    const esGuide = join(dir, 'i18n', 'es', 'guides', 'demo-guide.md');
+    mkdirSync(dirname(esGuide), { recursive: true });
+    writeFileSync(esGuide, ['---', 'title: Demo', 'locale: es', 'source_locale: en', 'source_commit: abc1234', '---', '', '# Demo', ''].join('\n'), 'utf8');
+    git(dir, ['add', '-A']);
+    git(dir, ['commit', '-m', 'add a guide, translated only into es']);
+
+    // Each flag is individually reachable somewhere in the corpus.
+    assert.equal(run(dir, ['--locale', 'de']).status, 0, 'de alone is fine');
+    assert.equal(run(dir, ['--tree', 'guides']).status, 0, 'guides alone is fine');
+
+    // Their composition is not.
+    const combined = run(dir, ['--locale', 'de', '--tree', 'guides']);
+    assert.equal(combined.status, 2, 'de has no guides — this must not report a clean zero');
+    assert.match(combined.stderr, /matched no translated content in locale 'de'/);
+  });
+
+  it('--json emits parseable JSON and nothing else on stdout', (t) => {
+    // A trailing status line used to print after the document, so `JSON.parse` threw
+    // `Unexpected non-whitespace character after JSON`. A --json mode whose output is not JSON
+    // is a feature that exists and does not work, discoverable only by a consumer.
+    const { dir } = makeFixture(t);
+    const r = run(dir, ['--json']);
+    assert.equal(r.status, 0);
+    const parsed = JSON.parse(r.stdout);
+    assert.equal(parsed.scanned, 1);
+    assert.equal(parsed.stamp, 1);
+    assert.equal(parsed.leaked, 0);
+  });
+
   it('rejects unknown and value-less flags', (t) => {
     const { dir } = makeFixture(t);
     assert.equal(run(dir, ['--wirte']).status, 2);
@@ -176,6 +220,10 @@ describe('backfill-fence-basis (#552)', () => {
     cpSync(join(REPO, 'scripts', 'check-i18n-fence-parity.js'), join(dir, 'scripts', 'check-i18n-fence-parity.js'));
     cpSync(join(REPO, 'scripts', 'lib'), join(dir, 'scripts', 'lib'), { recursive: true });
     writeFileSync(join(dir, 'package.json'), JSON.stringify({ type: 'module' }), 'utf8');
+  // The tool imports js-yaml for its independent placement audit, so the fixture needs a
+  // resolvable node_modules. Symlinked rather than installed: the point is to exercise the
+  // REAL import path, and an `npm i` per fixture would make the suite unusable.
+  symlinkSync(join(REPO, 'node_modules'), join(dir, 'node_modules'), 'dir');
 
     git(dir, ['init', '-b', 'main']);
     git(dir, ['config', 'user.email', 'test@example.invalid']);
