@@ -2,16 +2,16 @@
 name: coordinate-peer-sessions
 description: >
   Coordinate safely with a peer interactive session sharing the same git
-  worktree — establish whether one is present, declare path scope before the
-  first edit, survive a contended index lock, and review the whole branch
-  before opening a PR. Activate when starting work in a repository that may
-  already be occupied, when a git command fails with `index.lock: File exists`,
-  when `guard:snapshot` refuses because a snapshot already exists, or when a
-  commit turns out to contain a file this session never edited. Distinct from
-  subagent concurrency: a peer session cannot be bracketed, because no baseline
-  exists from before its edits.
+  worktree — check first whether a separate worktree removes the problem, then
+  declare path and branch scope before the first edit, survive a contended
+  index lock, and review the whole branch before opening a PR. Activate when
+  starting work in a repository that may already be occupied, when a git
+  command fails with `index.lock: File exists`, when `guard:snapshot` refuses
+  because a snapshot already exists, or when a commit turns out to contain a
+  file this session never edited. Distinct from subagent concurrency: a peer
+  session cannot be bracketed, because no baseline exists from before its edits.
 license: MIT
-allowed-tools: Read Bash Grep Glob
+allowed-tools: Read Write Edit Bash Grep Glob
 metadata:
   author: Philipp Thoss
   version: "1.0"
@@ -27,8 +27,9 @@ Establish and hold a working agreement with a second interactive session sharing
 worktree. Every other concurrency control in this library assumes you started the other
 process and can bracket it. A peer session cannot be bracketed: it may have been editing
 before you arrived, so no baseline predates its work and every detector fires after the
-collision rather than before it. The control this skill applies is an agreement about paths,
-established before the first edit.
+collision rather than before it. The control this skill applies is an agreement about paths
+and the branch, established before the first edit — after checking whether the sharing is
+necessary at all.
 
 ## When to Use
 
@@ -49,51 +50,73 @@ established before the first edit.
 
 ## Procedure
 
-### Step 1: Establish whether the worktree is occupied
+### Step 1: Check whether sharing is necessary at all
+
+A second worktree has its own index and its own HEAD, which removes lock contention and
+branch collisions outright, while sharing one object store.
+
+```bash
+git worktree list
+git worktree add ../repo-peer -b feat/their-task
+```
+
+**Expected:** either a second worktree, after which this skill is unnecessary, or a stated
+reason the sessions must share one — same-branch collaboration, a toolchain bound to a fixed
+path, or an expensive filesystem.
+
+**On failure:** if a second worktree is not possible, record why in the scope declaration
+(Step 3), so the next session does not re-litigate it. Continue to Step 2.
+
+### Step 2: Establish whether the worktree is occupied
 
 There is no enumeration of peer sessions. `ListAgents` lists agents you can message, not
 arbitrary interactive sessions someone else started. Look for processes and traces instead.
 
 ```bash
 ps -eo pid,etime,args | rg -i 'claude|git ' | rg -v ' rg '
+tasklist.exe 2>/dev/null | rg -i git    # WSL: ps cannot see Windows-side git
 git status --short
-git branch --sort=-committerdate | head -5
+git branch --show-current
 git log --oneline --all --since='2 hours ago' | head
 ```
 
 **Expected:** either a positive signal — a long-running `git` process, an unrecognised branch
 or recent commit, an unexpected modified file — or no signal at all.
 
-**On failure:** if `ps` is unavailable or the output is ambiguous, **treat the worktree as
-occupied**. Inconclusive is not the same as empty, and the asymmetry is large: assuming a peer
-who is absent costs one unread message, assuming solitude costs a commit.
+**On failure:** if `ps` is unavailable, the checkout is reachable from another OS, or the
+output is ambiguous, **treat the worktree as occupied**. Inconclusive is not the same as
+empty, and the asymmetry is large: assuming a peer who is absent costs one unread message,
+assuming solitude costs a commit.
 
-### Step 2: Declare path scope before the first edit
+### Step 3: Declare path and branch scope before the first edit
 
-Both adjectives matter. *Before the first edit*, because by commit time the tree has already
-been shared. *Path scope*, because two sessions on unrelated tasks still collide in one file.
+*Before the first edit*, because by commit time the tree has already been shared. *Paths*,
+because two sessions on unrelated tasks still collide in one file. *And the branch*, because
+one worktree has one HEAD and a peer's `git switch` relocates where your next commit lands.
 
 ```text
+Branch: feat/x — neither session switches without saying so
 This session: scripts/, scripts/test/, debt-ratchet.yml
 Peer session: README.md, docs/
 Shared, ask before editing: CLAUDE.md, package.json, the registries
+Nobody runs: git stash, git checkout -- <path>, git reset --hard
 ```
 
 Record it where the other session can read it — a message to the human running both, a line
 in `CONTINUE_HERE.md`, or a comment on the issue.
 
-**Expected:** a written division naming directories and files, including an explicit list of
-contested files that belong to neither session.
+**Expected:** a written division naming the branch, the directories and files each session
+owns, the contested files that belong to neither, and the whole-tree commands neither runs.
 
 **On failure:** if the peer cannot be reached, narrow unilaterally instead: restrict this
 session to files it creates, avoid every shared file, and say so in the PR description. A
 one-sided declaration is weaker than an agreement and much stronger than nothing.
 
-### Step 3: Work with explicit staging
+### Step 4: Work with explicit staging
 
 ```bash
 git add scripts/check-thing.js scripts/test/thing.test.js
-git commit -F msg.txt
+git diff --cached --name-only
 ```
 
 Never `git add -A`, `git add --all` or `git add .` — none can distinguish this session's work
@@ -101,39 +124,45 @@ from a neighbour's untracked file. Note the residual gap: `git add <directory>` 
 holding a stray file is indistinguishable from legitimate staging, so name files when the
 directory is contested.
 
-**Expected:** `git status --short` after staging shows only paths this session authored.
+**Expected:** `git diff --cached --name-only` lists only paths this session authored.
 
-**On failure:** if a deny rule blocks the command, that is the control working. If no deny
-rule fires, do not conclude one exists — verify where it lives before relying on it (Step 6).
+**On failure:** unstage the intruder with `git restore --staged <path>`. Do not check with
+`git status --short` instead — with a peer present it also lists their dirty and untracked
+files, so it can never read clean and says nothing about your staging.
 
-### Step 4: Survive a contended index lock
+### Step 5: Survive a contended index lock
 
-One `.git/index` is shared, and a peer's `git status` rewrites it under a lock. An ordinary
-read on their side fails an ordinary write on yours.
+One `.git/index` is shared, and a peer's plain `git status` takes a write lock on it, so an
+ordinary read on their side fails an ordinary write on yours. Fix the reading side first.
 
 ```bash
-ps -eo pid,etime,args | rg 'git ' | rg -v ' rg '
+GIT_OPTIONAL_LOCKS=0 git status --short   # takes no lock; make this the habit
 
+msg="$(mktemp)"                           # never a fixed name in a shared tree
+printf 'feat: …\n' > "$msg"
+committed=0
 for attempt in 1 2 3 4 5; do
-  git commit -F msg.txt && break
-  echo "attempt $attempt blocked; waiting"
+  if git commit -F "$msg"; then committed=1; break; fi
+  echo "attempt $attempt failed; retrying"
   sleep 5
 done
+[ "$committed" -eq 1 ] || { echo "FAILED: commit did not succeed" >&2; exit 1; }
 ```
 
-**Expected:** the retry succeeds, usually on the first or second attempt — a peer's
-`git status` completes in well under a second.
+**Expected:** the commit succeeds, and the explicit `committed` check means an exhausted loop
+exits non-zero. A bare `for` loop returns the status of its last command, so without that line
+five failed attempts report success.
 
-**On failure:** do not delete `.git/index.lock` while any git process exists. The message's
-advice to terminate processes is written for a single-user repository where a stale lock
-means a crash; here it usually means a live command. Remove the lock only when no git process
-is running and its mtime rules out any command still in flight, and prefer asking the human.
+**On failure:** do not terminate git processes and do not delete `.git/index.lock` — both
+pieces of advice in git's message are written for a single-user repository where a stale lock
+means a crash. Here it usually means a live command, and on a WSL checkout under `/mnt/` the
+holder may be a Windows-side process `ps` cannot see. Remove the lock only when no git process
+exists on either side and its mtime rules out anything in flight; prefer asking the human.
 
-### Step 5: Read the guard's output as a bystander
+### Step 6: Read the guard's output as a bystander
 
-The guard's mechanics are documented in
-`guides/creating-workflows.md`, section "Sharing the worktree with a peer session". Two rules
-follow for a shared tree.
+The guard's mechanics are documented in `guides/creating-workflows.md`, section "Sharing the
+worktree with a peer session". Two rules follow for a shared tree.
 
 ```bash
 npm run guard:verify   # look
@@ -146,63 +175,84 @@ records no owner, so a release from the wrong session drops the incumbent's base
 as the tree compares clean. Never follow the `git reset --mixed <baseline>` line a failed
 verify prints unless you armed that snapshot; it is recovery advice addressed to someone else
 and following it drops their commit. A clean verify means the tree has not moved, never that
-the other run has finished.
+the other run has finished. When the arming session is genuinely dead, the sanctioned exit is
+`npm run guard:snapshot -- --force` — but run `guard:verify` and read the changed-file list
+first, or the force rebaselines the dead run's damage into a clean baseline.
 
-### Step 6: Verify where the preventive control actually lives
+### Step 7: Find out what actually protects you
 
-A permission rule can deny the dangerous staging forms. Whether it protects a collaborator
-depends on which settings file holds it, and that must be read rather than assumed.
+A permission rule can deny the dangerous staging forms. Which file holds it decides who it
+protects, so check tracked-ness rather than contents.
 
 ```bash
-cat .claude/settings.local.json
+git ls-files .claude/
+git check-ignore -v .claude/settings.json .claude/settings.local.json
 ```
 
-**Expected:** a definite answer about this clone. A repo-local `deny` list travels with the
-repository; a rule in `~/.claude/settings.json` protects only the machine it is on.
+**Expected:** a definite answer about what a clone receives. By Claude Code convention
+`settings.local.json` is the personal, never-shared file, so reading its contents answers a
+question about one machine. A rule protects collaborators only if the file holding it is
+tracked.
 
-**On failure:** if the repo-local file has an empty `deny` list, state that plainly wherever
-the guarantee is described. Documenting a control that does not travel is worse than
-documenting none, because the next reader stops being careful.
+**On failure:** if both settings files are gitignored — as they are in this repository — then
+no staging deny rule travels with a clone, and the discipline in this skill is the only
+control. State that wherever the guarantee is described. Documenting a control that does not
+travel is worse than documenting none, because the next reader stops being careful.
 
-### Step 7: Review the whole branch before opening a PR
+### Step 8: Review the whole branch before opening a PR
 
 ```bash
-git diff "${BASE_REF:-origin/main}" --name-only
+git fetch origin
+git diff "${BASE_REF:-origin/main}"...HEAD --name-only
 git log "${BASE_REF:-origin/main}"..HEAD --stat
 ```
 
-A `git show` on the tip cannot reveal what an earlier commit swept in.
+Three dots on the `diff`, two on the `log`, and the asymmetry is the trap: two-dot `git diff`
+reports files changed on *either* side, so on a branch that is behind it lists everything the
+base moved as well. A `git show` on the tip cannot reveal what an earlier commit swept in.
 
 **Expected:** every file in the diff is one this session intended to touch.
 
-**On failure:** if an unrecognised file appears, establish who authored it before removing it
-from the branch — it is someone's work. Prefer returning it to its owner over deleting it. If
-a generated artifact is stale for no reason you can name, investigate before regenerating:
-regenerating turns the check green and destroys the only signal that the corpus moved.
+**On failure:** if an unrecognised file appears, untrack it with `git rm --cached <path>`,
+which leaves it on disk. Plain `git rm` deletes the peer's only copy if they never committed
+it elsewhere. Note also that once their file is tracked on your branch, switching branches
+removes it from the shared tree — untrack before switching, and tell them. If a generated
+artifact is stale for no reason you can name, investigate before regenerating: regenerating
+turns the check green and destroys the only signal that the corpus moved.
 
 ## Validation
 
-- [ ] Occupancy was checked before the first edit, not after the first failure
-- [ ] A path-scope division exists in writing, including the contested-file list
-- [ ] Every commit was staged with explicit paths; no `git add -A`/`--all`/`.` was run
-- [ ] No `.git/index.lock` was deleted while a git process existed
+- [ ] A separate worktree was considered, and the reason for sharing is recorded
+- [ ] Occupancy was checked before the first edit, on both sides of any OS boundary
+- [ ] The declaration names the branch, the per-session paths, the contested files, and the
+      whole-tree commands neither session runs
+- [ ] Every commit was staged with explicit paths, verified with `git diff --cached`
+- [ ] No `.git/index.lock` was deleted and no git process was terminated
 - [ ] No guard slot was released that this session did not arm
-- [ ] The location of the staging deny rule was read from disk, not assumed
-- [ ] The whole branch was diffed against its base before the PR was opened
+- [ ] Tracked-ness of the settings files was checked, not just their contents
+- [ ] The branch was diffed against its merge base with three dots before the PR was opened
 
 ## Common Pitfalls
 
+- **Sharing a worktree that did not need sharing**: `git worktree add` gives the peer its own
+  index and HEAD, which removes most of this skill's subject matter.
 - **Declaring scope by task instead of by path**: "you take CI, I take i18n" divides the work
   and not the tree; both sides then edit the same workflow file and the same root instructions.
+- **Declaring paths but not the branch**: one worktree has one HEAD, so a peer's `git switch`
+  decides where your next commit lands.
 - **Treating an inconclusive occupancy check as "nobody here"**: the check has no negative
-  result, only a positive one and an absence of evidence.
-- **Deleting the index lock because the error message says to**: that message assumes a single
-  user and a crashed process. With a peer, it is usually a live command.
+  result, only a positive one and an absence of evidence — and under WSL it is blind to
+  Windows-side processes entirely.
+- **Following git's index-lock advice**: it assumes a single user and a crashed process.
+  Terminating processes kills the peer's work; deleting the lock mid-write corrupts the index.
+- **A fixed scratch filename in a shared tree**: two sessions running this procedure would
+  overwrite each other's commit message. Use `mktemp`.
+- **Two-dot `git diff` against the base**: reports the base's changes as well, which on an
+  active repository buries the one file you are looking for.
+- **`git rm` instead of `git rm --cached`**: deletes a peer's uncommitted work from disk.
 - **Releasing or acting on a guard slot you did not arm**: the snapshot has no owner field, so
   nothing stops you, and the failure output is recovery advice addressed to another session.
-- **Reading a clean verify as "the other run finished"**: it reports tree movement, not run
-  liveness — an incumbent whose fan-out has not written yet compares clean.
-- **Assuming a deny rule protects everyone**: a rule in the user's home settings does not
+- **Assuming a deny rule protects everyone**: a rule in an untracked settings file does not
   travel with a clone, and `git add <dir>` is not covered by any deny rule that could
   reasonably be written.
 - **Regenerating a stale artifact before explaining it**: staleness is often the only evidence
@@ -211,7 +261,7 @@ regenerating turns the check green and destroys the only signal that the corpus 
 ## Related Skills
 
 - `commit-changes` -- explicit-path staging, which this skill depends on
-- `create-pull-request` -- opens the PR whose branch Step 7 reviews
+- `create-pull-request` -- opens the PR whose branch Step 8 reviews
 - `resolve-git-conflicts` -- for a collision that reached the index rather than the working tree
 - `write-continue-here` -- one place a path-scope declaration can live across sessions
 - `unleash-the-agents` -- subagent fan-out, the case this skill is explicitly *not* about

@@ -1,6 +1,6 @@
 ---
 title: "Coordinating Peer Sessions"
-description: "Working safely when a second interactive session shares your worktree — declaring path scope before the first edit, index etiquette, and what the guard cannot see"
+description: "Working safely when a second interactive session shares your worktree — separate worktrees first, then path scope, index etiquette, and the guard's limits"
 category: workflow
 agents: []
 teams: []
@@ -38,23 +38,31 @@ procedure here leads with an agreement, not an instrument.
 - Ability to run `ps` and `git` in the same environment as the peer. Coordination across
   machines is out of scope; a peer here means a session sharing one filesystem.
 
-## Workflow Overview
+## First, ask whether you need to share at all
 
-Four moves, in order. Only the first is unusual, and it is the one that does the work.
+Everything below is etiquette for a shared tree. Before adopting it, check whether the
+sharing is necessary, because git can usually remove the problem outright:
 
-1. **Notice** — before your first edit, spend one command establishing whether you are alone.
-2. **Declare** — state the paths you intend to touch, divided by path and not by task.
-3. **Work** — stage explicit paths, never `git add -A`; expect the index to be busy.
-4. **Review the branch, not the tip** — before opening a PR, check what the whole branch
-   contains, because a collision that happened three commits ago will not appear in `git show`.
+```bash
+git worktree add ../almanac-peer -b feat/their-task
+```
+
+A second worktree gets its **own index** — so no `index.lock` contention — and its **own
+HEAD**, so neither session can move the other's branch, while both share one object store and
+one set of refs. This repository already mandates it for reviewer subagents, which run in
+`.claude/worktrees/` rather than promising not to touch the tree.
+
+Share one tree only when you have a reason: two sessions genuinely collaborating on the same
+branch, a toolchain that resolves paths against a fixed checkout, or a filesystem where a
+second checkout is expensive. If you cannot name the reason, take the second worktree and
+skip the rest of this guide.
 
 ## Notice the peer before you edit
 
 There is no reliable enumeration of peer sessions, and it is worth stating that plainly
 rather than implying a tool exists. `ListAgents` lists agents *you* can message — subagents
 you spawned, and your own sessions the harness knows about — not arbitrary interactive
-sessions another person started. Nothing in this repository references it, and nothing
-records peer-session state on disk.
+sessions another person started. No repository state records that a peer exists.
 
 What does work is looking for their processes and their traces:
 
@@ -64,6 +72,7 @@ ps -eo pid,etime,args | rg -i 'claude|git ' | rg -v ' rg '
 
 # Traces in the repository itself.
 git status --short
+git branch --show-current
 git branch --sort=-committerdate | head -5
 git log --oneline --all --since='2 hours ago' | head
 ```
@@ -71,6 +80,12 @@ git log --oneline --all --since='2 hours ago' | head
 Two of these are stronger signals than they look. A long `etime` on a shell running
 `git -C <repo> status` is a peer mid-sweep. And a branch or a commit you do not recognise,
 on a repository you believed you had to yourself, is the cheapest possible warning.
+
+**On Windows-adjacent checkouts, `ps` sees only half the machine.** A worktree under `/mnt/`
+in WSL is reachable from Windows too, so a `git.exe`, an editor's git integration, or a GUI
+client can be holding the index while `ps` reports nothing. Check both sides —
+`tasklist.exe | rg -i git` — or treat a negative `ps` result as inconclusive rather than as
+proof of solitude.
 
 Outside the tree, recent issues and pull requests opened by the same account are the other
 tell:
@@ -84,29 +99,41 @@ gh issue list --author "@me" --state open --limit 5
 a peer who is not there is that you stage explicit paths and write a scope line nobody reads.
 The cost of assuming solitude is the incident this guide exists for.
 
-## Declare path scope, not task scope
+## Declare scope before your first edit
 
-This is the whole procedure, and the two adjectives are both load-bearing.
+This is the whole procedure, and each part is load-bearing.
 
-**Before your first edit, not before your first commit.** By commit time the working tree has
+**Before the first edit, not before the first commit.** By commit time the working tree has
 already been shared for however long you were editing, and any detector fires after the fact.
 The declaration is what makes the collision impossible, rather than visible.
 
-**Divided by paths, not by tasks.** Two sessions working on unrelated tasks still collide in
+**Divide by paths, not by tasks.** Two sessions working on unrelated tasks still collide in
 one file. "I am doing the i18n work, you are doing the CI work" sounds like a division and is
 not one: both touch `.github/workflows/`, both touch `CLAUDE.md`, and neither notices until
-one of them overwrites the other. State directories and files:
+one of them overwrites the other. State directories and files.
+
+**Name the branch too.** One worktree has one HEAD, so both sessions are always on the same
+branch, and a peer's `git switch` or `git checkout -b` silently relocates where your next
+commit lands. That is the founding incident: a file swept into a commit **on the wrong
+branch**. Path scope with an unguarded HEAD still loses work.
 
 ```text
-Session A: scripts/, scripts/test/, debt-ratchet.yml, .github/workflows/validate-skills.yml
-Session B: README.md, docs/, .github/workflows/deploy-pages.yml
-Shared, ask before editing: CLAUDE.md, package.json
+Branch: feat/590-diagram-parity — neither session switches without saying so
+Session A: scripts/, scripts/test/, debt-ratchet.yml
+Session B: README.md, docs/
+Shared, ask before editing: CLAUDE.md, package.json, the registries
+Nobody runs: git stash, git checkout -- <path>, git reset --hard
 ```
 
-The third line is the one people leave out. A repository has a handful of files that every
-task eventually touches — the root instructions, the manifest, the registries — and pretending
-they belong to one session is how the agreement quietly stops describing reality. Name them,
-and agree that touching one is a message to the other session rather than a unilateral edit.
+Two lines there are the ones people leave out. The **shared** line names the handful of files
+every task eventually touches — the root instructions, the manifest, the registries — because
+pretending they belong to one session is how the agreement quietly stops describing reality.
+The **nobody runs** line names the whole-tree operations: `git stash` sweeps the peer's dirty
+state along with yours, and a hard reset or a checkout of a path discards their uncommitted
+work with no record it existed.
+
+One more rule, inherited from the incident and worth repeating verbatim: **leave the
+neighbour's edges alone** — additive files, and no rewriting of what is already placed.
 
 Where the declaration lives is less important than that it exists before the editing does: a
 message to the human running both sessions, a line in `CONTINUE_HERE.md`, or a comment on the
@@ -123,93 +150,141 @@ fatal: Unable to create '/path/to/repo/.git/index.lock': File exists.
 
 Another git process seems to be running in this repository, e.g.
 an editor opened by 'git commit'. Please make sure all processes
-are terminated then try again.
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.
 ```
 
-**Do not follow the last sentence of that message.** It is written for a single-user
-repository, where a stale lock means a crashed process. With a peer in the tree, the lock is
-far more likely to be a live command that will finish in under a second. Deleting it while
-the peer is mid-write is how an index gets corrupted.
+**Both pieces of advice in that message are written for a single-user repository.** Terminating
+processes kills your peer's work; removing the lock while they are mid-write corrupts the
+index. With a peer in the tree the lock is far more likely to be a live command than a
+crashed one.
 
-Check, then retry:
+The better fix is on the *reading* side, and neither session should be taking a write lock to
+look at status:
 
 ```bash
-# Is a real git process holding it, or is it stale?
-ps -eo pid,etime,args | rg 'git ' | rg -v ' rg '
-
-# Retry rather than remove. A peer's `git status` finishes in well under a second.
-for attempt in 1 2 3 4 5; do
-  git commit -F msg.txt && break
-  echo "attempt $attempt blocked; waiting"
-  sleep 5
-done
+# Does not take index.lock, so it cannot block a peer's commit.
+GIT_OPTIONAL_LOCKS=0 git status --short
+git --no-optional-locks status --short
 ```
 
-Only consider removing the lock when no git process exists **and** the file's mtime is old
-enough that no plausible command is still running. Even then, prefer asking the human.
+Make that the habit for any polling or scripted status check. On the writing side, retry
+rather than remove — and make the loop report honestly, because a bare `for` loop returns the
+status of its last command and a permanently failing commit would otherwise read as success:
+
+```bash
+msg="$(mktemp)"                       # never a fixed name in a shared tree
+printf 'feat: …\n' > "$msg"
+
+committed=0
+for attempt in 1 2 3 4 5; do
+  if git commit -F "$msg"; then committed=1; break; fi
+  git status --porcelain=v1 >/dev/null 2>&1 || true
+  echo "attempt $attempt failed; retrying"
+  sleep 5
+done
+[ "$committed" -eq 1 ] || { echo "FAILED: commit did not succeed" >&2; exit 1; }
+```
+
+Note the scratch file. A fixed `msg.txt` at the repository root is exactly the shared mutable
+path this guide warns about: two sessions following this procedure would overwrite each
+other's commit message, and the stray file is itself sweepable by the `git add -A` forbidden
+below.
+
+Only consider removing the lock when no git process exists **on either side of the WSL
+boundary** and the file's mtime rules out any command still in flight. Even then, prefer
+asking the human.
 
 ## What the guard covers, and what it cannot
 
 The mechanics of `npm run guard:snapshot|verify|release` — what it compares, why file content
 and index flags are included, and why ignored paths are out of scope — are documented once, in
 [Sharing the worktree with a peer session](creating-workflows.md#sharing-the-worktree-with-a-peer-session).
-Read it there; it is not repeated here.
+Read them there.
 
-What belongs in *this* guide is the consequence for coordination, which is a short and
-uncomfortable list:
+What belongs here is only the consequence for coordination:
 
-| The guard | Peer-session reality |
+| Because the guard | You must |
 |---|---|
-| Detects movement since **your** snapshot | Cannot see a peer who was working before you arrived |
-| Records no owner | A release from the wrong session drops the incumbent's baseline |
-| Reports tree movement | Not run liveness — an incumbent who has not written yet compares clean |
-| Prints recovery advice on failure | That advice is addressed to whoever armed the snapshot |
+| Cannot see a peer already working when you arrived | Treat an occupied worktree as a case for agreement, not for inspection |
+| Records no owner | Never release a slot you did not arm |
+| Reports tree movement, not run liveness | Not read a clean verify as "their run finished" |
+| Prints recovery advice addressed to whoever armed it | Look at a borrowed verify; never act on what it tells you to do |
 
-The operating rules that follow: **never release a slot you did not arm**, and read a verify
-you did not arm as reporting tree movement rather than telling you anything about the other
-session. An occupied worktree is not a case the guard covers. It is a case for the agreement
-in the previous section.
+**The one sanctioned exception, when the arming session is genuinely gone.** `guard:release`
+is still the wrong verb — it would drop a baseline you cannot interpret. The tool names the
+right one in its own refusal message: `npm run guard:snapshot -- --force`. Order matters, and
+neither the tool nor its message spells it out: run `guard:verify` first and *read the
+changed-file list*, because forcing over unexamined movement rebaselines the dead run's damage
+into a clean baseline. Verify, investigate, then force — and only when you know it is dead.
 
-## Stage explicit paths — and know where the deny rule lives
+## Stage explicit paths — and find out what actually protects you
 
 `git add -A`, `git add --all` and `git add .` cannot distinguish your work from a neighbour's
-untracked file. This is not a stylistic preference: the incident that produced all of this
-was a peer's `git add -A` sweeping another session's file into a commit on the wrong branch.
+untracked file. This is not a stylistic preference: the incident that produced all of this was
+a peer's `git add -A` sweeping another session's file into a commit on the wrong branch.
 
-A permission rule can deny those forms, and where that rule lives determines who it protects.
-Checked on this repository:
+A permission rule can deny those forms, and **which file holds it decides who it protects**.
+Check tracked-ness first, not contents — a rule in an untracked file protects one machine:
 
 ```bash
-# The repo-local settings file — what a collaborator gets by cloning.
-cat .claude/settings.local.json
+git ls-files .claude/            # what a clone actually receives
+git check-ignore -v .claude/settings.json .claude/settings.local.json
 ```
 
-At the time of writing, this repository's `.claude/settings.local.json` carries `"deny": []`
-and explicitly allows `Bash(git add:*)`. The deny rule that stops the dangerous forms is
-configured **per machine**, in `~/.claude/settings.json`, and does not travel with a clone.
+By Claude Code convention `settings.local.json` is the personal, never-shared file, so reading
+it answers a question about your machine and not about the repository. In this repository the
+answer is starker than that: `.gitignore` ignores **both** `.claude/settings.json` and
+`.claude/settings.local.json`, so a clone receives neither, and the deny rule that stops the
+dangerous staging forms lives in `~/.claude/settings.json` — per machine.
 
-Say what that means rather than implying more safety than exists: on this machine the
-preventive control is real and has been observed firing; for anyone else cloning this
-repository, the discipline in this guide is the only control. Verify rather than assume —
-run the command above rather than trusting this paragraph, which is a point-in-time reading.
+Say that rather than implying more safety than exists: on a machine configured with the rule
+the control is real and has been observed firing; for anyone else cloning this repository, the
+discipline in this guide is the only control. Run the two commands rather than trusting this
+paragraph, which is a point-in-time reading.
 
 And staging explicitly is narrower than it sounds. `git add <directory>` on a directory
-holding a stray file is indistinguishable from legitimate staging, so it is not covered by
-any deny rule that could reasonably be written. Name files when the directory is contested.
+holding a stray file is indistinguishable from legitimate staging, so no deny rule that could
+reasonably be written covers it. Name files when the directory is contested, and check what
+you staged rather than what the tree contains:
+
+```bash
+git diff --cached --name-only
+```
+
+That is the check to use with a peer present. `git status --short` shows their dirty and
+untracked files too, so it can never come back clean and tells you nothing about your own
+staging.
 
 ## When a collision has already happened
 
-Review the whole branch rather than its tip. A `git show` on your last commit cannot reveal
-what an earlier commit swept in:
+Review the whole branch rather than its tip, and diff against the **merge base** rather than
+the remote tip:
 
 ```bash
-git diff origin/main --name-only
-git log origin/main..HEAD --stat
+git fetch origin
+git diff origin/main...HEAD --name-only     # three dots: merge base, your side only
+git log origin/main..HEAD --stat            # two dots: correct here
 ```
 
-If a file appears that you never touched, do not quietly drop it — it is someone's work.
-Establish which session authored it before removing it from the branch, and prefer moving it
-to its owner over deleting it.
+The asymmetry is the trap. `git diff origin/main --name-only` — two dots — reports files
+changed on *either* side, so on a branch that is behind, it lists everything `main` moved as
+well. In this repository `main` moves on its own, because README regeneration auto-commits, so
+the two-dot form reliably produces a page of false positives. `git log` two-dot is correct as
+written; only the `diff` needs three.
+
+If a file appears that you never touched, it is someone's live work sitting in the shared
+tree. **Untrack it; do not delete it:**
+
+```bash
+git rm --cached path/to/their-file    # unstage and untrack, leave it on disk
+```
+
+Plain `git rm` removes it from disk, and if the peer never committed it anywhere, that is
+their only copy. There is a second way the same work disappears: once their untracked file is
+committed on your branch, it is tracked *there*, so switching branches removes it from the
+shared tree. Untrack before switching, and tell them.
 
 **Treat an unexplained stale generated file as evidence, not as a chore.** The incident behind
 this guide was caught by `check-dreams` going red because an extra file made a committed
@@ -221,10 +296,12 @@ name, find the reason before you regenerate.
 
 | Problem | Cause | Solution |
 |---|---|---|
-| `Unable to create '.git/index.lock'` | A peer's `git status` or commit holds the index lock | Check `ps` for a live git process, then retry in a loop. Do not delete the lock file while a process exists |
-| `guard:snapshot` refuses — a snapshot already exists | A peer armed the guard, or your own earlier run did not release | Do not release it. Establish whose it is; if it is yours and the tree moved intentionally, `guard:snapshot -- --force` then release |
+| `Unable to create '.git/index.lock'` | A peer's `git status` or commit holds the index lock | Retry in a loop that reports failure honestly. Do not terminate processes or delete the lock while any git process exists — including Windows-side ones `ps` cannot see |
+| A peer's status polling keeps blocking your commits | Plain `git status` takes a write lock | Both sessions switch to `GIT_OPTIONAL_LOCKS=0 git status` |
+| `guard:snapshot` refuses — a snapshot already exists | A peer armed the guard, or your own earlier run did not release | Do not release it. If it is yours and the tree moved intentionally, `guard:snapshot -- --force`, then release when done. If the owner is gone, verify and read the changes first, then force |
 | `guard:verify` reports movement you cannot explain | A peer edited files in your scope, or a background job of yours is mid-write | Read the changed-file list before acting. Never run the `git reset --mixed` line it prints unless you armed that snapshot |
-| Your commit contains a file you never edited | `git add -A` or `git add <dir>` swept a peer's untracked file | Review with `git diff origin/main --name-only`; return the file to its owner rather than deleting it |
+| Your commit contains a file you never edited | `git add -A` or `git add <dir>` swept a peer's untracked file | `git diff origin/main...HEAD --name-only` to find it, `git rm --cached` to return it — never plain `git rm` |
+| Your commit landed on an unexpected branch | One worktree, one HEAD; a peer switched it | Name the branch in the scope declaration. Recover with `git branch` and `git cherry-pick`, not by resetting a branch the peer is using |
 | A generated file is stale and nothing you did explains it | The corpus moved underneath you | Investigate before regenerating — the staleness is the only signal you have |
 | You cannot tell whether a peer is active | There is no enumeration of peer sessions | Treat inconclusive as occupied. Declaring scope costs one message; assuming solitude costs a commit |
 
