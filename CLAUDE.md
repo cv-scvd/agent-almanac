@@ -326,6 +326,32 @@ changes tags without freeing any fence, so the body check still covers every one
 of them; it is reported, ratcheted, and does not block. Its cause varies by
 member: read the file rather than assuming staleness.
 
+#### Editing a frozen fence in English
+
+The gate accepts a body from **any** English revision, so it cannot tell you
+whether your edit reached the mirrors. Measured on `write-helm-chart` (#551):
+editing the English fence and propagating to **zero** mirrors leaves
+`--id write-helm-chart` reporting `violations: 0`, before and after the commit.
+`check-translation-freshness.js` adds nothing — those mirrors were already
+`STALE`, so the edit moved no signal at all. Both gates are green either way.
+
+Propagate to all ten mirrors in the same commit, then verify by **bytes**:
+
+```bash
+npm run check:fence-propagation -- --id write-helm-chart
+```
+
+It compares whole frozen-fence bodies at their ordinal against English in the
+working tree. Whole bodies, never the line you inserted — a mirror can carry your
+insertion and still differ elsewhere in the same fence, because it may have
+matched a different historical revision to begin with. That is not theoretical:
+the #551 propagation turned up a second, pre-existing lag in the same file on the
+tool's first run.
+
+It is deliberately id-scoped, has no default for `--id`, and is **not** in CI —
+corpus-wide it reports a population nobody has read, which is the state #631
+exists to change. Do not ratchet it before its members are read.
+
 ### Translation Workflow
 
 ```bash
