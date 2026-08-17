@@ -51,11 +51,14 @@ slices:
       - { file: i18n/ja/skills/annotate-source-files/SKILL.md, kind: tag-drift }
       - { file: i18n/zh-CN/skills/annotate-source-files/SKILL.md, kind: tag-drift }
       # tag-sequence — the #481 escape proper: a frozen tag became localisable, so the fence left
-      # the body check entirely and nothing else in the repo can see it. All three are the same
-      # defect, a ````markdown opener degraded to ```markdown in `escalate-issues`.
-      - { file: i18n/wenyan/skills/escalate-issues/SKILL.md, kind: tag-sequence }
-      - { file: i18n/wenyan-lite/skills/escalate-issues/SKILL.md, kind: tag-sequence }
-      - { file: i18n/zh-CN/skills/escalate-issues/SKILL.md, kind: tag-sequence }
+      # the body check entirely and nothing else in the repo can see it.
+      #
+      # ZERO MEMBERS, which is the strongest form this list takes: any escape anywhere in the
+      # corpus is added debt. The three that existed — `escalate-issues` in wenyan, wenyan-lite
+      # and zh-CN, all the same defect, a ````markdown opener degraded to ```markdown so that it
+      # closed early and swallowed the following python fence into a text block — were repaired
+      # in the commit that removed them from here. That is the ratchet's own workflow, exercised
+      # once on the branch that introduced it: paying debt down fails until this file moves too.
 
 unratcheted:
   # Classes the gate reports that this file deliberately does not enforce, each with the reason
