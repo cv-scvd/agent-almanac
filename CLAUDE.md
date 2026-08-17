@@ -332,6 +332,8 @@ The gate accepts a body from **any** English revision, so it cannot tell you
 whether your edit reached the mirrors. Measured on `write-helm-chart` (#551):
 editing the English fence and propagating to **zero** mirrors leaves
 `--id write-helm-chart` reporting `violations: 0`, before and after the commit.
+Read `filesCompared` alongside it — the gate's `--id` has no zero-target guard,
+so a mistyped id also reports `violations: 0` over nothing (#634).
 `check-translation-freshness.js` adds nothing — those mirrors were already
 `STALE`, so the edit moved no signal at all. Both gates are green either way.
 

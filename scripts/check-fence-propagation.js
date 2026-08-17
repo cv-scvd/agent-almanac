@@ -8,10 +8,12 @@
  * ## Why this is not `check-i18n-fence-parity.js`
  *
  * The parity gate is deliberately **staleness-immune**: it accepts a gated fence
- * body that appears in *any* revision of the paired English file, because 2,571
- * translations are stale and `evolve-*` bumps `source_commit` without
- * retranslating (#405/#616). That property is correct for a gate, and it has an
- * exact consequence, measured on 2026-08-17 while fixing #551:
+ * body that appears in *any* revision of the paired English file, because most of
+ * the corpus is stale and `evolve-*` bumps `source_commit` without retranslating
+ * (#405/#616). Quote the stale count from `check-translation-freshness.js`, never
+ * from a comment — two point-in-time figures already drift between this file's
+ * neighbours. That property is correct for a gate, and it has an exact
+ * consequence, measured on 2026-08-17 while fixing #551:
  *
  *   Editing a frozen fence in English and propagating to ZERO mirrors leaves the
  *   parity gate reporting 0 violations — before and after the commit. The old
@@ -47,6 +49,14 @@
  * differs is reported `unalignable` and NOT compared — the same refusal
  * `normalize-i18n-fences.js` makes, for the same reason.
  *
+ * That precondition is the ALL-fence sequence, which is stricter than comparing
+ * gated ordinals strictly requires, and the cost is real: a mirror that added or
+ * dropped one legitimately-localisable `text` fence can never verify clean here,
+ * and it shares exit 1 with a genuine lag. The strictness is kept because a
+ * partial sequence match is not evidence that the nth gated fence is the nth
+ * gated fence — but an operator who sees `unalignable` must diff by hand rather
+ * than assume a lag.
+ *
  * Whole bodies, never the inserted lines. Proving that the line you added arrived
  * is not proving the fence matches: the mirrors may each have matched a
  * *different* historical revision beforehand, so a fence can carry your insertion
@@ -61,10 +71,11 @@
  *   node scripts/check-fence-propagation.js --id quick-reference --tree guides --json
  */
 
-import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
-import { resolve, dirname } from 'path';
+import { readFileSync, existsSync, statSync } from 'fs';
+import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { extractFences, isGated, foldedTagSequence, TREES } from './lib/fences.js';
+import { collectI18nTargets, I18N_TREES } from './lib/i18n-targets.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = resolve(__dirname, '..');
@@ -91,7 +102,11 @@ for (let i = 0; i < argv.length; i++) {
     opts[name.slice(2)] = true;
   } else if (VALUE_FLAGS.has(name)) {
     const value = eq >= 0 ? arg.slice(eq + 1) : argv[++i];
-    if (value === undefined || value.startsWith('--')) usageError(`${name} needs a value`);
+    // The empty string is rejected explicitly, not left to a falsy test downstream.
+    // `--root=$FIXTURE` with `FIXTURE` unset arrives here as `--root=`, and a
+    // `opts.root ? … : DEFAULT_ROOT` fallback would silently read the REAL repo and
+    // report OK about a subject nobody asked about.
+    if (value === undefined || value === '' || value.startsWith('--')) usageError(`${name} needs a value`);
     opts[name.slice(2)] = value;
   } else {
     usageError(`unrecognised argument '${arg}'`);
@@ -100,21 +115,22 @@ for (let i = 0; i < argv.length; i++) {
 
 if (!opts.id) usageError('--id is required (this tool is deliberately id-scoped; see the header)');
 
-// `--root` exists for the fixture tests. It is safe here in a way it is not in
-// `check-debt-ratchet.js`, because this tool resolves NOTHING but content under
-// the root — no gate to invoke, no git history to walk, so a redirected root can
-// only narrow what is read, never point the check at a different subject.
-const ROOT = opts.root ? resolve(opts.root) : DEFAULT_ROOT;
-const I18N_DIR = resolve(ROOT, 'i18n');
+// `--root` exists for the fixture tests. An earlier comment here claimed it "can
+// only narrow what is read", which is FALSE — a root swap substitutes the whole
+// subject. The property that actually makes it safe is subject COHERENCE: English
+// and mirrors are both resolved under the same root, so the split-brain state
+// `check-debt-ratchet.js` guards against (a gate from one repo judging another)
+// cannot arise. A wrong root gives a wrong-but-self-consistent answer, and the
+// empty-value rejection above is what stops one arriving by accident.
+const ROOT = resolve(opts.root ?? DEFAULT_ROOT);
 
-/** English path for a content id, by tree. `skills` nests, the other three do not. */
-const englishPath = (tree, id) => (tree === 'skills'
-  ? resolve(ROOT, 'skills', id, 'SKILL.md')
-  : resolve(ROOT, tree, `${id}.md`));
-
-const mirrorPath = (locale, tree, id) => (tree === 'skills'
-  ? resolve(I18N_DIR, locale, 'skills', id, 'SKILL.md')
-  : resolve(I18N_DIR, locale, tree, `${id}.md`));
+// `I18N_TREES` carries the nested/flat shape per tree, so this does not restate
+// "skills nests, the other three do not" — a second copy of that fact is how the
+// mirror path and the walk drift apart.
+const NESTING = new Map(I18N_TREES.map(({ dir, nested }) => [dir, nested]));
+const englishPath = (tree, id) => (NESTING.get(tree)
+  ? join(ROOT, tree, id, 'SKILL.md')
+  : join(ROOT, tree, `${id}.md`));
 
 // Resolve the tree by finding the id, rather than defaulting to `skills`: a
 // guide and a skill may share a name, and guessing would compare the wrong pair.
@@ -134,12 +150,16 @@ const english = readFileSync(englishPath(tree, opts.id), 'utf8');
 const englishFences = extractFences(english);
 const englishSeq = foldedTagSequence(englishFences).join(',');
 
-const locales = existsSync(I18N_DIR)
-  ? readdirSync(I18N_DIR).filter((e) => statSync(resolve(I18N_DIR, e)).isDirectory())
-  : [];
-const mirrors = locales
-  .map((locale) => ({ locale, path: mirrorPath(locale, tree, opts.id) }))
-  .filter((m) => existsSync(m.path));
+// Mirrors come from the SSOT walk, NOT from a local `readdirSync(i18n).filter(isDirectory)`.
+// That local predicate is a proxy for "is a locale" and it already disagreed: `i18n/glossaries`
+// is a directory and is not a locale, so it entered the candidate set and was dropped only by
+// a downstream `existsSync` on the mirror path. Harmless for every id today and exactly the
+// drift that stops being harmless the day `i18n/glossaries/skills/<id>/` or an `i18n/_archive/`
+// exists — at which point this tool and the parity corpus would silently disagree about what
+// "the mirrors" are. Membership in the consumer's own accept-list, never a proxy for it.
+const mirrors = collectI18nTargets({ root: ROOT, onlyTrees: new Set([tree]) })
+  .targets.filter((t) => t.id === opts.id)
+  .map((t) => ({ locale: t.locale, path: t.absPath, relPath: t.relPath }));
 
 if (mirrors.length === 0) {
   // Vacuity refusal: "0 divergences" over 0 files is the answer this tool exists
@@ -152,23 +172,35 @@ const gatedOrdinals = englishFences
   .map((f, index) => (isGated(f) ? index : -1))
   .filter((index) => index >= 0);
 
+if (gatedOrdinals.length === 0) {
+  // The second vacuity refusal, and it is the same shape as the first: "every frozen
+  // fence agrees" over ZERO frozen fences is a clean-looking answer to a question that
+  // was never asked. A skill whose fences are all `text`/`markdown` has nothing to
+  // propagate, so reaching this is a wrong id far more often than a real query.
+  console.error(`ERROR: id '${opts.id}' (tree '${tree}') has no frozen fences in English `
+    + `(${englishFences.length} fence(s), all localisable) — there is nothing to verify`);
+  process.exit(2);
+}
+
 const findings = [];
+let mirrorsAligned = 0;
 for (const mirror of mirrors) {
   const fences = extractFences(readFileSync(mirror.path, 'utf8'));
   if (foldedTagSequence(fences).join(',') !== englishSeq) {
     findings.push({
       locale: mirror.locale,
-      path: mirror.path.slice(ROOT.length + 1),
+      path: mirror.relPath,
       kind: 'unalignable',
       detail: 'folded tag sequence differs from English — ordinal mapping is not sound, not compared',
     });
     continue;
   }
+  mirrorsAligned++;
   for (const index of gatedOrdinals) {
     if (fences[index].body !== englishFences[index].body) {
       findings.push({
         locale: mirror.locale,
-        path: mirror.path.slice(ROOT.length + 1),
+        path: mirror.relPath,
         kind: 'lags-english',
         ordinal: index,
         tag: englishFences[index].lang || 'untagged',
@@ -178,10 +210,14 @@ for (const mirror of mirrors) {
   }
 }
 
+// `mirrorsFound` and `mirrorsAligned` are separate because conflating them overstates
+// coverage: an earlier single `mirrorsCompared` counted mirrors the tool had explicitly
+// REFUSED to compare, so a run that examined nothing could report ten.
 const summary = {
   id: opts.id,
   tree,
-  mirrorsCompared: mirrors.length,
+  mirrorsFound: mirrors.length,
+  mirrorsAligned,
   englishFences: englishFences.length,
   frozenFences: gatedOrdinals.length,
   findings,
@@ -190,7 +226,7 @@ const summary = {
 if (opts.json) {
   console.log(JSON.stringify(summary, null, 2));
 } else {
-  console.log(`${opts.id} (${tree}): ${mirrors.length} mirror(s), `
+  console.log(`${opts.id} (${tree}): ${mirrorsAligned} of ${mirrors.length} mirror(s) alignable, `
     + `${gatedOrdinals.length} frozen of ${englishFences.length} fence(s)`);
   for (const f of findings) {
     console.log(f.kind === 'unalignable'
@@ -198,7 +234,7 @@ if (opts.json) {
       : `  LAGS        ${f.path} fence #${f.ordinal} (\`${f.tag}\`)`);
   }
   console.log(findings.length === 0
-    ? '  OK — every frozen fence is byte-identical to English'
+    ? `  OK — ${gatedOrdinals.length} frozen fence(s) byte-identical across ${mirrorsAligned} mirror(s)`
     : `  ${findings.length} finding(s)`);
 }
 
