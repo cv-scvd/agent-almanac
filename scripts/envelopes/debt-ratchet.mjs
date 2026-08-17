@@ -75,6 +75,22 @@ export const cases = [
     expect: '.github/workflows/validate-translations.yml runs a warn-only step',
   },
   {
+    label: 'ADDED DEBT: a PUT annotation deleted, orphaning its node in the committed diagram',
+    // #590's must-go-red, and it is the whole argument for putting the node-parity gate in the
+    // same workflow as the ratchet. In CI that gate runs as `--warn`, which exits 0 no matter
+    // what it finds — nothing about it is killable on its own. `npm run ratchet` is the command
+    // that turns this red, so the ratchet is what this case has to mutate against.
+    //
+    // Deleting an annotation produces an ORPHAN, not a missing node: the id leaves the source and
+    // stays in the diagram. Written against `viz/js/hive.js` rather than anything under
+    // `scripts/` because nothing there carries a PUT annotation and the generator only ever scans
+    // `viz/` — a mutation there would pass vacuously while looking like a test of the same thing.
+    file: 'viz/js/hive.js',
+    find: '// put id:"mode_hive", label:"SVG-based 3-axis radial hive plot (D3)", node_type:"process", input:"active_module"\n',
+    replace: '',
+    expect: 'added debt — viz/public/data/workflow.mmd::mode_hive [orphan-node]',
+  },
+  {
     label: 'DOCUMENTED LIMIT: a new body divergence does NOT move the ratchet',
     // `EXPOSE 3000` -> `EXPOSE 3001` inside a frozen ```dockerfile fence. The gate reports a new
     // gated violation (and a stale-basis-claim, since this file carries fence_basis_commit), and

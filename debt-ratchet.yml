@@ -81,6 +81,37 @@ slices:
       # sitting in that pool, none reported (#628). An empty member list here is therefore a
       # strong claim about a class, not about the corpus.
 
+  # Node-set parity between the viz PUT annotations and the committed diagram (#590).
+  #
+  # Ratchetable on the strictest reading of the rule above: the class has ONE member and it has
+  # been read. `viz/js/campfire.js` annotates `mode_campfire`; `viz/public/data/workflow.mmd` was
+  # last generated before campfire.js existed and the deploy job never regenerates it. The repair
+  # is a regeneration, which #601 says the lockfile cannot currently produce — so this is debt with
+  # a named external exit rather than debt nobody has looked at.
+  #
+  # `file` carries `<path>::<node>` rather than a bare path, because the finding's identity is the
+  # NODE. Two missing nodes in one source file would otherwise collapse into one member under the
+  # `file` + `kind` key, and repairing either would leave the other silently covered. The ratchet
+  # validates `file` only as a string, so the encoding needs no change here; the durable fix is an
+  # optional `member` key field, tracked separately.
+  #
+  # The consequence to know before adding a PUT annotation: until #601 unblocks regeneration, a new
+  # annotation adds a `missing-node` finding and this list must gain a line in the same commit.
+  # That friction is the mechanism, not a side effect of it.
+  - id: viz-diagram-node-parity
+    gate_argv: [scripts/check-workflow-diagram-nodes.js]
+    kinds: [missing-node, orphan-node]
+    # Anti-vacuity floor over the source enumeration, well under the 72 files the generator's own
+    # pattern selects today, so adding or removing a viz source never touches this file. A run
+    # below it cannot have seen `viz/`.
+    scanned_field: sourceFilesScanned
+    min_scanned: 40
+    source: node scripts/check-workflow-diagram-nodes.js --json
+    as_of: 2026-08-17
+    triage: "#590"
+    members:
+      - { file: "viz/js/campfire.js::mode_campfire", kind: missing-node }
+
 unratcheted:
   # Classes the gate reports that this file deliberately does not enforce, each with the reason
   # and the condition that would change it.
@@ -129,6 +160,15 @@ advisory_gates:
     token: "--warn"
     exit: "#477 — flips to blocking in the PR that clears the final divergence batch."
     ratcheted: partially — see the `i18n-fence-tag-structure` slice above.
+  - id: viz-diagram-node-parity
+    workflow: .github/workflows/validate-skills.yml
+    command: node scripts/check-workflow-diagram-nodes.js --warn
+    token: "--warn"
+    exit: >-
+      "#601" — the gate flips to blocking once a working putior can regenerate
+      `viz/public/data/workflow.mmd`. Unlike the fence gate's exit, this one is not a repair
+      campaign: the single finding is repaired BY the regeneration.
+    ratcheted: true — see the `viz-diagram-node-parity` slice above.
   - id: translation-freshness-skills
     workflow: .github/workflows/validate-skills.yml
     command: node scripts/check-translation-freshness.js --warn

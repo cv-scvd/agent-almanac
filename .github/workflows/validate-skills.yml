@@ -2,9 +2,49 @@ name: Validate Skills
 on:
   push:
     branches: [main]
-    paths: ['skills/**', 'i18n/**', 'agents/**', 'teams/**', 'guides/**', 'scripts/**', 'package.json', 'package-lock.json', 'debt-ratchet.yml', '.github/workflows/validate-skills.yml']
+    paths:
+      - 'skills/**'
+      - 'i18n/**'
+      - 'agents/**'
+      - 'teams/**'
+      - 'guides/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'debt-ratchet.yml'
+      - '.github/workflows/validate-skills.yml'
+      # The viz PUT annotations and the diagram generated from them (#590). This
+      # workflow is where `npm run ratchet` runs, and the ratchet is the only
+      # thing that can turn the warn-only node-parity gate red — so a PR that
+      # deletes an annotation must trigger THIS workflow or the slice is
+      # bypassable by construction. Deliberately not a bare `viz/**`: locales,
+      # icons and generated PNGs live there and none of them move the node set.
+      # Both a root-level and a nested glob per extension, because `viz/**/*.js`
+      # alone is not reliably matched against `viz/build-data.js`.
+      - 'viz/*.js'
+      - 'viz/**/*.js'
+      - 'viz/*.R'
+      - 'viz/**/*.R'
+      - 'viz/public/data/workflow.mmd'
   pull_request:
-    paths: ['skills/**', 'i18n/**', 'agents/**', 'teams/**', 'guides/**', 'scripts/**', 'package.json', 'package-lock.json', 'debt-ratchet.yml', '.github/workflows/validate-skills.yml']
+    paths:
+      - 'skills/**'
+      - 'i18n/**'
+      - 'agents/**'
+      - 'teams/**'
+      - 'guides/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'debt-ratchet.yml'
+      - '.github/workflows/validate-skills.yml'
+      # See the push block above: without these, deleting a PUT annotation is a
+      # change the ratchet never runs on.
+      - 'viz/*.js'
+      - 'viz/**/*.js'
+      - 'viz/*.R'
+      - 'viz/**/*.R'
+      - 'viz/public/data/workflow.mmd'
   workflow_dispatch:
 
 permissions:
@@ -172,7 +212,32 @@ jobs:
       - name: Check i18n code-fence parity (warn only until #477)
         run: node scripts/check-i18n-fence-parity.js --warn
 
-      # The debt ratchet (#591). BLOCKING, and it is the reason the step above can stay warn.
+      # Node-set parity between the viz PUT annotations and the committed
+      # `viz/public/data/workflow.mmd` (#590, dependency-free slice).
+      #
+      # It lives in THIS workflow rather than a viz-shaped one because the step
+      # below is what gives it teeth, and a warn-only gate whose ratchet runs in
+      # a different workflow is a ratchet that does not run on the changes it
+      # ratchets. The trigger paths at the top of this file were widened for the
+      # same reason.
+      #
+      # WARN-ONLY, and the reason is not a backlog this time — it is one node.
+      # `mode_campfire` is annotated in `viz/js/campfire.js` and has no node in
+      # the diagram, and the repair is to regenerate, which #601 says the
+      # lockfile cannot currently do. So the exit condition is #601, not a
+      # cleanup campaign. Meanwhile the single member is ratcheted below, which
+      # is what stops a second missing node from joining it in silence.
+      #
+      # Read what a clean run does NOT claim before quoting one: labels,
+      # node_type, edges and source-side annotation staleness are all invisible
+      # to it. `bind_modes` today reads "(2D/3D/Hive/Chord/Flow)" and Campfire is
+      # the sixth mode — that label is wrong in the source annotation, so a
+      # faithful regeneration reproduces it and this gate stays green through it.
+      - name: Check viz diagram node parity (warn only until #601)
+        run: node scripts/check-workflow-diagram-nodes.js --warn
+
+      # The debt ratchet (#591). BLOCKING, and it is the reason both warn-only steps above — the
+      # fence gate and the diagram node-parity gate — can stay warn.
       #
       # A warn-only gate cannot fail, so nothing stops its backlog from rising and "temporary
       # state with a named exit" has no mechanism behind it. This gives the gate teeth before the
