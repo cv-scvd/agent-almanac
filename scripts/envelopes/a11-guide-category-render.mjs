@@ -25,9 +25,21 @@
  *
  *     gate-envelope: 4 killed, 1 survived as documented of 5 case(s).
  *
+ * An adversarial review then found three further routes to #644's exact symptom — a guide in
+ * no generated index with every gate green — that the five cases above could not see. Each
+ * was reproduced by hand, then fixed, and cases 5-8 are those reproductions:
+ *
+ *     gate-envelope: 8 killed, 1 survived as documented of 9 case(s).
+ *
  * Note the first case. It is not a synthetic break — it restores `guides/README.md` to the
- * exact state `main` was in before this PR, which is what makes it evidence that A11 would
- * have caught #644 rather than merely that A11 can go red.
+ * state `main` was in before this PR, up to one trailing newline (the `find` below opens with
+ * a newline and takes the second of the two blank-line bytes; measured delta is 1 byte). That
+ * is what makes it evidence A11 would have caught #644, rather than merely that A11 can go red.
+ *
+ * ROT WARNING: cases below hardcode `total_guides: 35` and the full text of the investigation
+ * entry. Adding a guide changes both, and the runner will report INCONCLUSIVE rather than
+ * mutate the wrong site — correct, but silent until someone runs this, since the envelope is
+ * deliberately not in CI. Update the literals in the same commit that adds a guide.
  *
  * The `expect: null` case at the end pins A11's scope boundary as a measurement rather than
  * a prose claim: A11 is a CATEGORY-level assertion and does not notice a single guide missing
@@ -85,6 +97,58 @@ Five-phase methodology for legitimate integration research against a closed-sour
     find: 'total_guides: 35',
     replace: 'total_guides: 36',
     expect: 'guides disk=35 registry=36',
+  },
+  {
+    // A11a. The review's sharpest finding: an entry whose category is unusable drops the
+    // guide from BOTH indexes while every surviving category still renders, so a check on
+    // DISTINCT values finds nothing wrong. Reproduced by hand before the fix — the guide
+    // vanished from both files and the first version of A11 stayed green. The deleted-line
+    // and bare-`category:` variants take the same route and the same count check catches them.
+    label: 'a guide entry whose category is empty — invisible in both indexes, no value to check',
+    file: 'guides/_registry.yml',
+    find: '    category: investigation',
+    replace: '    category: ""',
+    expect: "usable 'category:' value(s)",
+  },
+  {
+    // A11b. The laundered state: the category renders correctly everywhere, but nothing
+    // declares it. Reached in practice by typo'ing a category and then following A11c's own
+    // remediation advice — measured, `npm run update-readmes` renders `## Investigatoin` with
+    // `*investigatoin*` as its description and turns every gate green. Mutating the block
+    // rather than the guide reaches that end state in one file, which is what the runner does.
+    label: 'a used category is not declared in the categories block',
+    file: 'guides/_registry.yml',
+    find: `  investigation:
+    description: Methodology guides for legitimate research, audit, and reverse-engineering of integration surfaces
+`,
+    replace: '',
+    expect: "is not declared in the 'categories:' block",
+  },
+  {
+    // A11c, the README.md half. The two generators share their ORDER and nothing else — the
+    // loop, the empty-skip and the rendering are separately duplicated. Measured: reverting
+    // `generateGuidesSection` alone to the old literal drops the guide from README.md while
+    // guides/README.md keeps it, and `check-readmes` and the old A11 both stay green. This
+    // case mutates the rendered file directly, because the runner does find/replace and never
+    // regenerates. Note the different markup: `**Label**` here, `## Label` in guides/README.md.
+    label: 'the investigation block absent from the ROOT README index',
+    file: 'README.md',
+    find: `
+**Investigation**
+
+- [Reverse-Engineering a CLI Harness](guides/reverse-engineering-a-cli-harness.md) — Five-phase methodology for legitimate integration research against a closed-source CLI harness — baseline, flag discovery, dark-launch detection, wire capture, redaction discipline`,
+    replace: '',
+    expect: "has no '**Investigation**' line in README.md",
+  },
+  {
+    // A12's path set. The count alone inherits A4/A5's blindness — a guide file on disk with
+    // `total_guides` bumped and no registry entry keeps both numbers equal and is in no index.
+    // A path pointing nowhere is the same disagreement in the reachable-by-find/replace form.
+    label: 'a registry path that no file on disk backs',
+    file: 'guides/_registry.yml',
+    find: '    path: guides/reverse-engineering-a-cli-harness.md',
+    replace: '    path: guides/does-not-exist.md',
+    expect: 'path set differs from guides/*.md on disk',
   },
   {
     // A11's scope boundary, measured. The guide's category heading survives, so A11 is

@@ -67,6 +67,14 @@ test('a repeated undeclared category is emitted once', () => {
   assert.equal(new Set(order).size, order.length);
 });
 
+test('a null entry in the guides list does not throw', () => {
+  // A YAML `- ` with nothing after it parses to null. Without the `guide &&` guard in
+  // guideCategoryOrder this throws and takes the whole generator down. Measured: deleting
+  // that guard left all other cases in this file green, so this is the test that kills it.
+  assert.deepEqual(guideCategoryOrder(block('workflow'), [null, { id: 'a', category: 'workflow' }]), ['workflow']);
+  assert.deepEqual(guideCategoryOrder(block('workflow'), [undefined]), ['workflow']);
+});
+
 test('guides with a missing or empty category contribute nothing', () => {
   const order = guideCategoryOrder(block('workflow'), [
     { id: 'a' }, { id: 'b', category: '' }, { id: 'c', category: null }, { id: 'd', category: 'workflow' },

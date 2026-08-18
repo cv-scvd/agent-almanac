@@ -609,61 +609,128 @@ fi
 # Derived from the guides' own `category:` fields, NOT from the `categories:` block keys.
 # The generator skips a category with no guides (`if (catGuides.length === 0) continue`),
 # so a declared-but-empty category legitimately renders nothing and a block-keyed rule
-# would fail on a correct tree. Reading the guide entries also covers the likelier drift:
-# a typo'd or undeclared `category:` value, which the #644 helper now renders but which
-# nothing else would notice.
+# would fail on a correct tree.
 #
-# Only `guides/README.md` is asserted. README.md's guides section is produced by the same
-# shared helper over the same list, so it carries that file's parity; naming one file
-# keeps the failure message pointing at one place to look.
+# FOUR sub-checks, because an adversarial review of the first version found three ways to
+# reproduce #644's exact symptom -- a guide in no generated index, every gate green -- that
+# render coverage alone cannot see. Each was reproduced before being fixed:
+#
+#   A11a  every guide entry yields a USABLE category. A deleted `category:` line, an empty
+#         `category: ""`, or a bare `category:` (no trailing space, so the pattern misses it)
+#         all drop the guide from BOTH indexes while leaving the surviving categories fully
+#         rendered -- so a distinct-value check finds nothing wrong. Measured: setting the
+#         investigation guide to `category: ""` removed it from both files and left the old
+#         A11 green. Compares a NON-uniqued count against the entry count for that reason.
+#   A11b  every used category is DECLARED in the `categories:` block. Without this the union
+#         in guideCategoryOrder() renders a typo'd category under a garbage heading, and
+#         A11c then finds that heading and passes. Worse, A11c's own remediation advice
+#         ("run npm run update-readmes") is the laundering step: measured, regenerating with
+#         `category: investigatoin` produces `## Investigatoin` / `*investigatoin*` and turns
+#         every gate green. The union stays -- rendering under a wrong heading beats not
+#         rendering -- but it is now reported rather than silently absorbed.
+#   A11c  every used category reaches BOTH rendered indexes. `guides/README.md` alone is not
+#         enough: the two generators share only the ORDER, while the loop, the empty-skip and
+#         the rendering are separately duplicated. Measured: reverting `generateGuidesSection`
+#         alone to the old literal drops the guide from README.md while guides/README.md keeps
+#         it, and `check-readmes` plus the old A11 both stay green. Note the two files use
+#         DIFFERENT markup -- `## Label` in guides/README.md, `**Label**` in README.md.
+#
+# `check-readmes` cannot own any of this, by construction rather than by omission: it
+# regenerates with the generator's own ordering and diffs the result against the file, so
+# generator and check agree perfectly about a guide neither renders. A gate that consults
+# the same source as its subject measures nothing. The comparison here is against the OTHER
+# side -- the registry -- which is why it belongs in this script.
 #
 # Fails CLOSED. An empty extraction is FAIL, never OK -- a pattern that drifts and matches
 # nothing is the vacuous pass this check exists to prevent (the A10 rule, applied here).
 #
-# The trailing `|| true` on the extraction is load-bearing, and is the difference between
-# failing closed LOUDLY and failing closed silently. Under `set -euo pipefail` a bare
-# `a11_cats=$(grep ... | ...)` aborts the entire script the moment grep matches nothing --
-# so the run goes red with no diagnostic, the zero-check below is dead code, and every
-# check after this line never executes. That is the exact shape the B13 comment at the foot
-# of this script records; the envelope's third case reported WRONG-RED on the first version
-# of A11 for precisely this reason, which is what the case is for.
+# Every extraction below carries `|| true`, and that is load-bearing rather than noise. Under
+# `set -euo pipefail` a bare `x=$(grep ... )` aborts the ENTIRE script the moment grep matches
+# nothing -- red with no diagnostic, the zero-check dead, and every later check skipped. The
+# envelope reported WRONG-RED on the first version of A11 for exactly this. `grep -c` is the
+# sneakiest member of the family: it prints `0` and exits 1, so a count extraction aborts even
+# though the number you wanted was produced. Tracked for the whole script as #647.
 echo "--- A11: Guide category render coverage ---"
 a11_fail=0
-a11_cats=$(grep -E '^    category: ' guides/_registry.yml | tr -d '\r' \
-  | sed -E 's/^    category: *//' | sed -E 's/^"(.*)"$/\1/' | sed '/^$/d' | sort -u || true)
-a11_count=$(printf '%s\n' "$a11_cats" | sed '/^$/d' | wc -l)
-if [ "$a11_count" -eq 0 ]; then
+# Non-uniqued, empties dropped: this is a per-ENTRY list, not a set (A11a needs the count).
+a11_used=$(grep -E '^    category: ' guides/_registry.yml | tr -d '\r' \
+  | sed -E 's/^    category: *//' | sed -E 's/^"(.*)"$/\1/' | sed -E "s/^'(.*)'$/\1/" \
+  | sed '/^[[:space:]]*$/d' || true)
+a11_used_count=$(printf '%s\n' "$a11_used" | sed '/^[[:space:]]*$/d' | wc -l)
+a11_entries=$(grep -c '^  - id: ' guides/_registry.yml || true)
+a11_declared=$(sed -n '/^categories:$/,/^guides:$/p' guides/_registry.yml | tr -d '\r' \
+  | grep -E '^  [a-z][a-z0-9_-]*:$' | sed 's/[: ]//g' || true)
+a11_cats=$(printf '%s\n' "$a11_used" | sed '/^[[:space:]]*$/d' | sort -u || true)
+
+# A11a: no guide entry silently lacks a usable category.
+if [ "$a11_used_count" -ne "$a11_entries" ]; then
+  echo "FAIL: $a11_entries guide entries but only $a11_used_count usable 'category:' value(s)"
+  echo "      (an entry with a deleted, empty or valueless category renders in NO index, and"
+  echo "       the categories that remain still render, so nothing else here would notice)"
+  failed=1; a11_fail=1
+fi
+
+if [ "$a11_used_count" -eq 0 ]; then
   echo "FAIL: A11 extracted 0 guide categories from guides/_registry.yml -- pattern drift, not a clean tree"
-  failed=1
-  a11_fail=1
+  failed=1; a11_fail=1
 else
   while IFS= read -r guide_cat; do
     [ -z "$guide_cat" ] && continue
-    # Capitalise the first letter only: the rule guideCategoryLabel() applies.
-    heading="## $(printf '%s' "${guide_cat:0:1}" | tr '[:lower:]' '[:upper:]')${guide_cat:1}"
-    if ! grep -qxF "$heading" guides/README.md; then
-      echo "FAIL: guide category '$guide_cat' has no '$heading' heading in guides/README.md"
+    # A11b: used must be declared. Additive with A11c -- both report, neither short-circuits,
+    # so the envelope's typo case keeps matching the A11c message it expects.
+    if ! printf '%s\n' "$a11_declared" | grep -qxF "$guide_cat"; then
+      echo "FAIL: guide category '$guide_cat' is not declared in the 'categories:' block of guides/_registry.yml"
+      echo "      (it still renders, under a heading with no description -- do NOT fix this by"
+      echo "       regenerating, which makes the garbage heading real and turns every gate green)"
+      failed=1; a11_fail=1
+    fi
+    # A11c: rendered in both indexes. Capitalise the first letter only -- guideCategoryLabel().
+    label="$(printf '%s' "${guide_cat:0:1}" | tr '[:lower:]' '[:upper:]')${guide_cat:1}"
+    if ! grep -qxF "## $label" guides/README.md; then
+      echo "FAIL: guide category '$guide_cat' has no '## $label' heading in guides/README.md"
       echo "      (a guide in that category renders in no generated index; run 'npm run update-readmes')"
-      failed=1
-      a11_fail=1
+      failed=1; a11_fail=1
+    fi
+    if ! grep -qxF "**$label**" README.md; then
+      echo "FAIL: guide category '$guide_cat' has no '**$label**' line in README.md"
+      echo "      (the two indexes share only their ORDER; each renders separately)"
+      failed=1; a11_fail=1
     fi
   done <<< "$a11_cats"
 fi
-[ "$a11_fail" -eq 0 ] && echo "OK: all $a11_count guide categories render in guides/README.md"
+[ "$a11_fail" -eq 0 ] && echo "OK: $a11_used_count guide entries, $(printf '%s\n' "$a11_cats" | wc -l) declared categories, all rendered in both indexes"
 
-# A12: Guide registry count (#644)
-# Mirrors A4/A5. `total_guides` was the one registry total no validator compared to disk --
-# `total_skills` is checked by validate-skills.yml against a find-count, agents and teams by
-# A4 and A5 above, and guides by nothing. Decorative totals drift silently.
-echo "--- A12: Guide registry count ---"
+# A12: Guide registry vs disk (#644)
+# Mirrors A4/A5 on the total, and then goes past them. `total_guides` was the one registry
+# total no validator compared to disk -- `total_skills` is checked by validate-skills.yml
+# against a find-count, agents and teams by A4/A5, guides by nothing.
+#
+# The PATH SET is checked too, because the count alone inherits A4/A5's blindness: a guide
+# file added with valid frontmatter and `total_guides` bumped, but NO registry entry, keeps
+# both numbers equal and is in no index -- one more route to the #644 symptom with everything
+# green. A set comparison also catches the swap a count cannot see (one file added, one
+# removed). A4/A5 have the same gap against their own registries; that is #648, not this PR.
+echo "--- A12: Guide registry vs disk ---"
+a12_fail=0
 disk_count=$(find guides -maxdepth 1 -name '*.md' -not -name '_template.md' -not -name 'README.md' | wc -l)
 reg_count=$(grep 'total_guides:' guides/_registry.yml | tr -d '\r' | awk '{print $2}')
 if [ "$disk_count" != "$reg_count" ]; then
-  echo "FAIL: guides disk=$disk_count registry=$reg_count"
-  failed=1
-else
-  echo "OK: $disk_count guides on disk match registry"
+  echo "FAIL: guides disk=$disk_count total_guides=$reg_count"
+  failed=1; a12_fail=1
 fi
+a12_reg_paths=$(grep -E '^    path: ' guides/_registry.yml | tr -d '\r' \
+  | sed -E 's/^    path: *//' | sed -E 's/^"(.*)"$/\1/' | sort -u || true)
+a12_disk_paths=$(find guides -maxdepth 1 -name '*.md' -not -name '_template.md' -not -name 'README.md' | sort || true)
+if [ -z "$a12_reg_paths" ]; then
+  echo "FAIL: A12 extracted 0 'path:' values from guides/_registry.yml -- pattern drift, not a clean tree"
+  failed=1; a12_fail=1
+elif [ "$a12_reg_paths" != "$a12_disk_paths" ]; then
+  echo "FAIL: guides/_registry.yml path set differs from guides/*.md on disk"
+  comm -3 <(printf '%s\n' "$a12_reg_paths") <(printf '%s\n' "$a12_disk_paths") \
+    | sed 's/^\t/      only on disk: /; s/^\([^ ]\)/      only in registry: \1/'
+  failed=1; a12_fail=1
+fi
+[ "$a12_fail" -eq 0 ] && echo "OK: $disk_count guides on disk match total_guides and the registry path set"
 
 echo ""
 echo "=== Category B: Structural Integrity ==="
