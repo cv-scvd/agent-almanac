@@ -57,7 +57,7 @@ Guides, skills, agents, and teams are cross-referenced. The parent project `CLAU
 
 - SKILL.md files must stay under 500 lines; extract extended examples to `references/EXAMPLES.md` using the progressive disclosure pattern
 - The `references/` subdirectory pattern follows [agentskills.io progressive disclosure](https://agentskills.io/specification) — large code blocks (>15 lines), full configs, and multi-variant examples go in `references/EXAMPLES.md` with cross-references from the main SKILL.md
-- CI enforces validation on all PRs touching `skills/` (`.github/workflows/validate-skills.yml`): frontmatter fields, required sections, line counts, and registry sync
+- CI enforces validation on every PR (`.github/workflows/validate-skills.yml`): frontmatter fields, required sections, line counts, and registry sync. It ran only on PRs touching `skills/` until #641 removed the path filter so the job could become a required status check — a required check that does not report never goes green, it waits forever
 - CI also runs a repo-wide line-endings gate (`.github/workflows/validate-line-endings.yml`) that fails any PR whose committed blobs contain CRLF. Check locally with `npm run validate:line-endings` (reads the index, non-mutating). Repair: `git add --renormalize .` — and if a new file type is flagged, declare it in `.gitattributes` as `text eol=lf`
 - Changes under `scripts/` run `npm run test:scripts` (`.github/workflows/ci-scripts.yml`), the node:test suite in `scripts/test/`. Its `pretest:scripts` hook fails when the suite is empty — `node --test` exits 0 reporting `tests 0` when its glob matches nothing, so without that hook a rename or deletion leaves the job green having run nothing (#486)
 - To validate locally before committing:
@@ -323,6 +323,53 @@ Runs **warn-only** in CI until the backlog clears (#477), then flips to blocking
 Warn is a temporary state with a named exit, not the design. Quote the current
 count from the checker rather than from here — it was 1,307 at introduction and
 drops with each batch.
+
+**"Blocking" means the job exits non-zero. Whether that refuses a merge is a
+separate fact, and the two were conflated everywhere until #641.** Merge
+refusal is branch-protection configuration, not anything a script can assert
+about itself. Since #641 the ruleset `require-core-checks` requires five
+contexts — `line-endings`, `integrity`, `skills`, `scripts-test`, `cli-test` —
+so a red one of those does refuse the merge. Every other *gate* in
+`.github/workflows/` is job-blocking only: `readmes`, `tests`, `translations`,
+`content-style`, `yaml-fences`, `banned-invocations`, `content-security`,
+`dreams` and `locales-json` all go red visibly on a PR and none stops a merge.
+Three further jobs are neither, because they never report on a PR at all —
+`deploy`, `release` and `update` trigger on push-to-main or on a tag. And the
+CodeQL analyses are not jobs in `.github/workflows/` in the first place: default
+setup is server-managed and commits no workflow YAML, which is why grepping that
+directory for them finds nothing (`guides/protecting-github-repositories.md`).
+That is 17 job ids across 15 files, five required and twelve not.
+
+The ratchet runs inside `skills`, so it is merge-blocking; the fence gate beside
+it runs `--warn`, so its *findings* cannot redden the job — which is the whole
+reason the ratchet exists. Its *refusals* still can, and the distinction is
+deliberate: `assertNotShallow` hard-exits 1 on a shallow clone even for a
+`--warn` caller, on the stated argument that a warn-only run there would not warn
+less, it would lie. "Warn-only" describes what a gate does with what it finds,
+never what it does when it cannot measure at all.
+
+Two constraints that decide what *can* be required, both learned the expensive
+way. A **path-filtered** workflow cannot be: it does not report on PRs outside
+its filter, and a required check that never reports sits on "Expected" and
+refuses the merge forever — so the five required workflows carry no `paths:`.
+And the job id **is** the context name, so two jobs sharing an id cannot be
+required separately; four workflows were all named `validate` until #641.
+
+`pjt222` remains a `bypass_actors` entry with `bypass_mode: always`, so the
+required checks bind everyone except the maintainer — deliberate for a
+single-maintainer repo, and the reason "required" here means "refuses an
+accidental or agent-driven merge", not "refuses every merge".
+
+Read the live state before quoting any of this — and note it takes two calls,
+because the branch-rules endpoint returns the rules in effect *without* their
+bypass lists. It answers which rules bind `main`; it cannot answer who bypasses
+them:
+
+```bash
+gh api repos/pjt222/agent-almanac/rules/branches/main                  # which rules bind main
+gh api repos/pjt222/agent-almanac/rulesets --jq '.[] | "\(.id) \(.name)"'
+gh api repos/pjt222/agent-almanac/rulesets/<id> --jq '.bypass_actors'  # ... and who bypasses them
+```
 
 Warn-only does not mean unbounded, though it did until #591. The gate's
 tag-structure findings are ratcheted in `debt-ratchet.yml` and `npm run ratchet`
