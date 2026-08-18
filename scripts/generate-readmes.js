@@ -17,6 +17,7 @@ import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import * as yaml from 'js-yaml';
 import { CONTENT_TYPES } from './lib/content-types.js';
+import { guideCategoryOrder, guideCategoryLabel } from './lib/guide-categories.js';
 import { applySections, renderTranslationsTable, renderLocaleTable } from './lib/readme-sections.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -279,20 +280,14 @@ When adding or removing skills, agents, teams, or guides, the corresponding regi
 // ── Fully generated files ────────────────────────────────────────
 
 function generateGuidesSection() {
-  const categoryOrder = ['workflow', 'infrastructure', 'reference', 'design'];
-  const categoryLabels = {
-    workflow: 'Workflow',
-    infrastructure: 'Infrastructure',
-    reference: 'Reference',
-    design: 'Design',
-  };
+  const categoryOrder = guideCategoryOrder(guideCategories, guides);
   const lines = [];
 
   for (const catId of categoryOrder) {
     const catGuides = guides.filter((g) => g.category === catId);
     if (catGuides.length === 0) continue;
 
-    lines.push(`**${categoryLabels[catId]}**`);
+    lines.push(`**${guideCategoryLabel(catId)}**`);
     lines.push('');
     for (const guide of catGuides) {
       lines.push(
@@ -309,7 +304,7 @@ function generateGuidesSection() {
 }
 
 function generateGuidesReadme() {
-  const categoryOrder = ['workflow', 'infrastructure', 'reference', 'design'];
+  const categoryOrder = guideCategoryOrder(guideCategories, guides);
   const lines = [
     '# Guides',
     '',
@@ -323,7 +318,7 @@ function generateGuidesReadme() {
     const catDesc = guideCategories[catId]
       ? guideCategories[catId].description
       : catId;
-    const catName = catId[0].toUpperCase() + catId.slice(1);
+    const catName = guideCategoryLabel(catId);
     lines.push(`## ${catName}`);
     lines.push('');
     lines.push(`*${catDesc}*`);

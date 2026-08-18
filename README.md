@@ -182,6 +182,10 @@ New here? Start with [Understanding the System](guides/understanding-the-system.
 - [Epigenetics-Inspired Activation Control](guides/epigenetics-activation-control.md) — Runtime activation profiles controlling which agents, skills, and teams are expressed, grounded in molecular epigenetics
 - [Understanding the Synoptic Mind](guides/understanding-the-synoptic-mind.md) — The adaptic concept — panoramic synthesis through simultaneous multi-domain awareness, theoretical foundations, and practical use
 - [Agent Memory Hygiene](guides/agent-memory-hygiene.md) — Three-layer model — weights, retrieval, behavior — for diagnosing what kind of forgetting a memory problem actually needs and applying the right tool
+
+**Investigation**
+
+- [Reverse-Engineering a CLI Harness](guides/reverse-engineering-a-cli-harness.md) — Five-phase methodology for legitimate integration research against a closed-source CLI harness — baseline, flag discovery, dark-launch detection, wire capture, redaction discipline
 <!-- AUTO:END:guides -->
 
 ## Translations

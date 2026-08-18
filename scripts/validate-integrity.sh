@@ -591,6 +591,72 @@ fi
 
 [ "$a10_fail" -eq 0 ] && echo "OK: $((a10_full + a10_flatsites + a10_checked_find * 2)) shell/YAML content-type list(s) agree with CONTENT_TYPES ($a10_loops_full full loop(s), $a10_flatsites flat loop(s), $((a10_full - a10_loops_full)) full surface(s), $((a10_checked_find * 2)) find pathspec(s))"
 
+# A11: Every guide category reaches the rendered index (#644)
+#
+# `generate-readmes.js` rendered its two guide indexes from a hardcoded four-category
+# literal while the registry carried five, so the one `investigation` guide appeared in
+# no generated index at all. #644 replaced both literals with `lib/guide-categories.js`,
+# which means the two indexes can no longer disagree with EACH OTHER -- and that is the
+# whole of what sharing buys. Both call sites could still be wrong together, which is
+# precisely the shape that shipped.
+#
+# `check-readmes` cannot own this assertion, by construction rather than by omission: it
+# regenerates with the generator's own ordering and diffs the result against the file, so
+# generator and check agree perfectly about a category neither renders. A gate that
+# consults the same source as its subject measures nothing. So the comparison here is
+# against the OTHER side -- the registry's guide entries -- and it belongs in this script.
+#
+# Derived from the guides' own `category:` fields, NOT from the `categories:` block keys.
+# The generator skips a category with no guides (`if (catGuides.length === 0) continue`),
+# so a declared-but-empty category legitimately renders nothing and a block-keyed rule
+# would fail on a correct tree. Reading the guide entries also covers the likelier drift:
+# a typo'd or undeclared `category:` value, which the #644 helper now renders but which
+# nothing else would notice.
+#
+# Only `guides/README.md` is asserted. README.md's guides section is produced by the same
+# shared helper over the same list, so it carries that file's parity; naming one file
+# keeps the failure message pointing at one place to look.
+#
+# Fails CLOSED. An empty extraction is FAIL, never OK -- a pattern that drifts and matches
+# nothing is the vacuous pass this check exists to prevent (the A10 rule, applied here).
+echo "--- A11: Guide category render coverage ---"
+a11_fail=0
+a11_cats=$(grep -E '^    category: ' guides/_registry.yml | tr -d '\r' \
+  | sed -E 's/^    category: *//' | sed -E 's/^"(.*)"$/\1/' | sed '/^$/d' | sort -u)
+a11_count=$(printf '%s\n' "$a11_cats" | sed '/^$/d' | wc -l)
+if [ "$a11_count" -eq 0 ]; then
+  echo "FAIL: A11 extracted 0 guide categories from guides/_registry.yml -- pattern drift, not a clean tree"
+  failed=1
+  a11_fail=1
+else
+  while IFS= read -r cat; do
+    [ -z "$cat" ] && continue
+    # Capitalise the first letter only: the rule guideCategoryLabel() applies.
+    heading="## $(printf '%s' "${cat:0:1}" | tr '[:lower:]' '[:upper:]')${cat:1}"
+    if ! grep -qxF "$heading" guides/README.md; then
+      echo "FAIL: guide category '$cat' has no '$heading' heading in guides/README.md"
+      echo "      (a guide in that category renders in no generated index; run 'npm run update-readmes')"
+      failed=1
+      a11_fail=1
+    fi
+  done <<< "$a11_cats"
+fi
+[ "$a11_fail" -eq 0 ] && echo "OK: all $a11_count guide categories render in guides/README.md"
+
+# A12: Guide registry count (#644)
+# Mirrors A4/A5. `total_guides` was the one registry total no validator compared to disk --
+# `total_skills` is checked by validate-skills.yml against a find-count, agents and teams by
+# A4 and A5 above, and guides by nothing. Decorative totals drift silently.
+echo "--- A12: Guide registry count ---"
+disk_count=$(find guides -maxdepth 1 -name '*.md' -not -name '_template.md' -not -name 'README.md' | wc -l)
+reg_count=$(grep 'total_guides:' guides/_registry.yml | tr -d '\r' | awk '{print $2}')
+if [ "$disk_count" != "$reg_count" ]; then
+  echo "FAIL: guides disk=$disk_count registry=$reg_count"
+  failed=1
+else
+  echo "OK: $disk_count guides on disk match registry"
+fi
+
 echo ""
 echo "=== Category B: Structural Integrity ==="
 
