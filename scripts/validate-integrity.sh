@@ -8,6 +8,85 @@ set -euo pipefail
 failed=0
 warn_count=0
 
+# ── Shared: read one event's trigger paths out of a workflow (#641) ──────────────
+#
+# Two checks need this and each had its own `sed` range: A8c over validate-readmes.yml and
+# A10d over validate-integrity.yml. Both ranges were terminated by whatever key happened to
+# come next in that file (`schedule:` in one, `workflow_dispatch:` in the other), so each was
+# silently coupled to the unrelated ordering of its target's `on:` block.
+#
+# THREE outcomes, and keeping them distinct is the whole point:
+#
+#   __UNIVERSAL__   the event block exists and declares no `paths:` key, so the workflow runs
+#                   on every change. Coverage is total -- strictly stronger than any list.
+#   path entries    a `paths:` filter is present; the caller decides what it must cover.
+#   non-zero exit   the event block is absent (1), or `paths:` is present and yields nothing (2).
+#
+# The middle failure state is the one that matters. Folding "parse produced nothing" into
+# "universal" would convert a drifted pattern into a silent all-clear -- the vacuous pass this
+# family of checks exists to prevent, and the exact shape that shipped twice in #646.
+#
+# Both YAML sequence forms are handled because both are in use here: block form in
+# validate-integrity.yml, flow form (`paths: ['a', 'b']`) in validate-tests.yml. The previous
+# `sed` parses matched only block form, so a legal retag to flow form would have read as empty.
+wf_event_paths() { # <workflow file> <event key>
+  local file="$1" ev="$2" block entries
+  block=$(awk -v ev="$ev" '
+    /^  [A-Za-z_-]+:/ {
+      key = $0; sub(/^  /, "", key); sub(/:.*$/, "", key)
+      inev = (key == ev)
+      if (inev) { found = 1 }
+      next
+    }
+    inev { print }
+    END { if (!found) exit 9 }
+  ' "$file") || return 1
+
+  # UNIVERSAL is the strongest verdict this function can return, so it is reached only on
+  # positive evidence that the event carries no filtering key -- never as the fallback for
+  # "nothing matched my pattern". The first version decided it by the ABSENCE of `^    paths:`,
+  # which made every shape the parser did not understand read as "runs on everything":
+  # `paths-ignore:` (a real filter, and the `-` defeats the pattern) and a `paths:` key at any
+  # other indent both returned __UNIVERSAL__ with rc 0. Measured, before this guard existed.
+  #
+  # That is the same default-open defect as folding a broken parse into a pass, aimed at the one
+  # verdict where it does most damage: a `paths-ignore:` added to a REQUIRED workflow would stop
+  # it reporting on the excluded PRs -- hanging them on "Expected" forever, the exact #641
+  # symptom -- while A10d printed "carries no paths filter, every input covered".
+  #
+  # rc 3 therefore means "this event is filtered by something I could not fully read". Fail
+  # closed and name it, rather than guessing in the permissive direction.
+  if printf '%s\n' "$block" | grep -qE '^[[:space:]]+paths-ignore:'; then
+    return 3
+  fi
+  if ! printf '%s\n' "$block" | grep -qE '^    paths:'; then
+    if printf '%s\n' "$block" | grep -qE '^[[:space:]]+paths:'; then
+      return 3
+    fi
+    printf '__UNIVERSAL__\n'
+    return 0
+  fi
+
+  entries=$(printf '%s\n' "$block" \
+    | awk '
+        /^    paths:[[:space:]]*\[/ {
+          line = $0
+          sub(/^[^[]*\[/, "", line); sub(/\].*$/, "", line)
+          n = split(line, parts, ",")
+          for (i = 1; i <= n; i++) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", parts[i]); if (parts[i] != "") print parts[i] }
+          next
+        }
+        /^    paths:/ { inp = 1; next }
+        inp && /^      - / { print; next }
+        inp && /^    [A-Za-z_-]+:/ { inp = 0 }
+      ' \
+    | sed -E "s/^      - //; s/^['\"]//; s/['\"]$//" \
+    | sed '/^$/d' || true)
+
+  [ -z "$entries" ] && return 2
+  printf '%s\n' "$entries"
+}
+
 echo "=== Category A: Static Validation ==="
 
 # A1: Validate agent frontmatter
@@ -308,25 +387,39 @@ else
     echo "FAIL: $a8_vr is missing, so the generated-README staleness gate cannot run (#563)"
     failed=1; a8_fail=1
   else
-    # Each `paths:` block, flattened to its quoted entries, one block per line.
-    a8_vr_push=$(sed -n "/^  push:/,/^  pull_request:/p" "$a8_vr" | grep -oE "^      - '[^']+'" | sed -E "s/^      - '//; s/'$//" | sort -u)
-    a8_vr_pr=$(sed -n "/^  pull_request:/,/^  schedule:/p" "$a8_vr" | grep -oE "^      - '[^']+'" | sed -E "s/^      - '//; s/'$//" | sort -u)
-    if [ -z "$a8_vr_push" ] || [ -z "$a8_vr_pr" ]; then
-      echo "FAIL: A8c could not parse the paths blocks of $a8_vr (parse broke, not a pass)"
+    # Read through the shared helper, which distinguishes "no filter" from "parse broke".
+    # An unfiltered event gates every path there is, which satisfies #563's requirement more
+    # strongly than any list can -- so it is accepted, and the per-output containment below is
+    # skipped for that event rather than being run against an empty list and passing vacuously.
+    # `|| rc=$?`, never `; rc=$?`. A bare assignment carries its command's exit status, so
+    # under `set -euo pipefail` a non-zero return ABORTS the script at this line -- red with no
+    # diagnostic and every later check skipped. That is the #647 class, and the first version of
+    # this very fix shipped it: the envelope reported WRONG-RED because the FAIL below never ran.
+    a8_vr_push_rc=0; a8_vr_push=$(wf_event_paths "$a8_vr" push) || a8_vr_push_rc=$?
+    a8_vr_pr_rc=0; a8_vr_pr=$(wf_event_paths "$a8_vr" pull_request) || a8_vr_pr_rc=$?
+    if [ "$a8_vr_push_rc" -ne 0 ] || [ "$a8_vr_pr_rc" -ne 0 ]; then
+      echo "FAIL: A8c could not parse the paths blocks of $a8_vr (rc push=$a8_vr_push_rc pr=$a8_vr_pr_rc; parse broke or a paths: key is empty -- not a pass)"
       failed=1; a8_fail=1
     else
+      # Both events must gate the same set, or the gate fires on one event and not the other.
+      # Two universals agree; a universal opposite a list does not, and that asymmetry is worth
+      # reporting rather than silently treating the superset as good enough.
       if [ "$a8_vr_push" != "$a8_vr_pr" ]; then
         echo "FAIL: $a8_vr push and pull_request paths differ -- the gate would fire on one event and not the other:"
         diff <(printf '%s\n' "$a8_vr_push") <(printf '%s\n' "$a8_vr_pr") | sed 's/^/  /' || true
         failed=1; a8_fail=1
       fi
-      while IFS= read -r f; do
-        [ -z "$f" ] && continue
-        if ! printf '%s\n' "$a8_vr_push" | grep -Fxq "$f"; then
-          echo "FAIL: MANAGED output '$f' is missing from $a8_vr paths (hand edits to it would not be gated -- #563)"
-          failed=1; a8_fail=1
-        fi
-      done <<< "$a8_readmes"
+      if [ "$a8_vr_push" = "__UNIVERSAL__" ]; then
+        echo "  A8c: $a8_vr carries no paths filter -- it runs on every change, so every MANAGED output is gated by construction"
+      else
+        while IFS= read -r f; do
+          [ -z "$f" ] && continue
+          if ! printf '%s\n' "$a8_vr_push" | grep -Fxq "$f"; then
+            echo "FAIL: MANAGED output '$f' is missing from $a8_vr paths (hand edits to it would not be gated -- #563)"
+            failed=1; a8_fail=1
+          fi
+        done <<< "$a8_readmes"
+      fi
     fi
   fi
 
@@ -549,8 +642,8 @@ else
   #
   # The source list below is hardcoded and inherently so: it is the set of files A10 opens, which
   # only A10 knows. Adding a read without adding it here is the one drift this cannot see.
-  a10_paths=$(sed -n '/^  pull_request:/,/^  workflow_dispatch:/p' .github/workflows/validate-integrity.yml \
-    | grep -E '^      - ' | sed -E "s/^      - //; s/^['\"]//; s/['\"]\$//" || true)
+  # `|| rc=$?` for the reason spelled out at A8c: a bare assignment would abort the script here.
+  a10_paths_rc=0; a10_paths=$(wf_event_paths .github/workflows/validate-integrity.yml pull_request) || a10_paths_rc=$?
   a10_covered() { # <repo-relative path> -> 0 when some pull_request path entry matches it
     while IFS= read -r a10_pat; do
       [ -z "$a10_pat" ] && continue
@@ -561,9 +654,18 @@ else
     done <<< "$a10_paths"
     return 1
   }
-  if [ -z "$a10_paths" ]; then
-    echo "FAIL: A10 could not read validate-integrity.yml's pull_request paths -- trigger coverage UNCHECKED"
+  if [ "$a10_paths_rc" -ne 0 ]; then
+    # rc 1 = no pull_request block at all; rc 2 = a paths: key that yielded nothing. Neither is
+    # "runs on everything": an unreadable filter leaves trigger coverage UNKNOWN, and reporting
+    # unknown as universal is how a drifted pattern becomes a silent all-clear.
+    echo "FAIL: A10 could not read validate-integrity.yml's pull_request paths (rc=$a10_paths_rc) -- trigger coverage UNCHECKED"
     failed=1; a10_fail=1
+  elif [ "$a10_paths" = "__UNIVERSAL__" ]; then
+    # No paths filter: the workflow runs on every change, so every input A10 reads is covered.
+    # This is the state #641 put it in so the job could become a required status check -- a
+    # path-filtered workflow does not report on PRs outside its filter, and a required check
+    # that never reports leaves the PR on "Expected" and refuses the merge forever.
+    echo "  A10d: validate-integrity.yml carries no paths filter -- it runs on every change, so every A10 input is covered"
   else
     for a10_src in scripts/lib/content-types.js scripts/lib/i18n-targets.js \
                    scripts/validate-integrity.sh scripts/translate-content.sh \
