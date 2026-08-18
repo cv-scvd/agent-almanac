@@ -40,9 +40,16 @@
  *     [KILLED]   total_guides drifts from the guides on disk
  *                FAIL: guides disk=35 total_guides=36
  *
- * so the standing tally is 8 killed, 1 survived as documented of 9. Recorded as two runs rather
- * than restated as one clean nine, because the WRONG-RED is the useful part: a case asserting
- * only "the gate went red" would have passed and told nobody the message had moved.
+ * Recorded as two runs rather than restated as one clean nine, because the WRONG-RED is the
+ * useful part: a case asserting only "the gate went red" would have passed and told nobody the
+ * message had moved.
+ *
+ * A verification pass then found that A12's own two extractions carried no `|| true` (round 1
+ * lines copied from A4/A5), and that the co-deletion route — a whole entry removed, every count
+ * still agreeing — was guarded by the path set alone and tested in one direction only. Case 5
+ * is that missing direction. Full run after both fixes:
+ *
+ *     gate-envelope: 9 killed, 1 survived as documented of 10 case(s).
  *
  * Note the first case. It is not a synthetic break — it restores `guides/README.md` to the
  * state `main` was in before this PR, up to one trailing newline (the `find` below opens with
