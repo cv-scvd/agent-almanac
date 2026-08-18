@@ -715,7 +715,12 @@ else
     # in the file stand in for the generated one. Measured today: the file's only whole-line
     # bold entries are the five category labels, all inside the block, so this changes nothing
     # now and closes the coincidence later.
-    if ! printf '%s' "$a11_readme_block" | grep -qxF "**$label**"; then
+    # `printf '%s\n'`, not `'%s'`: command substitution strips the block's trailing newline, so
+    # `'%s'` leaves the last line unterminated. Both greps this repo runs -- ugrep locally, GNU
+    # grep in CI -- match an incomplete last line with `-qxF`, verified on both, so this is not
+    # a live bug. It is one byte to stop depending on that semantic, and the dependence would
+    # be invisible in situ: the block's last line is always the END marker, never a label.
+    if ! printf '%s\n' "$a11_readme_block" | grep -qxF "**$label**"; then
       echo "FAIL: guide category '$guide_cat' has no '**$label**' line in README.md's AUTO:guides block"
       echo "      (the two indexes share only their ORDER; each renders separately)"
       failed=1; a11_fail=1

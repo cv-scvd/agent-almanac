@@ -27,7 +27,7 @@
  *
  * An adversarial review then found three further routes to #644's exact symptom — a guide in
  * no generated index with every gate green — that the five cases above could not see. Each
- * was reproduced by hand, then fixed, and cases 5-8 are those reproductions. The nine-case run
+ * was reproduced by hand, then fixed, and cases 6-9 are those reproductions. The nine-case run
  * reported:
  *
  *     gate-envelope: 7 killed, 1 survived as documented, 1 inconclusive/invalid of 9 case(s).
@@ -129,7 +129,7 @@ Five-phase methodology for legitimate integration research against a closed-sour
     // 34 in lockstep and stay equal. `total_guides` and the disk count are both untouched at
     // 35. Measured on this exact mutation: A11a green, count green, and the path set is the
     // ONLY red left standing. It is therefore the sole control over this route, and until now
-    // the only direction it was tested in was the other one -- case 8 points a path at nothing,
+    // the only direction it was tested in was the other one -- case 9 points a path at nothing,
     // while this points nothing at a file. A control that survives alone is a control nobody
     // has checked.
     label: 'a whole registry entry deleted — every count still agrees, only the path set differs',
