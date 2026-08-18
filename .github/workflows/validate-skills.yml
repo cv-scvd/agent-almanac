@@ -1,57 +1,20 @@
 name: Validate Skills
 on:
+  # No `paths:` filter, deliberately (#641): a REQUIRED status check that does not run sits on
+  # "Expected — waiting for status to be reported" and refuses the merge forever, so only an
+  # unfiltered workflow can be required.
   push:
     branches: [main]
-    paths:
-      - 'skills/**'
-      - 'i18n/**'
-      - 'agents/**'
-      - 'teams/**'
-      - 'guides/**'
-      - 'scripts/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'debt-ratchet.yml'
-      - '.github/workflows/validate-skills.yml'
-      # The viz PUT annotations and the diagram generated from them (#590). This
-      # workflow is where `npm run ratchet` runs, and the ratchet is the only
-      # thing that can turn the warn-only node-parity gate red — so a PR that
-      # deletes an annotation must trigger THIS workflow or the slice is
-      # bypassable by construction. Deliberately not a bare `viz/**`: locales,
-      # icons and generated PNGs live there and none of them move the node set.
-      # Both a root-level and a nested glob per extension, because `viz/**/*.js`
-      # alone is not reliably matched against `viz/build-data.js`.
-      - 'viz/*.js'
-      - 'viz/**/*.js'
-      - 'viz/*.R'
-      - 'viz/**/*.R'
-      - 'viz/public/data/workflow.mmd'
   pull_request:
-    paths:
-      - 'skills/**'
-      - 'i18n/**'
-      - 'agents/**'
-      - 'teams/**'
-      - 'guides/**'
-      - 'scripts/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'debt-ratchet.yml'
-      - '.github/workflows/validate-skills.yml'
-      # See the push block above: without these, deleting a PUT annotation is a
-      # change the ratchet never runs on.
-      - 'viz/*.js'
-      - 'viz/**/*.js'
-      - 'viz/*.R'
-      - 'viz/**/*.R'
-      - 'viz/public/data/workflow.mmd'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  validate:
+  # Job id is the status-check CONTEXT name. It was `validate`, shared by four workflows, so
+  # none of them could be required individually (#641).
+  skills:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

@@ -1,68 +1,31 @@
 name: Validate Integrity
 on:
+  # No `paths:` filter, deliberately (#641). This job is a REQUIRED status check, and a
+  # required check that does not run is not "skipped" -- it sits on "Expected — waiting for
+  # status to be reported" and refuses the merge forever. Only an unfiltered workflow can be
+  # required, which is why `validate-line-endings.yml` was the only one that ever worked as one.
+  #
+  # The filter this replaces was a curated 19-entry list whose every addition was argued (see
+  # git history for the rationale of each). Every one of those arguments was a special case of
+  # "this job must run when X changes"; running on everything is the general case, and it also
+  # retires the whole class of bug where an input is added to a check and nobody adds its path
+  # here. A10d used to enforce that listing and now reads the absent filter as universal
+  # coverage -- see `wf_event_paths` in scripts/validate-integrity.sh.
+  #
+  # Cost measured on PR #646: this job takes ~1m to run. Unconditional is affordable.
   push:
     branches: [main]
-    paths:
-      - 'agents/**'
-      - 'teams/**'
-      - 'guides/**'
-      - 'skills/**'
-      - 'workflows/**'
-      - 'scripts/**'
-      - '.claude/**'
-      - '.github/workflows/update-readmes.yml'
-      # B13 compares root README.md against i18n/*/translation_status.yml, and
-      # this job is its only PR-level caller. Without README.md here, a hand
-      # edit to the very table the gate guards merges with every check green.
-      # Self-listed for the same reason: a PR that drops this job's setup-node
-      # step (or its own paths) must not be able to bypass the job.
-      - 'README.md'
-      - '.github/workflows/validate-integrity.yml'
-      # A10 asserts this workflow's `for content_type in` loops against the
-      # CONTENT_TYPES SSOT, so a PR editing only it must not bypass the check
-      # that guards it. A10 enforces this listing rather than trusting it.
-      - '.github/workflows/validate-translations.yml'
-      # A8 derives its expected translation_status set from i18n/_config.yml and
-      # B6 reads i18n/*/ — without this, a new-locale PR bypasses both (#362).
-      - 'i18n/**'
-      - 'viz/R/glyphs.R'
-      - 'viz/R/agent_glyphs.R'
-      - 'viz/R/palettes.R'
-      - 'viz/domain-styles.yml'
-      - 'viz/agent-styles.yml'
-      - 'viz/team-styles.yml'
-      - 'viz/build-icon-manifest.js'
   pull_request:
-    paths:
-      - 'agents/**'
-      - 'teams/**'
-      - 'guides/**'
-      - 'skills/**'
-      - 'workflows/**'
-      - 'scripts/**'
-      - '.claude/**'
-      - '.github/workflows/update-readmes.yml'
-      - 'README.md'
-      - '.github/workflows/validate-integrity.yml'
-      # A10 asserts this workflow's `for content_type in` loops against the
-      # CONTENT_TYPES SSOT, so a PR editing only it must not bypass the check
-      # that guards it. A10 enforces this listing rather than trusting it.
-      - '.github/workflows/validate-translations.yml'
-      - 'i18n/**'
-      - 'viz/R/glyphs.R'
-      - 'viz/R/agent_glyphs.R'
-      - 'viz/R/palettes.R'
-      - 'viz/domain-styles.yml'
-      - 'viz/agent-styles.yml'
-      - 'viz/team-styles.yml'
-      - 'viz/build-icon-manifest.js'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  validate:
+  # Job id is the status-check CONTEXT name. It was `validate`, which four workflows shared --
+  # integrity, skills, tests and translations -- so the four were one indistinguishable name and
+  # none of them could be required individually (#641).
+  integrity:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
