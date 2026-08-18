@@ -66,9 +66,9 @@ export const gate = { command: ['bash', 'scripts/validate-integrity.sh'] };
 
 export const cases = [
   {
-    // The #644 defect itself, restored byte-for-byte: the section the four-category literal
-    // omitted. The registry still declares and uses `investigation`; the index no longer
-    // renders it. This is the state every gate in the repo passed on.
+    // The #644 defect itself, restored up to one trailing newline (see the header): the
+    // section the four-category literal omitted. The registry still declares and uses
+    // `investigation`; the index no longer renders it. This is the state every gate passed on.
     label: 'the pre-#644 state — the investigation section absent from the rendered index',
     file: 'guides/README.md',
     find: `
@@ -115,6 +115,29 @@ Five-phase methodology for legitimate integration research against a closed-sour
     find: 'total_guides: 35',
     replace: 'total_guides: 36',
     expect: 'guides disk=35 total_guides=36',
+  },
+  {
+    // The co-deletion class, and the reason it earns its own case: when a WHOLE entry goes,
+    // the `- id:` line and the `category:` line vanish together, so A11a's two counts fall to
+    // 34 in lockstep and stay equal. `total_guides` and the disk count are both untouched at
+    // 35. Measured on this exact mutation: A11a green, count green, and the path set is the
+    // ONLY red left standing. It is therefore the sole control over this route, and until now
+    // the only direction it was tested in was the other one -- case 8 points a path at nothing,
+    // while this points nothing at a file. A control that survives alone is a control nobody
+    // has checked.
+    label: 'a whole registry entry deleted — every count still agrees, only the path set differs',
+    file: 'guides/_registry.yml',
+    find: `  - id: reverse-engineering-a-cli-harness
+    path: guides/reverse-engineering-a-cli-harness.md
+    title: "Reverse-Engineering a CLI Harness"
+    description: "Five-phase methodology for legitimate integration research against a closed-source CLI harness — baseline, flag discovery, dark-launch detection, wire capture, redaction discipline"
+    category: investigation
+    agents: [security-analyst, code-reviewer]
+    teams: []
+    skills: [audit-dependency-versions, security-audit-codebase]
+`,
+    replace: '',
+    expect: 'path set differs from guides/*.md on disk',
   },
   {
     // A11a. The review's sharpest finding: an entry whose category is unusable drops the
