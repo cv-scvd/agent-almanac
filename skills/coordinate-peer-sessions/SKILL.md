@@ -261,19 +261,25 @@ turns the check green and destroys the only signal that the corpus moved.
 ## Limitations
 
 **This is not a locking mechanism.** Everything above is a procedure one session follows, and a
-procedure binds only the session that reads it. A peer who never loads this skill -- a human at a
-terminal, an agent under different instructions, a process on the other side of the WSL boundary --
+procedure binds only the session that reads it. A peer who never loads this skill — a human at a
+terminal, an agent under different instructions, a process on the other side of the WSL boundary —
 is not constrained by anything here, and a declaration they did not answer is a note you wrote to
 yourself. Do not report "scope declared" as though it were "scope enforced".
 
 The mechanical control is `npm run guard:snapshot` / `guard:verify`, and it is a *detector* rather
 than a lock: it tells you afterwards that the tree moved, which is a different service from
 preventing the move. Its own two blind spots matter here and are stated in
-`CLAUDE.md` § *Guarding a Multi-Agent Run*: the snapshot records no owner, so a peer's
-`guard:release` silently drops your baseline; and no baseline can predate a peer who was already
-working when you arrived. That second one is why Step 2 puts the scope agreement before your first
-*edit* rather than before your first *check* -- an occupied worktree cannot be resolved by
-inspecting harder.
+`CLAUDE.md` § *Guarding a Multi-Agent Run*.
+
+The first is that the snapshot records no owner, so a peer's `guard:release` can drop the baseline
+you armed. Hold on to the condition rather than the headline: it drops only when the tree compares
+clean, and a release that finds the tree moved KEEPS the snapshot and says why
+(`scripts/repo-guard.js:344`). So it is the quiet *successful* case that costs you a baseline —
+the file is unlinked and nothing is printed. A failing release is the loud one.
+
+The second is that no baseline can predate a peer who was already working when you arrived. That is
+why Step 2 puts the scope agreement before your first *edit* rather than before your first *check*:
+an occupied worktree cannot be resolved by inspecting harder.
 
 Nothing in git helps either. There is no advisory lock on a path, `.git/index.lock` is a
 write-serialisation detail and not a claim on the tree, and a settings deny rule is untracked, so it
