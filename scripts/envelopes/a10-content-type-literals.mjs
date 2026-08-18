@@ -129,10 +129,14 @@ export const cases = [
   // REMOVED 2026-08-18 (#641): 'the trigger path for a file A10 reads is removed'.
   // The property it measured no longer exists — validate-integrity.yml lost its paths filter so
   // the job could become a required status check, leaving no per-input path entry to delete.
-  // A10d's successor property (an ABSENT filter reads as universal, a broken or empty one does
-  // NOT) is covered by the two A10d cases at the end of this file. Recorded as a removal rather
-  // than deleted quietly: a case that vanishes looks identical in the tally to one that never
-  // existed, and this file's whole job is to be readable as a record.
+  // Its branch is NOT gone, though, and an adversarial review caught that this comment first
+  // claimed otherwise: `a10_covered` still runs whenever a filter is present, and re-adding a
+  // scoped filter is the realistic regression once everyone notices every PR runs everything.
+  // The last of the four A10d cases at the end of this file restores that coverage by
+  // reintroducing a filter that misses one input. The other three cover the states the helper
+  // must not read as universal: empty paths (rc=2), no event block (rc=1), paths-ignore (rc=3).
+  // Recorded as a removal rather than deleted quietly: a case that vanishes looks identical in
+  // the tally to one that never existed, and this file's whole job is to be read as a record.
   {
     // THE DOCUMENTED LIMIT, measured rather than asserted. Co-deletion removes the loop's nested
     // branch AND its list entry in one edit, leaving a well-formed flat loop with no signal in
@@ -172,7 +176,9 @@ export const cases = [
     file: '.github/workflows/validate-integrity.yml',
     find: '  pull_request:\n  workflow_dispatch:',
     replace: '  pull_request:\n    paths:\n  workflow_dispatch:',
-    expect: 'trigger coverage UNCHECKED',
+    // The rc is IN the expect on purpose. Sharing one substring across the states would let a
+    // helper that collapsed them all to a single rc kill every case and tell nobody.
+    expect: '(rc=2) -- trigger coverage UNCHECKED',
   },
   {
     // The other failure state: no pull_request block at all. Distinct from an empty filter and
@@ -181,6 +187,32 @@ export const cases = [
     file: '.github/workflows/validate-integrity.yml',
     find: '  pull_request:\n  workflow_dispatch:',
     replace: '  workflow_dispatch:',
-    expect: 'trigger coverage UNCHECKED',
+    expect: '(rc=1) -- trigger coverage UNCHECKED',
+  },
+  {
+    // `paths-ignore:` is a real filter, and the `-` defeats a `^    paths:` test. The first
+    // version of wf_event_paths decided UNIVERSAL by the ABSENCE of that pattern, so this shape
+    // returned "runs on everything" with rc 0 — measured, not theorised. It reproduces both
+    // halves of #641 at once: a required check silently stops reporting on the excluded PRs and
+    // hangs them on "Expected", while A10d reports full coverage. No workflow uses it today,
+    // which is exactly why it needs a case rather than a reader's vigilance.
+    label: 'A10d: a paths-ignore filter is NOT universal coverage',
+    file: '.github/workflows/validate-integrity.yml',
+    find: '  pull_request:\n  workflow_dispatch:',
+    replace: "  pull_request:\n    paths-ignore:\n      - 'dreams/**'\n  workflow_dispatch:",
+    expect: '(rc=3) -- trigger coverage UNCHECKED',
+  },
+  {
+    // A10d's THIRD live branch: a present, non-empty list that fails to cover an A10 input.
+    // #641 removed the filter, and the case that used to cover this branch went with it — but
+    // the branch is still live code, and it is the realistic regression: someone re-adds a
+    // scoped filter after noticing every PR now runs everything. `scripts/**` covers four of
+    // the five A10 inputs through a10_covered's `*/**` arm and misses the fifth, which also
+    // pins that glob semantics rather than leaving it as unexercised code.
+    label: 'A10d: a reintroduced paths filter that misses an A10 input goes red',
+    file: '.github/workflows/validate-integrity.yml',
+    find: '  pull_request:\n  workflow_dispatch:',
+    replace: "  pull_request:\n    paths:\n      - 'scripts/**'\n  workflow_dispatch:",
+    expect: 'does not run on changes to it',
   },
 ];

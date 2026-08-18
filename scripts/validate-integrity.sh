@@ -42,7 +42,27 @@ wf_event_paths() { # <workflow file> <event key>
     END { if (!found) exit 9 }
   ' "$file") || return 1
 
+  # UNIVERSAL is the strongest verdict this function can return, so it is reached only on
+  # positive evidence that the event carries no filtering key -- never as the fallback for
+  # "nothing matched my pattern". The first version decided it by the ABSENCE of `^    paths:`,
+  # which made every shape the parser did not understand read as "runs on everything":
+  # `paths-ignore:` (a real filter, and the `-` defeats the pattern) and a `paths:` key at any
+  # other indent both returned __UNIVERSAL__ with rc 0. Measured, before this guard existed.
+  #
+  # That is the same default-open defect as folding a broken parse into a pass, aimed at the one
+  # verdict where it does most damage: a `paths-ignore:` added to a REQUIRED workflow would stop
+  # it reporting on the excluded PRs -- hanging them on "Expected" forever, the exact #641
+  # symptom -- while A10d printed "carries no paths filter, every input covered".
+  #
+  # rc 3 therefore means "this event is filtered by something I could not fully read". Fail
+  # closed and name it, rather than guessing in the permissive direction.
+  if printf '%s\n' "$block" | grep -qE '^[[:space:]]+paths-ignore:'; then
+    return 3
+  fi
   if ! printf '%s\n' "$block" | grep -qE '^    paths:'; then
+    if printf '%s\n' "$block" | grep -qE '^[[:space:]]+paths:'; then
+      return 3
+    fi
     printf '__UNIVERSAL__\n'
     return 0
   fi
