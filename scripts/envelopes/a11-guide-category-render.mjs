@@ -12,7 +12,16 @@
  *
  *   npm run gate-envelope -- --spec scripts/envelopes/a11-guide-category-render.mjs
  *
- * Result at introduction, 2026-08-18:
+ * Result on the first run, 2026-08-18, against A11's first version:
+ *
+ *     gate-envelope: 3 killed, 1 survived as documented of 5 case(s).
+ *     [WRONG-RED] the A11 extraction pattern drifts and matches nothing
+ *
+ * That row was a real defect in A11, not a mis-specified case, and it is the reason the
+ * third case exists. Under `set -euo pipefail` the bare `a11_cats=$(grep ... | ...)`
+ * assignment aborted the whole script the moment grep matched nothing: red, but with no
+ * diagnostic, with A11's zero-check dead, and with A12 and all of categories B and C never
+ * reached. A `|| true` on the extraction fixed it. Re-measured after that fix:
  *
  *     gate-envelope: 4 killed, 1 survived as documented of 5 case(s).
  *

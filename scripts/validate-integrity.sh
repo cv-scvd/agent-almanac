@@ -619,22 +619,30 @@ fi
 #
 # Fails CLOSED. An empty extraction is FAIL, never OK -- a pattern that drifts and matches
 # nothing is the vacuous pass this check exists to prevent (the A10 rule, applied here).
+#
+# The trailing `|| true` on the extraction is load-bearing, and is the difference between
+# failing closed LOUDLY and failing closed silently. Under `set -euo pipefail` a bare
+# `a11_cats=$(grep ... | ...)` aborts the entire script the moment grep matches nothing --
+# so the run goes red with no diagnostic, the zero-check below is dead code, and every
+# check after this line never executes. That is the exact shape the B13 comment at the foot
+# of this script records; the envelope's third case reported WRONG-RED on the first version
+# of A11 for precisely this reason, which is what the case is for.
 echo "--- A11: Guide category render coverage ---"
 a11_fail=0
 a11_cats=$(grep -E '^    category: ' guides/_registry.yml | tr -d '\r' \
-  | sed -E 's/^    category: *//' | sed -E 's/^"(.*)"$/\1/' | sed '/^$/d' | sort -u)
+  | sed -E 's/^    category: *//' | sed -E 's/^"(.*)"$/\1/' | sed '/^$/d' | sort -u || true)
 a11_count=$(printf '%s\n' "$a11_cats" | sed '/^$/d' | wc -l)
 if [ "$a11_count" -eq 0 ]; then
   echo "FAIL: A11 extracted 0 guide categories from guides/_registry.yml -- pattern drift, not a clean tree"
   failed=1
   a11_fail=1
 else
-  while IFS= read -r cat; do
-    [ -z "$cat" ] && continue
+  while IFS= read -r guide_cat; do
+    [ -z "$guide_cat" ] && continue
     # Capitalise the first letter only: the rule guideCategoryLabel() applies.
-    heading="## $(printf '%s' "${cat:0:1}" | tr '[:lower:]' '[:upper:]')${cat:1}"
+    heading="## $(printf '%s' "${guide_cat:0:1}" | tr '[:lower:]' '[:upper:]')${guide_cat:1}"
     if ! grep -qxF "$heading" guides/README.md; then
-      echo "FAIL: guide category '$cat' has no '$heading' heading in guides/README.md"
+      echo "FAIL: guide category '$guide_cat' has no '$heading' heading in guides/README.md"
       echo "      (a guide in that category renders in no generated index; run 'npm run update-readmes')"
       failed=1
       a11_fail=1
