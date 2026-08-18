@@ -324,6 +324,32 @@ Warn is a temporary state with a named exit, not the design. Quote the current
 count from the checker rather than from here — it was 1,307 at introduction and
 drops with each batch.
 
+**"Blocking" means the job exits non-zero. Whether that refuses a merge is a
+separate fact, and the two were conflated everywhere until #641.** Merge
+refusal is branch-protection configuration, not anything a script can assert
+about itself. Since #641 the ruleset `require-core-checks` requires five
+contexts — `line-endings`, `integrity`, `skills`, `scripts-test`, `cli-test` —
+so a red one of those does refuse the merge. Every other job in
+`.github/workflows/` is job-blocking only: `readmes`, `tests`, `translations`,
+`content-style`, `yaml-fences`, `banned-invocations`, `content-security`,
+`dreams`, `locales-json` and the CodeQL analyses all go red visibly and none
+stops a merge. The ratchet runs inside `skills`, so it is merge-blocking; the
+warn-only fence gate beside it is not, which is the whole reason the ratchet
+exists.
+
+Two constraints that decide what *can* be required, both learned the expensive
+way. A **path-filtered** workflow cannot be: it does not report on PRs outside
+its filter, and a required check that never reports sits on "Expected" and
+refuses the merge forever — so the five required workflows carry no `paths:`.
+And the job id **is** the context name, so two jobs sharing an id cannot be
+required separately; four workflows were all named `validate` until #641.
+
+`pjt222` remains a `bypass_actors` entry with `bypass_mode: always`, so the
+required checks bind everyone except the maintainer — deliberate for a
+single-maintainer repo, and the reason "required" here means "refuses an
+accidental or agent-driven merge", not "refuses every merge". Read the live
+state before quoting any of this: `gh api repos/pjt222/agent-almanac/rules/branches/main`.
+
 Warn-only does not mean unbounded, though it did until #591. The gate's
 tag-structure findings are ratcheted in `debt-ratchet.yml` and `npm run ratchet`
 blocks on a rise — see § Ratcheting a Warn-Only Gate. The body-divergence class
