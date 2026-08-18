@@ -29,7 +29,7 @@ LOCALE="$3"
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TODAY=$(date +%Y-%m-%d)
-SOURCE_COMMIT=$(git -C "$ROOT" log -1 --format=%h)
+SOURCE_COMMIT=$(git -C "$ROOT" log -1 --format=%h) # abort-ok: `git log -1` fails only in a repo with no commits, which is a broken invocation
 
 # Resolve source and target paths
 case "$CONTENT_TYPE" in
@@ -93,7 +93,7 @@ cp "$SOURCE_FILE" "$TARGET_FILE"
 # as a backlog signal.
 
 # Find the line number of the second --- (closing frontmatter)
-CLOSE_LINE=$(awk '/^---$/{count++; if(count==2){print NR; exit}}' "$TARGET_FILE")
+CLOSE_LINE=$(awk '/^---$/{count++; if(count==2){print NR; exit}}' "$TARGET_FILE") # abort-ok: awk exits 0 when no line matches; the -z check on the next line is the reader
 if [ -z "$CLOSE_LINE" ]; then
   echo "ERROR: Could not find closing frontmatter delimiter in $TARGET_FILE"
   exit 1
