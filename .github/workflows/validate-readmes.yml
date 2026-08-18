@@ -98,3 +98,15 @@ jobs:
       # committed copy, so this is exhaustive over the output rather than a
       # heuristic. Exits 1 listing each stale file.
       - run: npm run check-readmes
+
+      # The healer's TRIGGERS, which `check-readmes` cannot see (#618). This gate answers
+      # "is the committed output stale right now"; that one answers "will the healer run at
+      # the commit that makes it stale". A generator module missing from
+      # update-readmes.yml's `paths:` leaves the drift to land at some later unrelated push,
+      # and that list had been extended four times, once per omission.
+      #
+      # It lives here rather than in validate-integrity.yml because this is the workflow
+      # that owns the generated-README surface, and `readmes` is job-blocking rather than
+      # merge-blocking — which is the right severity: an unlisted input is a latent
+      # scheduling defect, not incorrect committed content.
+      - run: npm run check:generator-inputs
