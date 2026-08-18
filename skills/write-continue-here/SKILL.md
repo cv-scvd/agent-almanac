@@ -132,3 +132,4 @@ Read back CONTINUE_HERE.md and confirm:
 - `manage-memory` — durable cross-session knowledge (complements this ephemeral handoff)
 - `commit-changes` — save work to git before writing the continuation file
 - `write-claude-md` — project instructions where optional continuity guidance lives
+- `coordinate-peer-sessions` — a peer sharing this worktree may consume the same `CONTINUE_HERE.md`; that skill is where a path-scope declaration belongs so the two sessions do not both act on it
