@@ -92,7 +92,7 @@ Is it purely cosmetic? → LOW
 为专家审查捕获所有相关上下文。
 
 **问题报告模板**：
-```markdown
+````markdown
 # Issue: [Brief Title]
 
 **Severity**: CRITICAL | HIGH | MEDIUM | LOW
@@ -136,7 +136,7 @@ Clear description of the problem in 2-3 sentences.
 
 - [Link to related documentation]
 - [Link to similar past issues]
-```text
+````
 
 **预期结果：** 问题已在 `ESCALATION_REPORTS/issue_YYYYMMDD_HHMM.md` 中完整记录上下文
 

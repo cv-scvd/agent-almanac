@@ -1,10 +1,10 @@
 locale: caveman-lite
-last_updated: '2026-08-16'
+last_updated: '2026-08-17'
 coverage:
   skills:
     translated: 346
-    total: 369
-    pct: 93.8
+    total: 370
+    pct: 93.5
     stale: 307
     stubs: 5
     unjudged: 1
@@ -24,15 +24,15 @@ coverage:
     unjudged: 0
   guides:
     translated: 0
-    total: 34
+    total: 35
     pct: 0
     stale: 0
     stubs: 0
     unjudged: 0
   total:
     translated: 346
-    total: 500
-    pct: 69.2
+    total: 502
+    pct: 68.9
     stale: 307
     stubs: 5
     unjudged: 1

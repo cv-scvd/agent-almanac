@@ -94,7 +94,7 @@ Is it purely cosmetic? → LOW
 捕所有相關脈絡供員審。
 
 **事報模板**：
-```markdown
+````markdown
 # Issue: [Brief Title]
 
 **Severity**: CRITICAL | HIGH | MEDIUM | LOW
@@ -138,7 +138,7 @@ Clear description of the problem in 2-3 sentences.
 
 - [Link to related documentation]
 - [Link to similar past issues]
-```text
+````
 
 **得：** 事以全脈絡記於 `ESCALATION_REPORTS/issue_YYYYMMDD_HHMM.md`。
 

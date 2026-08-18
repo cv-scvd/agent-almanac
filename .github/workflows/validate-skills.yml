@@ -1,17 +1,20 @@
 name: Validate Skills
 on:
+  # No `paths:` filter, deliberately (#641): a REQUIRED status check that does not run sits on
+  # "Expected — waiting for status to be reported" and refuses the merge forever, so only an
+  # unfiltered workflow can be required.
   push:
     branches: [main]
-    paths: ['skills/**', 'i18n/**', 'agents/**', 'teams/**', 'guides/**', 'scripts/**', 'package.json', 'package-lock.json', '.github/workflows/validate-skills.yml']
   pull_request:
-    paths: ['skills/**', 'i18n/**', 'agents/**', 'teams/**', 'guides/**', 'scripts/**', 'package.json', 'package-lock.json', '.github/workflows/validate-skills.yml']
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  validate:
+  # Job id is the status-check CONTEXT name. It was `validate`, shared by four workflows, so
+  # none of them could be required individually (#641).
+  skills:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -171,3 +174,56 @@ jobs:
       # rather than passing vacuously (#279/#362).
       - name: Check i18n code-fence parity (warn only until #477)
         run: node scripts/check-i18n-fence-parity.js --warn
+
+      # Node-set parity between the viz PUT annotations and the committed
+      # `viz/public/data/workflow.mmd` (#590, dependency-free slice).
+      #
+      # It lives in THIS workflow rather than a viz-shaped one because the step
+      # below is what gives it teeth: `--warn` suppresses finding-exits, so no
+      # parity finding can turn THIS step red, and the ratchet is what a new one
+      # turns red instead. A warn-only gate whose ratchet runs in a different
+      # workflow is a ratchet that does not run on the changes it ratchets, so
+      # the trigger paths at the top of this file were widened for the same
+      # reason. (`--warn` does not suppress a REFUSAL: the script exits 2 on a
+      # question it cannot answer honestly, and this step goes red on those.)
+      #
+      # WARN-ONLY, and the reason is not a backlog this time — it is one node.
+      # `mode_campfire` is annotated in `viz/js/campfire.js` and has no node in
+      # the diagram, and the repair is to regenerate, which #601 says the
+      # lockfile cannot currently do. So the exit condition is #601, not a
+      # cleanup campaign. Meanwhile the single member is ratcheted below, which
+      # is what stops a second missing node from joining it in silence.
+      #
+      # Read what a clean run does NOT claim before quoting one: labels,
+      # node_type, edges and source-side annotation staleness are all invisible
+      # to it. `bind_modes` today reads "(2D/3D/Hive/Chord/Flow)" and Campfire is
+      # the sixth mode — that label is wrong in the source annotation, so a
+      # faithful regeneration reproduces it and this gate stays green through it.
+      - name: Check viz diagram node parity (warn only until #601)
+        run: node scripts/check-workflow-diagram-nodes.js --warn
+
+      # The debt ratchet (#591). BLOCKING, and it is the reason both warn-only steps above — the
+      # fence gate and the diagram node-parity gate — can stay warn.
+      #
+      # A warn-only gate cannot fail, so nothing stops its backlog from rising and "temporary
+      # state with a named exit" has no mechanism behind it. This gives the gate teeth before the
+      # backlog reaches zero, which is the hardest possible precondition and the whole difficulty.
+      #
+      # It ratchets only the classes whose members have been READ — the tag-structure findings
+      # triaged in #598 — never the body divergences of #477, because forcing payment
+      # on unread debt is worse than warn-only: the number acquires an authority nobody checked.
+      # `debt-ratchet.yml` records that split with the reasoning.
+      #
+      # It runs the fence walk a SECOND time rather than reading a JSON file the step above could
+      # have written, which buys the absence of a stale-input vacuous pass in the one tool whose
+      # entire job is to make a silent gate loud.
+      #
+      # The cost is near zero HERE and is not near zero everywhere. Measured on this runner, both
+      # the step above and this one walk 22,970 fences across 3,644 files in under a second; the
+      # same walk takes about two minutes on a WSL/NTFS checkout, where every git object read
+      # crosses a filesystem boundary. Quote the runner when arguing about the price.
+      #
+      # `debt-ratchet.yml` is in this workflow's trigger paths, so editing the ratchet re-runs the
+      # check that reads it.
+      - name: Ratchet the warn-only fence-gate debt (#591)
+        run: npm run ratchet

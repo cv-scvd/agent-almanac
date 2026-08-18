@@ -94,7 +94,7 @@ Is it purely cosmetic? → LOW
 為專家審捕所有相關語境。
 
 **問題報告模板**：
-```markdown
+````markdown
 # Issue: [Brief Title]
 
 **Severity**: CRITICAL | HIGH | MEDIUM | LOW
@@ -138,7 +138,7 @@ Clear description of the problem in 2-3 sentences.
 
 - [Link to related documentation]
 - [Link to similar past issues]
-```text
+````
 
 **預期：** 問題以全語境文檔於 `ESCALATION_REPORTS/issue_YYYYMMDD_HHMM.md`
 

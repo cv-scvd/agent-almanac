@@ -42,7 +42,12 @@ export const cases = [
     // instead yield an EMPTY list, caught one guard earlier by a different message — which is
     // how this case was mis-specified on its first writing.
     label: 'NESTING names a tree the SSOT does not have',
-    file: 'scripts/check-i18n-fence-parity.js',
+    // File corrected 2026-08-18: `NESTING` moved to scripts/lib/i18n-targets.js in #552
+    // (9ad1b4019), and this case kept naming its old home. It has been silently INCONCLUSIVE
+    // ever since — pre-existing rot, found only by running the envelope while working on #641.
+    // The envelope is deliberately not in CI, which is exactly how a fixture rots unnoticed;
+    // the count guard is what turns that rot into a visible refusal rather than a false pass.
+    file: 'scripts/lib/i18n-targets.js',
     find: 'const NESTING = { skills: true, agents: false, teams: false, guides: false };',
     replace: 'const NESTING = { workflows: true, agents: false, teams: false, guides: false };',
     expect: 'derived no nested trees',
@@ -121,23 +126,17 @@ export const cases = [
     replace: "find guides -name 'SKILL.md' -exec",
     expect: "B5's SKILL.md find walks",
   },
-  {
-    // A10d: the gate must be able to fire on the files it reads. Found by reading the CI job log
-    // rather than the check's green — .github/workflows/validate-translations.yml was outside
-    // validate-integrity.yml's trigger paths, so a PR editing only it bypassed A10 entirely.
-    label: 'the trigger path for a file A10 reads is removed',
-    file: '.github/workflows/validate-integrity.yml',
-    // The two-line form matches ONCE, in the `pull_request` block: the `push` block carries the
-    // A8/#362 comment between the same two entries. An earlier version of this case claimed the
-    // blocks were "identical" and declared `sites: 2`; the count guard rejected it, which is the
-    // point of naming the number instead of accepting whatever is there.
-    //
-    // Targeting pull_request alone is also the more precise mutation, since that is the only
-    // list A10d reads.
-    find: "      - '.github/workflows/validate-translations.yml'\n      - 'i18n/**'",
-    replace: "      - 'i18n/**'",
-    expect: 'does not run on changes to it',
-  },
+  // REMOVED 2026-08-18 (#641): 'the trigger path for a file A10 reads is removed'.
+  // The property it measured no longer exists — validate-integrity.yml lost its paths filter so
+  // the job could become a required status check, leaving no per-input path entry to delete.
+  // Its branch is NOT gone, though, and an adversarial review caught that this comment first
+  // claimed otherwise: `a10_covered` still runs whenever a filter is present, and re-adding a
+  // scoped filter is the realistic regression once everyone notices every PR runs everything.
+  // The last of the four A10d cases at the end of this file restores that coverage by
+  // reintroducing a filter that misses one input. The other three cover the states the helper
+  // must not read as universal: empty paths (rc=2), no event block (rc=1), paths-ignore (rc=3).
+  // Recorded as a removal rather than deleted quietly: a case that vanishes looks identical in
+  // the tally to one that never existed, and this file's whole job is to be read as a record.
   {
     // THE DOCUMENTED LIMIT, measured rather than asserted. Co-deletion removes the loop's nested
     // branch AND its list entry in one edit, leaving a well-formed flat loop with no signal in
@@ -163,5 +162,57 @@ export const cases = [
     ].join('\n'),
     expect: null,
     why: "A10's one non-guarantee: co-deletion erases the signal the per-site rule keys on, and one full loop still remains so the counter is satisfied.",
+  },
+  {
+    // A10d's THREE-state reader (#641). #641 removed this workflow's paths filter so the job
+    // could become a required status check, and taught A10d that an absent filter means
+    // universal coverage. The danger in that teaching is folding a BROKEN parse into the same
+    // "universal" verdict — a drifted pattern would then report the strongest possible coverage
+    // while having read nothing, which is the vacuous pass this whole file exists to measure.
+    //
+    // Here the `paths:` key is present and yields zero entries. That is state 2, and it must
+    // FAIL rather than be mistaken for state "no filter at all".
+    label: 'A10d: a paths: key that yields no entries is NOT universal coverage',
+    file: '.github/workflows/validate-integrity.yml',
+    find: '  pull_request:\n  workflow_dispatch:',
+    replace: '  pull_request:\n    paths:\n  workflow_dispatch:',
+    // The rc is IN the expect on purpose. Sharing one substring across the states would let a
+    // helper that collapsed them all to a single rc kill every case and tell nobody.
+    expect: '(rc=2) -- trigger coverage UNCHECKED',
+  },
+  {
+    // The other failure state: no pull_request block at all. Distinct from an empty filter and
+    // from no filter, and equally must not read as universal.
+    label: 'A10d: a missing pull_request block is NOT universal coverage',
+    file: '.github/workflows/validate-integrity.yml',
+    find: '  pull_request:\n  workflow_dispatch:',
+    replace: '  workflow_dispatch:',
+    expect: '(rc=1) -- trigger coverage UNCHECKED',
+  },
+  {
+    // `paths-ignore:` is a real filter, and the `-` defeats a `^    paths:` test. The first
+    // version of wf_event_paths decided UNIVERSAL by the ABSENCE of that pattern, so this shape
+    // returned "runs on everything" with rc 0 — measured, not theorised. It reproduces both
+    // halves of #641 at once: a required check silently stops reporting on the excluded PRs and
+    // hangs them on "Expected", while A10d reports full coverage. No workflow uses it today,
+    // which is exactly why it needs a case rather than a reader's vigilance.
+    label: 'A10d: a paths-ignore filter is NOT universal coverage',
+    file: '.github/workflows/validate-integrity.yml',
+    find: '  pull_request:\n  workflow_dispatch:',
+    replace: "  pull_request:\n    paths-ignore:\n      - 'dreams/**'\n  workflow_dispatch:",
+    expect: '(rc=3) -- trigger coverage UNCHECKED',
+  },
+  {
+    // A10d's THIRD live branch: a present, non-empty list that fails to cover an A10 input.
+    // #641 removed the filter, and the case that used to cover this branch went with it — but
+    // the branch is still live code, and it is the realistic regression: someone re-adds a
+    // scoped filter after noticing every PR now runs everything. `scripts/**` covers four of
+    // the five A10 inputs through a10_covered's `*/**` arm and misses the fifth, which also
+    // pins that glob semantics rather than leaving it as unexercised code.
+    label: 'A10d: a reintroduced paths filter that misses an A10 input goes red',
+    file: '.github/workflows/validate-integrity.yml',
+    find: '  pull_request:\n  workflow_dispatch:',
+    replace: "  pull_request:\n    paths:\n      - 'scripts/**'\n  workflow_dispatch:",
+    expect: 'does not run on changes to it',
   },
 ];

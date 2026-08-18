@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 <!-- AUTO:START:overview -->
-A documentation-first repository containing 34 guides, a skills library of 369 agentic skills, 75 agent definitions, 22 team compositions, and a curated set of code-driven workflow orchestration scripts, following the [Agent Skills open standard](https://agentskills.io). Almost all content is markdown and YAML; workflows are self-contained `.mjs` scripts run by Claude Code's Workflow tool.
+A documentation-first repository containing 35 guides, a skills library of 370 agentic skills, 75 agent definitions, 22 team compositions, and a curated set of code-driven workflow orchestration scripts, following the [Agent Skills open standard](https://agentskills.io). Almost all content is markdown and YAML; workflows are self-contained `.mjs` scripts run by Claude Code's Workflow tool.
 
 The guides serve as the human entry point to the agentic system: practical walkthroughs explaining when, why, and how to interact with agents, teams, skills, and workflows through Claude Code.
 <!-- AUTO:END:overview -->
@@ -29,10 +29,10 @@ These five types complement each other: skills define *how* (procedure, validati
 ### Registries
 
 <!-- AUTO:START:registries -->
-- `skills/_registry.yml` is the machine-readable catalog of all 369 skills across 66 domains: r-packages (10), jigsawr (5), containerization (10), reporting (5), compliance (17), mcp-integration (6), web-dev (5), git (10), general (24), citations (3), data-serialization (2), review (11), bushcraft (4), esoteric (29), design (6), defensive (6), project-management (6), devops (13), observability (13), edge-computing (1), mlops (12), workflow-visualization (6), swarm (9), morphic (7), alchemy (4), tcg (3), intellectual-property (4), web-scraping (2), gardening (5), shiny (7), animal-training (2), mycology (2), prospecting (2), crafting (1), library-science (3), linguistics (1), travel (6), relocation (3), a2a-protocol (3), geometry (3), number-theory (3), stochastic-processes (3), theoretical-science (3), diffusion (4), hildegard (5), maintenance (5), blender (3), visualization (5), 3d-printing (3), lapidary (4), entomology (5), versioning (4), spectroscopy (6), chromatography (5), gpu-optimization (2), digital-logic (4), electromagnetism (4), levitation (3), i18n (1), synoptic (4), tensegrity (1), cli (4), open-source (2), investigation (9), memex (5), ocr (1).
+- `skills/_registry.yml` is the machine-readable catalog of all 370 skills across 66 domains: r-packages (10), jigsawr (5), containerization (10), reporting (5), compliance (17), mcp-integration (6), web-dev (5), git (11), general (24), citations (3), data-serialization (2), review (11), bushcraft (4), esoteric (29), design (6), defensive (6), project-management (6), devops (13), observability (13), edge-computing (1), mlops (12), workflow-visualization (6), swarm (9), morphic (7), alchemy (4), tcg (3), intellectual-property (4), web-scraping (2), gardening (5), shiny (7), animal-training (2), mycology (2), prospecting (2), crafting (1), library-science (3), linguistics (1), travel (6), relocation (3), a2a-protocol (3), geometry (3), number-theory (3), stochastic-processes (3), theoretical-science (3), diffusion (4), hildegard (5), maintenance (5), blender (3), visualization (5), 3d-printing (3), lapidary (4), entomology (5), versioning (4), spectroscopy (6), chromatography (5), gpu-optimization (2), digital-logic (4), electromagnetism (4), levitation (3), i18n (1), synoptic (4), tensegrity (1), cli (4), open-source (2), investigation (9), memex (5), ocr (1).
 - `agents/_registry.yml` is the machine-readable catalog of all 75 agents.
 - `teams/_registry.yml` is the machine-readable catalog of all 22 teams.
-- `guides/_registry.yml` is the machine-readable catalog of all 34 guides across 5 categories.
+- `guides/_registry.yml` is the machine-readable catalog of all 35 guides across 5 categories.
 
 When adding or removing skills, agents, teams, or guides, the corresponding registry must be updated to stay in sync.
 <!-- AUTO:END:registries -->
@@ -100,6 +100,26 @@ Three traps it exists to catch, all of which have shipped here:
 - **A guard must test the accept-rule itself, not a proxy for it.** `--locale` on the fence normalizer was validated with `existsSync('i18n/' + value)` while the scan accepted only directories carrying a `skills/` subtree. `de/skills`, `..` and `glossaries` all passed the guard and scanned nothing — the vacuous result the guard existed to reject. Hoist the consumer's own predicate into one list and validate membership in it, so the two cannot drift.
 
 The same asymmetry applies to the *subject* of a check: a green gate proves something about the gate, and an unexplained **stale generated file** proves something about the corpus. `check-readmes` going stale is how a stray fixture commit was caught after `git status` read clean — investigate such staleness before regenerating it away.
+
+## Ratcheting a Warn-Only Gate
+
+A warn-only gate cannot fail, so every commit under it is locally legal and nothing forbids its backlog from rising. "Warn is a temporary state with a named exit" names the exit without forcing any move toward it. `debt-ratchet.yml` is what forces it:
+
+```bash
+npm run ratchet
+```
+
+It records a **member list** per ratcheted class and fails on any difference in either direction — a finding the list does not name is added debt, and a member the gate no longer reports means the file must move in the same commit. Exact-set, never `observed <= declared`: a `<=` ratchet is green when one member is repaired and a different one appears, and "matches some earlier state" is the shape that keeps deletions green forever.
+
+The key is `file` + `kind`, **never** `file` + `tag`. A tag-sequence finding's tag is rebuilt from the count-matched English revision differing in the fewest positions, so an English-only edit rewrites the key and the member leaves the list silently.
+
+**A class may be ratcheted only once every member has been read.** Otherwise "do not add debt" becomes "pay down debt of unknown validity", and the number carries an authority nobody checked. The tag-structure findings triaged in #598 are ratcheted; the body-divergence class of #477 is listed under `unratcheted` with the reason. Quote the counts from the gate, never from here or from the ratchet file.
+
+Reading them is not ceremony. It corrected two diagnoses that had already been written down: #598 had called two fresh files stale (#626), and the empty escape-class member list turned out to mean "no escape the gate can *see*" — a swallowed opener usually changes the fence count, which lands it in the unjudged `unalignable` pool and produces no finding at all (#628).
+
+The file also carries the **advisory-gate inventory**, checked rather than written down: each listed gate's command must still appear in the workflow it names, and every `--warn` invocation across `.github/workflows/` must be listed, so a new warn-only gate cannot be added silently. Counts are deliberately absent from the unratcheted entries — a number no tool reads is documentation drift. Its blind spot is stated in the file: a step advisory because it simply never exits non-zero carries no token to sweep for.
+
+Negative evidence is `scripts/envelopes/debt-ratchet.mjs` (`npm run gate-envelope`), which mutates the real corpus against `npm run ratchet` — the command CI runs, not the inner script. Its `expect: null` case pins the scope boundary as a measurement: a new body divergence must **not** move the ratchet.
 
 ## Guarding a Multi-Agent Run
 
@@ -190,6 +210,16 @@ The site makes three kinds of runtime fetch, and only the first is CI-derived:
 | `locales/<code>.json` (`js/i18n.js`) | authored | n/a |
 
 `data/workflow.mmd` is the same staleness shape #363 fixed for `skills.json`: generated, committed, runtime-fetched, and not regenerated by the deploy job. Regenerate it locally when the PUT annotations in `viz/` change.
+
+Since #590 it has a reader:
+
+```bash
+npm run check:diagram-nodes
+```
+
+It compares the `put id:"…"` ids in `viz/` against the node ids in the committed diagram, both directions, and nothing else — labels, `node_type`, edges and source-side annotation staleness are all invisible to it. Runs `--warn` in `validate-skills.yml`, ratcheted in `debt-ratchet.yml` at its one known member: `mode_campfire` is annotated and has no node, because the diagram predates `viz/js/campfire.js`. The exit is #601, since the repair is a regeneration and the lockfile cannot currently produce one.
+
+Adding a PUT annotation therefore also means adding a member line in `debt-ratchet.yml` in the same commit, until #601 lands. And check the ruler before believing a count from a variant of this check: anchoring the diagram scan on `[` alone reports five missing nodes where one is real, because `node_type:"input"` renders as `id(["…"])`; skipping the generator's own `exclude` adds two more; walking the filesystem instead of asking git scans 7,177 files instead of 72 and reaches the annotated examples vendored into `viz/renv/library/`.
 
 The icon manifests (`icon-manifest.json`, `agent-icon-manifest.json`, `team-icon-manifest.json`) are *not* fetched at runtime at all. They are inputs to the R renderers in `viz/build.sh`, which produce committed PNGs. Regenerate them locally when glyphs change, via the full pipeline:
 
@@ -293,6 +323,46 @@ Runs **warn-only** in CI until the backlog clears (#477), then flips to blocking
 Warn is a temporary state with a named exit, not the design. Quote the current
 count from the checker rather than from here — it was 1,307 at introduction and
 drops with each batch.
+
+Warn-only does not mean unbounded, though it did until #591. The gate's
+tag-structure findings are ratcheted in `debt-ratchet.yml` and `npm run ratchet`
+blocks on a rise — see § Ratcheting a Warn-Only Gate. The body-divergence class
+is deliberately outside that, because its members have not been read.
+
+The tag-structure classes are two, split by `isRetagEscape` (#598). A
+**tag-sequence** finding is the #481 escape — a frozen tag became localisable, so
+the fence left the body check entirely — and it blocks. A **tag-drift** finding
+changes tags without freeing any fence, so the body check still covers every one
+of them; it is reported, ratcheted, and does not block. Its cause varies by
+member: read the file rather than assuming staleness.
+
+#### Editing a frozen fence in English
+
+The gate accepts a body from **any** English revision, so it cannot tell you
+whether your edit reached the mirrors. Measured on `write-helm-chart` (#551):
+editing the English fence and propagating to **zero** mirrors leaves
+`--id write-helm-chart` reporting `violations: 0`, before and after the commit.
+Read `filesCompared` alongside it — the gate's `--id` has no zero-target guard,
+so a mistyped id also reports `violations: 0` over nothing (#634).
+`check-translation-freshness.js` adds nothing — those mirrors were already
+`STALE`, so the edit moved no signal at all. Both gates are green either way.
+
+Propagate to all ten mirrors in the same commit, then verify by **bytes**:
+
+```bash
+npm run check:fence-propagation -- --id write-helm-chart
+```
+
+It compares whole frozen-fence bodies at their ordinal against English in the
+working tree. Whole bodies, never the line you inserted — a mirror can carry your
+insertion and still differ elsewhere in the same fence, because it may have
+matched a different historical revision to begin with. That is not theoretical:
+the #551 propagation turned up a second, pre-existing lag in the same file on the
+tool's first run.
+
+It is deliberately id-scoped, has no default for `--id`, and is **not** in CI —
+corpus-wide it reports a population nobody has read, which is the state #631
+exists to change. Do not ratchet it before its members are read.
 
 ### Translation Workflow
 

@@ -16,11 +16,11 @@ A library of executable skills, specialist agents, and pre-built teams for [Clau
 ## At a Glance
 
 <!-- AUTO:START:stats -->
-- **369 skills** across 66 domains — structured, executable procedures
+- **370 skills** across 66 domains — structured, executable procedures
 - **75 agents** — specialized Claude Code personas covering development, review, compliance, and more
 - **22 teams** — predefined multi-agent compositions for complex workflows
-- **34 guides** — human-readable workflow, infrastructure, and reference documentation
-- **Interactive visualization** — force-graph explorer with 369 R-generated skill icons and 9 color themes
+- **35 guides** — human-readable workflow, infrastructure, and reference documentation
+- **Interactive visualization** — force-graph explorer with 370 R-generated skill icons and 9 color themes
 <!-- AUTO:END:stats -->
 
 ## How It Works
@@ -82,7 +82,7 @@ claude plugin install agent-almanac@local
 ```
 
 <!-- AUTO:START:plugin-discovery -->
-Auto-discovers all 369 skills and 75 agents. To use a team, read its definition in `teams/<name>.md` and spawn each listed member as a subagent via the [Agent tool](guides/creating-agents-and-teams.md) (`subagent_type`), coordinating them with SendMessage under the session's single implicit team. Windows / macOS variants in the [Installation guide](guides/installation.md#phase-1--plugin-install-claude-code-native).
+Auto-discovers all 370 skills and 75 agents. To use a team, read its definition in `teams/<name>.md` and spawn each listed member as a subagent via the [Agent tool](guides/creating-agents-and-teams.md) (`subagent_type`), coordinating them with SendMessage under the session's single implicit team. Windows / macOS variants in the [Installation guide](guides/installation.md#phase-1--plugin-install-claude-code-native).
 <!-- AUTO:END:plugin-discovery -->
 
 ### Path 3 — Global CLI (cross-framework)
@@ -120,10 +120,10 @@ Requires R 4.5.x or Docker; per-OS R paths in the [Installation guide](guides/in
 ```
 agent-almanac/
   .claude-plugin/  Plugin manifest for Claude Code plugin installation
-  skills/          369 executable procedures across 66 domains
+  skills/          370 executable procedures across 66 domains
   agents/          75 specialist personas
   teams/           22 multi-agent compositions with 8 coordination patterns
-  guides/          34 human-readable reference docs
+  guides/          35 human-readable reference docs
   viz/             Interactive force-graph explorer with R-generated icons
   tests/           30 test scenarios for validation
   i18n/            Translations (10 locales: de, zh-CN, ja, es, caveman-lite, caveman, caveman-ultra, wenyan-lite, wenyan, wenyan-ultra)
@@ -144,6 +144,7 @@ New here? Start with [Understanding the System](guides/understanding-the-system.
 - [Creating Skills](guides/creating-skills.md) — Authoring, evolving, and reviewing skills following the agentskills.io standard
 - [Creating Agents and Teams](guides/creating-agents-and-teams.md) — Designing agent personas, composing teams, and choosing coordination patterns
 - [Creating Workflows](guides/creating-workflows.md) — Authoring code-driven orchestration workflows — the meta contract, the agent/parallel/pipeline/phase primitives, and the capability rule
+- [Coordinating Peer Sessions](guides/coordinate-peer-sessions.md) — Working safely when a second interactive session shares your worktree — declaring path scope before the first edit, index etiquette, and what the guard cannot see
 - [Running a Code Review](guides/running-a-code-review.md) — Multi-agent code review using review teams for R packages and web projects
 - [Managing a Scrum Sprint](guides/managing-a-scrum-sprint.md) — Running Scrum sprints with the scrum-team: planning, dailies, review, and retro
 - [Visualizing Workflows with putior](guides/visualizing-workflows-with-putior.md) — End-to-end putior workflow visualization from annotation to themed Mermaid diagrams
@@ -182,6 +183,10 @@ New here? Start with [Understanding the System](guides/understanding-the-system.
 - [Epigenetics-Inspired Activation Control](guides/epigenetics-activation-control.md) — Runtime activation profiles controlling which agents, skills, and teams are expressed, grounded in molecular epigenetics
 - [Understanding the Synoptic Mind](guides/understanding-the-synoptic-mind.md) — The adaptic concept — panoramic synthesis through simultaneous multi-domain awareness, theoretical foundations, and practical use
 - [Agent Memory Hygiene](guides/agent-memory-hygiene.md) — Three-layer model — weights, retrieval, behavior — for diagnosing what kind of forgetting a memory problem actually needs and applying the right tool
+
+**Investigation**
+
+- [Reverse-Engineering a CLI Harness](guides/reverse-engineering-a-cli-harness.md) — Five-phase methodology for legitimate integration research against a closed-source CLI harness — baseline, flag discovery, dark-launch detection, wire capture, redaction discipline
 <!-- AUTO:END:guides -->
 
 ## Translations
@@ -189,16 +194,16 @@ New here? Start with [Understanding the System](guides/understanding-the-system.
 <!-- AUTO:START:translations -->
 | Locale | Language | Skills | Agents | Teams | Guides | Total | Stubs | Unjudged |
 |---|---|---|---|---|---|---|---|---|
-| de | Deutsch | 340/369 | 3/75 | 1/22 | 2/34 | 346/500 (69.2%) | 35 | 2 |
-| zh-CN | 简体中文 | 342/369 | 3/75 | 1/22 | 2/34 | 348/500 (69.6%) | 26 | 9 |
-| ja | 日本語 | 347/369 | 3/75 | 1/22 | 2/34 | 353/500 (70.6%) | 26 | 4 |
-| es | Español | 334/369 | 3/75 | 1/22 | 2/34 | 340/500 (68%) | 40 | 3 |
-| caveman-lite | Caveman Lite | 346/369 | 0/75 | 0/22 | 0/34 | 346/500 (69.2%) | 5 | 1 |
-| caveman | Caveman | 346/369 | 0/75 | 0/22 | 0/34 | 346/500 (69.2%) | 5 | 1 |
-| caveman-ultra | Caveman Ultra | 346/369 | 0/75 | 0/22 | 0/34 | 346/500 (69.2%) | 5 | 1 |
-| wenyan-lite | 文言文輕 | 342/369 | 0/75 | 0/22 | 0/34 | 342/500 (68.4%) | 5 | 5 |
-| wenyan | 文言文 | 342/369 | 0/75 | 0/22 | 0/34 | 342/500 (68.4%) | 5 | 5 |
-| wenyan-ultra | 文言文極 | 345/369 | 0/75 | 0/22 | 0/34 | 345/500 (69%) | 5 | 2 |
+| de | Deutsch | 340/370 | 3/75 | 1/22 | 2/35 | 346/502 (68.9%) | 36 | 2 |
+| zh-CN | 简体中文 | 343/370 | 3/75 | 1/22 | 2/35 | 349/502 (69.5%) | 27 | 8 |
+| ja | 日本語 | 347/370 | 3/75 | 1/22 | 2/35 | 353/502 (70.3%) | 27 | 4 |
+| es | Español | 334/370 | 3/75 | 1/22 | 2/35 | 340/502 (67.7%) | 41 | 3 |
+| caveman-lite | Caveman Lite | 346/370 | 0/75 | 0/22 | 0/35 | 346/502 (68.9%) | 5 | 1 |
+| caveman | Caveman | 346/370 | 0/75 | 0/22 | 0/35 | 346/502 (68.9%) | 5 | 1 |
+| caveman-ultra | Caveman Ultra | 346/370 | 0/75 | 0/22 | 0/35 | 346/502 (68.9%) | 5 | 1 |
+| wenyan-lite | 文言文輕 | 343/370 | 0/75 | 0/22 | 0/35 | 343/502 (68.3%) | 5 | 4 |
+| wenyan | 文言文 | 343/370 | 0/75 | 0/22 | 0/35 | 343/502 (68.3%) | 5 | 4 |
+| wenyan-ultra | 文言文極 | 345/370 | 0/75 | 0/22 | 0/35 | 345/502 (68.7%) | 5 | 2 |
 <!-- AUTO:END:translations -->
 
 See [i18n/README.md](i18n/README.md) for the translation contributor guide.
@@ -210,7 +215,7 @@ Agent-almanac is packaged as a Claude Code plugin at `.claude-plugin/plugin.json
 <!-- AUTO:START:plugin-table -->
 | Component | Discovery | Count |
 |-----------|-----------|-------|
-| Skills | `skills/*/SKILL.md` | 369 |
+| Skills | `skills/*/SKILL.md` | 370 |
 | Agents | `agents/*.md` | 75 |
 | Teams | Bundled but not auto-discovered | 22 |
 <!-- AUTO:END:plugin-table -->
