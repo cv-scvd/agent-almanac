@@ -263,12 +263,14 @@ turns the check green and destroys the only signal that the corpus moved.
 **This is not a locking mechanism.** Everything above is a procedure one session follows, and a
 procedure binds only the session that reads it. A peer who never loads this skill — a human at a
 terminal, an agent under different instructions, a process on the other side of the WSL boundary —
-is not constrained by anything here, and a declaration they did not answer is a note you wrote to
-yourself. Do not report "scope declared" as though it were "scope enforced".
+is not constrained by anything here. That does not make an unanswered declaration worthless —
+Step 3's one-sided fallback still narrows *you*, which is a real reduction in collision surface.
+It means the constraint sits on the declaring side, so never report "scope declared" as though it
+were "scope enforced".
 
 The mechanical control is `npm run guard:snapshot` / `guard:verify`, and it is a *detector* rather
-than a lock: it tells you afterwards that the tree moved, which is a different service from
-preventing the move. Its own two blind spots matter here and are stated in
+than a lock: it reports that the tree moved, which is a different service from preventing the move.
+Its own two blind spots matter here and are stated in
 `CLAUDE.md` § *Guarding a Multi-Agent Run*.
 
 The first is that the snapshot records no owner, so a peer's `guard:release` can drop the baseline
@@ -278,15 +280,19 @@ clean, and a release that finds the tree moved KEEPS the snapshot and says why
 the file is unlinked and nothing is printed. A failing release is the loud one.
 
 The second is that no baseline can predate a peer who was already working when you arrived. That is
-why Step 2 puts the scope agreement before your first *edit* rather than before your first *check*:
-an occupied worktree cannot be resolved by inspecting harder.
+why Step 3 declares scope before your first *edit* rather than after your first *check*: an occupied
+worktree cannot be resolved by inspecting harder.
 
-Nothing in git helps either. There is no advisory lock on a path, `.git/index.lock` is a
-write-serialisation detail and not a claim on the tree, and a settings deny rule is untracked, so it
-protects the session that has it and no one else.
+**Within one shared worktree there is nothing in git to fall back on.** No advisory lock exists on a
+path, and `.git/index.lock` is write serialisation rather than a claim on the tree. A settings deny
+rule does not fill the gap either, and for a subtler reason than "it is personal": settings are
+per-checkout, so a peer session in *this* worktree loads the same file and is bound by the same rule
+— it is a *clone* that receives nothing, and only when the file is untracked, which Step 7 exists to
+check rather than assume.
 
-If you need a control rather than a procedure, the answer is a second worktree (Step 1), which gives
-each session its own index and HEAD and makes the whole question moot.
+The control git does provide sits one level up: a second worktree (Step 1). Each session gets its
+own index and HEAD, and git refuses to check out one branch in two of them — an exclusion rather
+than an agreement, which is the difference this whole section is about.
 
 ## Related Skills
 
