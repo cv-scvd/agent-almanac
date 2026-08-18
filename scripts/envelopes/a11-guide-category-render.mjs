@@ -27,9 +27,22 @@
  *
  * An adversarial review then found three further routes to #644's exact symptom — a guide in
  * no generated index with every gate green — that the five cases above could not see. Each
- * was reproduced by hand, then fixed, and cases 5-8 are those reproductions:
+ * was reproduced by hand, then fixed, and cases 5-8 are those reproductions. The nine-case run
+ * reported:
  *
- *     gate-envelope: 8 killed, 1 survived as documented of 9 case(s).
+ *     gate-envelope: 7 killed, 1 survived as documented, 1 inconclusive/invalid of 9 case(s).
+ *     [WRONG-RED] total_guides drifts from the guides on disk
+ *
+ * — because round 2 renamed A12's message field and case 4's `expect` still named the old one.
+ * The gate was red and correct throughout; only the expectation was stale. After updating it,
+ * re-run with `--only 'total_guides drifts'`:
+ *
+ *     [KILLED]   total_guides drifts from the guides on disk
+ *                FAIL: guides disk=35 total_guides=36
+ *
+ * so the standing tally is 8 killed, 1 survived as documented of 9. Recorded as two runs rather
+ * than restated as one clean nine, because the WRONG-RED is the useful part: a case asserting
+ * only "the gate went red" would have passed and told nobody the message had moved.
  *
  * Note the first case. It is not a synthetic break — it restores `guides/README.md` to the
  * state `main` was in before this PR, up to one trailing newline (the `find` below opens with
@@ -92,11 +105,16 @@ Five-phase methodology for legitimate integration research against a closed-sour
   {
     // A12: the total no validator compared to disk before #644. `total_skills` is checked by
     // validate-skills.yml, agents and teams by A4/A5, guides by nothing.
+    // The `expect` names A12's message verbatim, and that is the point of naming it: round 2
+    // renamed the field from `registry=` to `total_guides=` (A12 now checks two things, so
+    // "registry" had become ambiguous) and this case reported WRONG-RED until it was updated.
+    // The gate was red and correct throughout — only the expectation was stale. A case that
+    // asserted merely "went red" would have passed and told nobody the message had moved.
     label: 'total_guides drifts from the guides on disk',
     file: 'guides/_registry.yml',
     find: 'total_guides: 35',
     replace: 'total_guides: 36',
-    expect: 'guides disk=35 registry=36',
+    expect: 'guides disk=35 total_guides=36',
   },
   {
     // A11a. The review's sharpest finding: an entry whose category is unusable drops the
