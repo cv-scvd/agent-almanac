@@ -119,3 +119,10 @@ The adaptic concept — panoramic synthesis through simultaneous multi-domain aw
 
 ### [Agent Memory Hygiene](agent-memory-hygiene.md)
 Three-layer model — weights, retrieval, behavior — for diagnosing what kind of forgetting a memory problem actually needs and applying the right tool.
+
+## Investigation
+
+*Methodology guides for legitimate research, audit, and reverse-engineering of integration surfaces*
+
+### [Reverse-Engineering a CLI Harness](reverse-engineering-a-cli-harness.md)
+Five-phase methodology for legitimate integration research against a closed-source CLI harness — baseline, flag discovery, dark-launch detection, wire capture, redaction discipline.
