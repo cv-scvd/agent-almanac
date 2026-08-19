@@ -86,6 +86,7 @@
  *   node scripts/normalize-i18n-fences.js --locale de    # restrict to one locale
  *   node scripts/normalize-i18n-fences.js --tag yaml,json  # restrict to tags (#477 batches)
  *   node scripts/normalize-i18n-fences.js --tree guides,agents  # restrict to trees
+ *   node scripts/normalize-i18n-fences.js --root /tmp/fixture   # run against another tree
  */
 
 import { readFileSync, writeFileSync } from 'fs';
@@ -152,14 +153,29 @@ const PREVIEW = !WRITE;
 /**
  * `--root` exists so the splice gate can be driven against a fixture (#674).
  *
- * This is the FOURTH appearance of the same untestability defect in this directory —
- * `buildEnglishFenceHistory` closing over its module root (#559), `gate-envelope` before its
- * `--root`, `check-i18n-fence-parity` before its own, and now the one tool of the four that
- * WRITES. #674 could only be demonstrated at component level for exactly this reason: there was
- * no way to run the real normalizer over a corpus you constructed.
+ * #674 could only be demonstrated at component level for exactly this reason: there was no way
+ * to run the real normalizer over a corpus you constructed. Every other fixture in this tool's
+ * test file COPIES `scripts/` into a temp repo to work around it.
  *
- * The rule it keeps teaching, in `english-history.js`'s words: a module that hardcodes its own
- * repo root cannot be tested, so it will not be.
+ * ## How common the retrofit is, counted rather than asserted
+ *
+ * An earlier draft called this "the FOURTH appearance … `buildEnglishFenceHistory` (#559),
+ * `gate-envelope`, `check-i18n-fence-parity`, and this". The number survives and the membership
+ * does not, which is the failure `english-history.js` warns about in as many words: "an
+ * unqualified 'three' is a count the obvious grep refutes". Measured over the 13 scripts here
+ * that take `--root`, comparing each file's creating commit against the commit that introduced
+ * the flag:
+ *
+ *   RETROFITTED (4)  check-i18n-fence-parity.js, generate-translation-status.js,
+ *                    measure-tag-sequence-parity.js, and this file
+ *   BORN WITH IT (9) including `gate-envelope.js`, which the draft named as a retrofit
+ *
+ * So four is right by coincidence. `gate-envelope` was born with the flag — its own comment
+ * explains why, which is presumably how it got into the list. `buildEnglishFenceHistory` (#559)
+ * belongs to the lineage as the FUNCTION-level precedent, not as one of these four.
+ *
+ * The rule it keeps teaching, in `check-i18n-fence-parity.js`'s words: a module that hardcodes
+ * its own repo root cannot be tested, so it will not be.
  */
 const ROOT = resolve(opts.root ?? resolve(__dirname, '..'));
 
@@ -367,9 +383,15 @@ assertNotShallow(ROOT);
 // history from the real repository — and the first fixture written against the new flag reported
 // `no English history for this id` for a file whose English source it had just committed.
 //
-// Latent before the flag existed, which is the same shape #634 found in the parity gate: a
-// module-scope root is invisible until something tries to move it, and the thing that tries is
-// always the first test.
+// Latent before the flag existed, and the precedent is #559 — `buildEnglishFenceHistory`
+// closing over its own module root — not #634, which is a vacuous-scope guard and shares only
+// "latent until first exercised". A module-scope root is invisible until something tries to move
+// it, and the thing that tries is always the first test.
+//
+// Corroborated by timing rather than proven by it: the fixture went from 15 s to 0.35 s once the
+// walk stopped scanning the real corpus. The load-bearing evidence is functional — the run
+// reported `no English history for this id` for a file it had just committed — and a fixture
+// pins that, so the delta is colour and not a measurement to quote elsewhere.
 const history = buildEnglishFenceHistory(ROOT);
 
 // ---- gather targets ----
@@ -521,12 +543,23 @@ for (const t of targets) {
   // removed the third from the measurement script. The stamp guard below already used the
   // shared fold, and the comment beside it said so — "STRICTER than the pre-splice guards" —
   // which is how a known asymmetry sat in the file for two issues without being read as a bug.
+  //
+  // Note what `{` does NOT distinguish: every brace fence folds to the same token, so ```{r}
+  // facing ```{python} still aligns, under this fold and under the old one alike. Inherited
+  // from `foldedTagSequence` by design and shared with the gate and `mirrorsBasis`, so it is
+  // not a regression — but it is the next thing to look at if brace fences ever land in the
+  // corpus, because a splice would then place an `{r}` body under a `{python}` tag.
   const translatedSeq = foldedTagSequence(translatedFences);
   const basisSeq = foldedTagSequence(basisFences);
   const misaligned = translatedSeq.findIndex((tag, i) => tag !== basisSeq[i]);
   if (misaligned >= 0) {
-    const a = translatedFences[misaligned].lang || 'untagged';
-    const b = basisFences[misaligned].lang || 'untagged';
+    // The FOLDED tokens, not `lang || 'untagged'`. That label predates #674 and was accurate
+    // while the only way to reach this branch was a genuine tag difference; the brace case this
+    // fix opens would print "(untagged vs text)" for a ```{r} fence, sending whoever does the
+    // manual repair hunting for an untagged fence that is not in the file. `{` is what the
+    // comparison actually used, so `{` is what the message owes the reader.
+    const a = translatedSeq[misaligned];
+    const b = basisSeq[misaligned];
     skipped.push({ file: t.relPath, reason: `tag sequence diverges at fence ${misaligned + 1} (${a} vs ${b})`, n: divergent.length });
     continue;
   }

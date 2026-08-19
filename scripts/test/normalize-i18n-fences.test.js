@@ -702,8 +702,9 @@ test('a brace fence facing a text basis is SKIPPED, not spliced (#674)', (t) => 
     { encoding: 'utf8' });
 
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /tag sequence diverges at fence 1/,
-    'the misalignment must be REPORTED, not silently tolerated');
+  assert.match(r.stdout, /tag sequence diverges at fence 1 \(\{ vs text\)/,
+    'reported, and reported with the FOLDED tokens — `untagged vs text` would send whoever '
+    + 'does the manual repair hunting for an untagged fence that is not in the file');
   assert.match(r.stdout, /files to change: 0/,
     'and nothing may be planned for that file');
   assert.doesNotMatch(r.stdout, /would restore/,

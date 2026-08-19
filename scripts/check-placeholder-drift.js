@@ -380,8 +380,11 @@ for (const path of changed) {
   if (misaligned >= 0) {
     skippedFiles.push({
       path,
+      // Folded tokens, for the reason the sibling normalizer's label carries (#674): a brace
+      // fence would otherwise be reported as `untagged`, which is not a thing the reader can
+      // find in the file.
       reason: `tag sequence diverges at fence ${misaligned + 1} `
-        + `(${baseFences[misaligned].lang || 'untagged'} -> ${headFences[misaligned].lang || 'untagged'})`,
+        + `(${baseSeq[misaligned]} -> ${headSeq[misaligned]})`,
     });
     continue;
   }
