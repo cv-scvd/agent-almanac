@@ -28,38 +28,31 @@ import {
 } from './lib/translation-status.js';
 import { TREES } from './lib/fences.js';
 import { SOURCE_COMMIT_FIELD, readFrontmatterField } from './lib/provenance.js';
+import { parseArgs, usageExit } from './lib/parse-args.js';
 
 // Validated against an accept-list, not sniffed with `includes`. `--verdict`, `--verdicts=1`
 // and `-verdicts` all used to parse as "flag absent": the scan ran, ten files were written,
 // no verdict list printed, exit 0 — and the reader concluded there were no stubs to review
-// before starting a bulk delete. `audit-skill-sections.js` already does this correctly.
-const KNOWN_FLAGS = new Set(['--verdicts', '--margins', '--write', '--root']);
-// `--root` is the only flag here that TAKES a value, so its argument must be excused from the
-// unknown-flag sweep — otherwise the path itself is reported as an unknown argument. Excused by
-// position (the token immediately after `--root`) rather than by shape: a filter like
-// "anything not starting with --" would also swallow a genuine typo such as `verdicts`, which
-// is exactly the silent-misparse class the check above exists to catch.
-const ROOT_VALUE_INDEX = process.argv.indexOf('--root') + 1;
-const UNKNOWN_FLAGS = process.argv.slice(2).filter((arg, i) => {
-  if (KNOWN_FLAGS.has(arg)) return false;
-  return !(ROOT_VALUE_INDEX > 0 && i + 2 === ROOT_VALUE_INDEX);
-});
-if (UNKNOWN_FLAGS.length) {
-  console.error(`ERROR: unknown argument(s): ${UNKNOWN_FLAGS.join(' ')}`);
-  console.error(`Known flags: ${[...KNOWN_FLAGS].join(', ')}`);
-  process.exit(2);
-}
+// before starting a bulk delete.
+//
+// The parser is shared now (#619). The hand-rolled version here excused `--root`'s value BY
+// POSITION and took only the space-separated form, so `--root=/tmp/x` was reported as
+// `unknown argument(s): --root=/tmp/x` — naming `--root` as known on the very line that
+// rejected it. The shared one accepts both spellings, which is what a caller typing the
+// ordinary GNU idiom deserves.
+const ARG_SPEC = { bool: ['--verdicts', '--margins', '--write'], value: ['--root'] };
+const ARGS = parseArgs(process.argv.slice(2), ARG_SPEC, usageExit(ARG_SPEC));
 
 // A stub verdict is acted on by deleting and re-scaffolding the file (#478), so a wrong one
 // destroys work. The aggregate counts cannot be reviewed; this prints the per-file list that
 // can, with the real path of each file. Use it before any bulk remediation.
-const SHOW_VERDICTS = process.argv.includes('--verdicts');
+const SHOW_VERDICTS = ARGS.verdicts;
 
 // The detector's safety case is a MARGIN — how many novel lines the closest genuine
 // translation carries above the scaffold verdict. That was measured once and written into a
 // comment, where it rots. This re-measures it on demand, and doubles as the drift alarm the
 // comment's "re-measure before lowering the floor" instruction otherwise lacks.
-const SHOW_MARGINS = process.argv.includes('--margins');
+const SHOW_MARGINS = ARGS.margins;
 const MARGIN_COUNT = 5;
 
 // The inspection flags do NOT write. The header tells a maintainer to run `--verdicts`
@@ -69,8 +62,7 @@ const MARGIN_COUNT = 5;
 // nothing. This repo has already paid for that shape once: `normalize:i18n-fences` previews
 // by default because a read-only probe agent typed the bare command and rewrote 281 files
 // (#486). `--write` forces a regeneration alongside an inspection run.
-const WRITE_STATUS = process.argv.includes('--write')
-  || (!SHOW_VERDICTS && !SHOW_MARGINS);
+const WRITE_STATUS = ARGS.write || (!SHOW_VERDICTS && !SHOW_MARGINS);
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -79,12 +71,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // exercise "does the date hold when the counts hold" is to mutate the real corpus and put it
 // back — a demo, not coverage, and one that dirties ten tracked files while it runs.
 // `check-i18n-fence-parity.js` already carries the same flag for the same reason.
-const rootFlag = process.argv.indexOf('--root');
-if (rootFlag >= 0 && (rootFlag + 1 >= process.argv.length || process.argv[rootFlag + 1].startsWith('--'))) {
-  console.error('ERROR: --root requires a value');
-  process.exit(2);
-}
-const ROOT = rootFlag >= 0 ? resolve(process.argv[rootFlag + 1]) : resolve(__dirname, '..');
+// The missing-value guard that used to sit here is now `parseArgs`' job, and it covers a case
+// the hand-rolled one did not: `--root=` with an empty value.
+const ROOT = ARGS.root !== null ? resolve(ARGS.root) : resolve(__dirname, '..');
 const I18N_DIR = resolve(ROOT, 'i18n');
 
 // Load config

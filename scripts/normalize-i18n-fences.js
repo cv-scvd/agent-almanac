@@ -101,6 +101,7 @@ import {
   SOURCE_COMMIT_FIELD, FENCE_BASIS_FIELD,
   readFrontmatterField, stampFrontmatterField, clearFrontmatterField,
 } from './lib/provenance.js';
+import { parseArgs, usageExit } from './lib/parse-args.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -109,7 +110,7 @@ const I18N_DIR = resolve(ROOT, 'i18n');
 const argv = process.argv.slice(2);
 
 /**
- * Single-pass argument parser, default-deny: an argument this table does not
+ * Argument table for the shared default-deny parser: an argument it does not
  * name is an error, never a silent no-op.
  *
  * The `indexOf('--locale')` version it replaces failed open in the worst
@@ -128,34 +129,14 @@ const argv = process.argv.slice(2);
  * Also retains the older guard this replaces: `--locale --dry` must not read
  * `"--dry"` as the locale value.
  */
-const BOOL_FLAGS = new Set(['--write', '--dry']);
-const VALUE_FLAGS = new Set(['--basis', '--locale', '--tag', '--tree']);
-
-function usageError(message) {
-  console.error(`ERROR: ${message}`);
-  console.error(`Usage: ${[...BOOL_FLAGS, ...VALUE_FLAGS].join(' ')}`);
-  process.exit(2);
-}
-
-const opts = { write: false, dry: false, basis: 'source-commit', locale: null, tag: null, tree: null };
-for (let i = 0; i < argv.length; i++) {
-  const arg = argv[i];
-  const eq = arg.indexOf('=');
-  const name = eq >= 0 ? arg.slice(0, eq) : arg;
-
-  if (BOOL_FLAGS.has(name)) {
-    if (eq >= 0) usageError(`${name} takes no value (got '${arg}')`);
-    opts[name.slice(2)] = true;
-  } else if (VALUE_FLAGS.has(name)) {
-    const value = eq >= 0 ? arg.slice(eq + 1) : argv[++i];
-    if (value === undefined || value === '' || (eq < 0 && value.startsWith('--'))) {
-      usageError(`${name} requires a value`);
-    }
-    opts[name.slice(2)] = value;
-  } else {
-    usageError(`unknown argument '${arg}'`);
-  }
-}
+const ARG_SPEC = {
+  bool: ['--write', '--dry'],
+  value: ['--basis', '--locale', '--tag', '--tree'],
+};
+// The parser this file grew is now `scripts/lib/parse-args.js` (#619), because
+// `generate-translation-status.js` had a hand-rolled one that disagreed with it — a third copy
+// was the alternative, and a second copy that already disagreed is what made the case.
+const opts = parseArgs(argv, ARG_SPEC, usageExit(ARG_SPEC));
 
 // Writing is opt-in. `--dry` predates the inversion and is kept as an explicit
 // no-op so documented commands and muscle memory keep working; it is the
@@ -168,7 +149,9 @@ if (opts.write && opts.dry) {
 const WRITE = opts.write;
 const PREVIEW = !WRITE;
 
-const BASIS = opts.basis;
+// Default applied HERE rather than seeded into the parse, because `parseArgs` initialises every
+// value flag to null and a default living inside the parser would be invisible from the call site.
+const BASIS = opts.basis ?? 'source-commit';
 const ONLY_LOCALE = opts.locale;
 
 if (!['source-commit', 'head'].includes(BASIS)) {
