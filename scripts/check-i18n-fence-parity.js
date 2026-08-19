@@ -280,8 +280,10 @@ function main() {
   // keeps paying for, and the reorder #634 made — scope before walk — is what makes threading
   // possible at all.
   //
-  // Sound because `git log -- <file>` lists every commit touching that file, so the pool for a
-  // scoped key is complete rather than merely recent. The failure this could have introduced is
+  // NOT sound because "`git log -- <file>` lists every commit touching that file" — that
+  // sentence stood here, is false, and is why `collectSpecs` passes `--full-history` on the
+  // narrowed walk (#682). Read that function's docblock for the two divergence classes and for
+  // what the resulting pool actually guarantees. The failure this could have introduced is
   // the opposite of a missed finding: a truncated pool turns a legitimately STALE mirror into a
   // violation, since staleness immunity is "matches SOME English revision". That is what the
   // fixture in `scripts/test/fence-parity-scope-guard.test.js` pins, on a stale-but-valid mirror

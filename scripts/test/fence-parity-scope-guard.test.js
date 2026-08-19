@@ -38,6 +38,7 @@ import { execFileSync, spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
 import { validateScope } from '../lib/i18n-targets.js';
+import { collectSpecs } from '../lib/english-history.js';
 
 const CHECKER = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'check-i18n-fence-parity.js');
 
@@ -348,9 +349,15 @@ test('a revision on a MERGE-SIMPLIFIED side branch is still a legal basis under 
     git('merge', '-q', '--no-ff', 'side', '-m', 'merge');
 
     // The mirror carries the body that existed only on the pruned side branch.
+    //
+    // Written through the same template-literal helper as everything else here. The first
+    // version built this string with `'…\\`\\`\\`yaml…'.replace(/\\`/g, '`')`, which is a NO-OP:
+    // inside single quotes a backslash-backtick is a useless escape that already yields a plain
+    // backtick, so the regex matched nothing. The bytes were right and the reasoning was not,
+    // which is the kind of fixture that later gets trusted for the wrong reason.
+    const mirror = join(dir, 'i18n', 'de', 'skills', 'foo', 'SKILL.md');
     mkdirSync(join(dir, 'i18n', 'de', 'skills', 'foo'), { recursive: true });
-    writeFileSync(join(dir, 'i18n', 'de', 'skills', 'foo', 'SKILL.md'),
-      '# foo\n\n\`\`\`yaml\na: 2\n\`\`\`\n'.replace(/\\`/g, '`'));
+    writeFileSync(mirror, `# foo\n\n\`\`\`yaml\na: 2\n\`\`\`\n`);
 
     assert.equal(JSON.parse(run(dir, '--json').stdout).violations, 0,
       'the corpus-wide walk sees the side-branch revision');
@@ -358,7 +365,24 @@ test('a revision on a MERGE-SIMPLIFIED side branch is still a legal basis under 
     const scoped = JSON.parse(run(dir, '--id', 'foo', '--json').stdout);
     assert.equal(scoped.filesCompared, 1, 'the fixture must actually have been compared');
     assert.equal(scoped.violations, 0, 'and the scoped walk must see it too');
+
+    // Non-vacuity, matching the sibling fixtures: a body that existed on NO branch is caught.
+    // Without it this test's green rests on `filesCompared` plus the other tests proving the
+    // gate can find anything at all, which is a dependency between tests rather than a control.
+    writeFileSync(mirror, `# foo\n\n\`\`\`yaml\na: 99\n\`\`\`\n`);
+    assert.equal(JSON.parse(run(dir, '--id', 'foo', '--json').stdout).violations, 1,
+      'an invented body must still be a violation');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('collectSpecs refuses an empty paths list rather than picking a meaning', () => {
+  // `[]` is not "no scope". Left alone it split the walk two ways at once: `[] ?? CONTENT_TYPES`
+  // keeps `[]`, so `git log` ran UNPATHED and pooled all content history, while the working-tree
+  // feed iterated zero paths and fed nothing. Unreachable from the gate — its empty-scope
+  // backstop guarantees at least one target — and a mutation deleting the throw therefore
+  // survived the whole suite, which is the same "dead branch, benefit of the doubt" this file
+  // already refuses for `validateScope`.
+  assert.throws(() => collectSpecs(process.cwd(), []), /paths is empty/);
 });

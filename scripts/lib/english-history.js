@@ -84,8 +84,24 @@ import { catFileBatch, GIT_BUFFER } from './git-batch.js';
  *      is TREESAME far more often than four trees. Closed by passing `--full-history` on the
  *      narrowed walk only.
  *
- * With both closed the narrowed pool is every distinct blob of those paths, so it is a SUPERSET
- * of what the tree walk yields and the residual divergence is lenient rather than strict.
+ * With both closed the narrowed pool is a SUPERSET of what the tree walk yields for the covered
+ * path shapes — see `historicalPathspecs`, whose coverage is a measured fact about this history
+ * rather than a property of `contentKey`.
+ *
+ * "Superset therefore lenient" holds for the BODY pool and only for it. That pool is a Set and
+ * the violation test is membership, so growth can only remove findings. `buildEnglishFenceHistory`
+ * builds two more things from this same walk, and `compareTagSequence` is NOT monotone under
+ * growth: a sequence absent from the pool with no count-matched revision is `unalignable` and
+ * silent, while the same sequence with a count-matched revision present is a positional finding.
+ * A revision that only `--full-history` reaches can therefore turn unjudged into a finding on a
+ * file CI holds green.
+ *
+ * That is not #682's false accusation — the mirror genuinely matches no revision, so the scoped
+ * finding is defensible and CI is the one under-reporting — but it is a real scoped-vs-unscoped
+ * divergence in the finding direction, and the blanket "a scoped run can only ever be more
+ * permissive" that stood here was false. Two paragraphs below, this same docblock documents the
+ * collector's non-monotonicity under SHRINKAGE; asserting monotonicity under growth above it was
+ * the contradiction a second review round caught.
  *
  * Renames remain, and are genuinely equivalent rather than merely tolerable: without `--follow`
  * the pre-rename revisions are absent here, and they are absent from the unscoped pool for this
@@ -121,8 +137,10 @@ export function collectSpecs(root, paths = null) {
       // Direction matters. Without this the scoped pool is a strict SUBSET, so a mirror stale to
       // the pruned revision is clean corpus-wide and a violation under `--id` — a false
       // accusation. With it the scoped pool is every distinct blob of that path, hence a superset
-      // of what the tree walk can produce, so the residual divergence is lenient: a scoped run
-      // can only ever be more permissive, and CI's unscoped run still sees everything.
+      // of what the tree walk can produce, and for the BODY pool that makes the divergence
+      // lenient. It does not for the tag-sequence pool, which is not monotone under growth — see
+      // the module docblock. And CI is unchanged rather than all-seeing: it runs the same
+      // corpus-wide walk it always did.
       //
       // Not applied to the unscoped walk, which would change the corpus verdict this PR pins as
       // byte-identical. That the two walks simplify differently is now a stated property, not an
