@@ -43,6 +43,7 @@ import { join } from 'path';
 import { execFileSync, spawnSync } from 'child_process';
 import { CONTENT_TYPES } from './content-types.js';
 import { contentKey } from './content-paths.js';
+import { catFileBatch, GIT_BUFFER } from './git-batch.js';
 
 /**
  * Bounds `git cat-file --batch` stdout, which is the same bytes for every caller — the two
@@ -50,7 +51,9 @@ import { contentKey } from './content-paths.js';
  * neither caller regresses. A truncation here silently produces a short pool, which is why
  * the ENOBUFS case below is surfaced by name rather than left to a status check.
  */
-const GIT_BUFFER = 2048 * 1024 * 1024;
+// Imported from `./git-batch.js` (#587) so the `git log` call below and the `cat-file`
+// batch cannot drift to different ceilings again — which is precisely what happened between
+// the walker and the normalizer after #559 declared the value unified.
 
 /**
  * Every `<commit>:<path>` spec the walk will resolve: one per revision of each English content
@@ -162,51 +165,16 @@ export function collectSpecs(root) {
 export function walkEnglishHistory(root, onBlob) {
   const specs = collectSpecs(root);
 
-  if (specs.length) {
-    const batch = spawnSync('git', ['cat-file', '--batch'], {
-      cwd: root,
-      input: Buffer.from(`${specs.join('\n')}\n`, 'utf8'),
-      maxBuffer: GIT_BUFFER,
-    });
-    // Surfaced explicitly rather than left to the status check, and THROWN rather than
-    // `process.exit`ed — the fences copy killed the process, which is wrong for a library.
-    // A maxBuffer overflow SIGTERMs the child and leaves `status` null, which `!== 0` happens
-    // to catch, but the message would then blame git for failing rather than naming the
-    // truncation. A truncated pool is the one failure here that silently reclassifies files.
-    if (batch.error) {
-      throw new Error(`git cat-file --batch did not complete (${batch.error.code ?? batch.error.message}). `
-        + `If this is ENOBUFS, GIT_BUFFER (${GIT_BUFFER}) is too small for this history.`);
-    }
-    if (batch.status !== 0) {
-      throw new Error(`git cat-file --batch failed: ${batch.stderr?.toString().slice(0, 500)}`);
-    }
-
-    const buf = batch.stdout;
-    let offset = 0;
-    let index = 0;
-    while (offset < buf.length && index < specs.length) {
-      const newline = buf.indexOf(0x0a, offset);
-      if (newline < 0) break;
-      const header = buf.slice(offset, newline).toString('utf8');
-      offset = newline + 1;
-      // A missing or ambiguous object emits a header and NO body. Failing to advance `index`
-      // past it shifts every later blob onto the wrong key — a silent, total corruption of the
-      // pool. This is the line whose deletion the fences copy could not detect.
-      //
-      // Reached whenever history contains a DELETION: `git log --name-only` lists the deleted
-      // path under the commit that removed it, and `<that commit>:<that path>` does not exist.
-      if (/ (missing|ambiguous)$/.test(header)) { index += 1; continue; }
-      const size = Number.parseInt(header.split(' ')[2], 10);
-      if (!Number.isFinite(size)) break;
-      const path = specs[index].slice(specs[index].indexOf(':') + 1);
-      const key = contentKey(path);
-      if (key !== null) {
-        onBlob(key, buf.slice(offset, offset + size).toString('utf8'), { fromWorkingTree: false, path });
-      }
-      offset += size + 1;
-      index += 1;
-    }
-  }
+  // The parse moved to `scripts/lib/git-batch.js` (#587), because a third copy of it lived in
+  // `normalize-i18n-fences.js` with a different buffer and a different failure policy — the
+  // situation #559 believed it had ended. Absences are ignored here: this walker builds a pool
+  // keyed by content, and a deleted path simply has no blob to contribute.
+  catFileBatch(root, specs, (spec, text) => {
+    if (text === null) return;
+    const path = spec.slice(spec.indexOf(':') + 1);
+    const key = contentKey(path);
+    if (key !== null) onBlob(key, text, { fromWorkingTree: false, path });
+  });
 
   for (const tree of CONTENT_TYPES) {
     const base = join(root, tree);

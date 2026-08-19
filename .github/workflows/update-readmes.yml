@@ -81,6 +81,10 @@ on:
       # import (#619) -- which is the gate from #618 doing exactly its job, one PR later, on a
       # module its author had not thought about. The list is no longer maintained by memory.
       - 'scripts/lib/parse-args.js'
+      # Second time the derived check has refused a commit that added an import (#587, after
+      # #619). Both were modules their author had not considered; neither would have been
+      # noticed by the four hand-maintained rounds that preceded #618.
+      - 'scripts/lib/git-batch.js'
       # The toolchain is an input too. generate-readmes.js parses YAML with js-yaml, so a
       # Dependabot bump that changes `yaml.load` behaviour changes generated output while
       # touching no content file and no generator -- nothing here matched, so the healer never

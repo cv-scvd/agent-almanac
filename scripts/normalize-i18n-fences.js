@@ -102,6 +102,7 @@ import {
   readFrontmatterField, stampFrontmatterField, clearFrontmatterField,
 } from './lib/provenance.js';
 import { parseArgs, usageExit } from './lib/parse-args.js';
+import { catFileBatch } from './lib/git-batch.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -309,42 +310,32 @@ if (WRITE) {
   }
 }
 
-const GIT_BUFFER = 512 * 1024 * 1024;
-
 // The frontmatter reader that used to live here moved to `scripts/lib/provenance.js` (#552),
 // which owns both provenance fields and the only reader anchored to the frontmatter block.
 // Three hand-rolled readers existed across this repo and they disagreed — the one in
 // `generate-translation-status.js` is unanchored and reads a `source_commit:` written inside a
 // body fence as metadata.
 
-/** Batch-resolve `<commit>:<englishRel>` blobs in one git process. */
+/**
+ * Batch-resolve `<commit>:<englishRel>` blobs in one git process.
+ *
+ * The parse moved to `scripts/lib/git-batch.js` (#587). The copy that was here carried the
+ * older 512 MiB buffer, its own `process.exit(1)`, and no `batch.error` branch — so a maxBuffer
+ * overflow would have blamed git for failing rather than naming the truncation, and a truncated
+ * pool is the failure that silently supplies the wrong RESTORE BASIS to a tool that writes.
+ *
+ * The `null` for a missing object is kept: callers here distinguish "resolved to nothing" from
+ * "never asked", which is why `catFileBatch` reports absences rather than skipping them.
+ */
 function readBlobs(specs) {
   const out = new Map();
-  if (!specs.length) return out;
-  const batch = spawnSync('git', ['cat-file', '--batch'], {
-    cwd: ROOT,
-    input: Buffer.from(specs.join('\n') + '\n', 'utf8'),
-    maxBuffer: GIT_BUFFER,
-  });
-  if (batch.status !== 0) {
-    console.error('ERROR: git cat-file --batch failed');
-    console.error(batch.stderr?.toString().slice(0, 500));
+  try {
+    catFileBatch(ROOT, specs, (spec, text) => out.set(spec, text));
+  } catch (error) {
+    // The library throws; this is a CLI, so it says what happened and exits the way its other
+    // failures do rather than surfacing a stack trace.
+    console.error(`ERROR: ${error.message}`);
     process.exit(1);
-  }
-  const buf = batch.stdout;
-  let offset = 0;
-  let index = 0;
-  while (offset < buf.length && index < specs.length) {
-    const nl = buf.indexOf(0x0a, offset);
-    if (nl < 0) break;
-    const header = buf.slice(offset, nl).toString('utf8');
-    offset = nl + 1;
-    if (/ (missing|ambiguous)$/.test(header)) { out.set(specs[index], null); index++; continue; }
-    const size = Number.parseInt(header.split(' ')[2], 10);
-    if (!Number.isFinite(size)) break;
-    out.set(specs[index], buf.slice(offset, offset + size).toString('utf8'));
-    offset += size + 1;
-    index++;
   }
   return out;
 }
