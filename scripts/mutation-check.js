@@ -41,6 +41,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, extname, relative, resolve } from 'node:path';
+import { parseFailCount, parsePassCount, crashSuspicion } from './lib/mutation-verdict.js';
 
 const USAGE = `Usage:
   node scripts/mutation-check.js --file <path> --test <cmd> (--delete-matching <str> | --replace <old>::<new>)
@@ -51,6 +52,9 @@ Options:
   --test <cmd>              Command whose red/green decides whether the mutant died
   --delete-matching <str>   Delete lines containing this literal substring
   --replace <old>::<new>    Replace literal <old> with <new>
+  --allow-broad             Accept a kill that fails a large share of the suite. Use when
+                            the mutated line genuinely is load-bearing for most of it; the
+                            crash-signature check still applies and is not waived.
   --allow-multiple          Permit a mutation affecting more than one site. Off by
                             default: a collateral site can produce a kill that gets
                             credited to the line you meant to test.
@@ -145,12 +149,6 @@ function inconclusiveReason(run) {
   return null;
 }
 
-/** Pull `fail N` out of node:test output; null if the format is not recognised. */
-function parseFailCount(output) {
-  const match = output.match(/^\s*\S*\s*fail\s+(\d+)\s*$/m);
-  return match ? Number(match[1]) : null;
-}
-
 /** The `type` of the nearest package.json above `dir`, defaulting to commonjs. */
 function packageType(dir, stopAt) {
   let cur = dir;
@@ -201,6 +199,7 @@ for (let i = 0; i < argv.length; i++) {
   const arg = argv[i];
   if (arg === '-h' || arg === '--help') opts.help = true;
   else if (arg === '--allow-multiple') opts.allowMultiple = true;
+  else if (arg === '--allow-broad') opts.allowBroad = true;
   else if (arg === '--file') opts.file = argv[++i];
   else if (arg === '--test') opts.test = argv[++i];
   else if (arg === '--delete-matching') opts.deleteMatching = argv[++i];
@@ -297,7 +296,8 @@ if (baseline.status !== 0) {
     'surviving mutant means nothing when the suite is red to begin with.'
   );
 }
-console.log('      green.\n');
+const baselinePassCount = parsePassCount(baseline.output);
+console.log(`      green${baselinePassCount !== null ? ` (${baselinePassCount} passing)` : ''}.\n`);
 
 const original = readFileSync(absFile, 'utf8');
 
@@ -375,6 +375,9 @@ process.on('SIGTERM', () => { restore(); process.exit(143); });
 
 let verdict = null;
 let failCount = null;
+// Kept outside the try so the crash check can read it after `restore()` — the verdict block
+// needs the mutant's OUTPUT, not just its exit status.
+let mutantOutput = '';
 
 try {
   console.log('[2/5] writing backup and applying mutation ...');
@@ -397,6 +400,7 @@ try {
       verdict = 'inconclusive';
       console.log(`      inconclusive — ${problem}\n`);
     } else {
+      mutantOutput = mutant.output;
       failCount = parseFailCount(mutant.output);
       verdict = mutant.status !== 0 ? 'killed' : 'survived';
       console.log(`      exit ${mutant.status}${failCount !== null ? `, ${failCount} failing` : ''}\n`);
@@ -443,6 +447,21 @@ if (opts.expectKilledBy !== undefined) {
     console.error('  coverage than you think. Both are worth understanding before trusting it.');
     process.exit(1);
   }
+}
+
+const suspicion = crashSuspicion(mutantOutput, failCount, baselinePassCount, opts.allowBroad);
+if (suspicion.length > 0) {
+  console.error(`SUSPECT KILL${failCount !== null ? ` — ${failCount} failing test(s)` : ''}, but the mutant looks BROKEN rather than caught.`);
+  for (const reason of suspicion) console.error(`  - ${reason}`);
+  console.error('');
+  console.error('  A crash proves the code is REACHED, not that its effect is asserted. The syntax');
+  console.error('  gate catches a mutant that does not parse; this is the same trap one level up,');
+  console.error('  where the mutant parses and then throws the moment the module runs.');
+  console.error('  Mutate a VALUE instead — invert a condition, weaken a comparison, change a');
+  console.error('  constant — so the module still runs to completion and only behaviour changes.');
+  console.error('  Then the failing count means "tests that assert this", which is the number');
+  console.error('  worth quoting.');
+  process.exit(1);
 }
 
 console.log(`MUTANT KILLED${failCount !== null ? ` by ${failCount} failing test(s)` : ''} — the check can fail.`);
