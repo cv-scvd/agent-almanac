@@ -799,6 +799,19 @@ test('an unknown --tree names the known trees, rather than only "unreachable" (#
     + '"correct name, empty corpus" for what is actually a typo');
 });
 
+test('a --tree list with a typo AND an unreached tree names both, in one message', (t) => {
+  // Regression for the #690 review's finding 2. The unknown-name arm used to `return` early, so
+  // `--tree recipes,guides` reported only `recipes`; the caller fixed the typo, reran, and
+  // learned about `guides` on the next round trip. The hand-rolled guard this replaced named
+  // both, and a shared predicate that is worse than the copy it replaces is not a consolidation.
+  const dir = emptyLocaleFixture(t);
+  const r = runAt(dir, '--tree', 'recipes,guides', '--basis', 'head');
+  assert.equal(r.status, 2, r.stdout + r.stderr);
+  assert.match(r.stderr, /names no such content tree: recipes/);
+  assert.match(r.stderr, /matched no translated content.*guides/,
+    'the real-but-unreached tree must be reported in the SAME run as the typo');
+});
+
 test('a --locale/--tree pair that is individually valid but jointly empty is refused', (t) => {
   // The composition the hand-rolled guard was written for, kept as a regression: `de` is real
   // and `skills` is real, but `de` carries no `guides`.
@@ -816,7 +829,14 @@ test('a scope that DOES reach something still runs — the non-vacuity control',
 });
 
 test('a corpus of orphan mirrors refuses rather than reporting a clean zero (#677)', (t) => {
-  // THE BACKSTOP'S REACHABLE CASE, and it took constructing to find. With no `--locale` and no
+  // A REACHABLE CASE for the backstop — not "the" one, which is how this comment first read.
+  // The backstop fires whenever the walk collects zero targets under no `--locale`/`--tree`, and
+  // the #690 review enumerated at least four shapes that do it: a missing English source (this
+  // fixture), content-tree directories that are all empty, mirrors whose names `contentKey`
+  // rejects, and a mirror entry that is a directory named `*.md`. One class, so one
+  // representative is adequate coverage; the wording claimed more than the fixture shows.
+  //
+  // It took constructing to find. With no `--locale` and no
   // `--tree`, `validateScope` has nothing to validate and returns clean — so the only thing
   // between an all-orphan corpus and `files to change: 0` at exit 0 is the empty-targets check.
   //

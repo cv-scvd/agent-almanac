@@ -424,15 +424,19 @@ const targets = collected.targets.map((t) => ({
 const treesInScope = collected.treesReached;
 
 /**
- * Validate `--tree` against what the SCOPED scan actually reached, not against
- * a corpus-wide union. Checked here rather than at parse time because the
- * accept-list is the scan's own output — the only formulation that cannot drift
- * from the scan — and before any write, so a mistyped or unreachable batch
- * cannot touch the corpus.
+ * Validate the scope against what the SCOPED scan actually reached, not against a corpus-wide
+ * union. Checked here rather than at parse time because the accept-list is the scan's own output
+ * — the only formulation that cannot drift from the scan — and before any write, so a mistyped
+ * or unreachable batch cannot touch the corpus.
  *
- * The pre-scan version passed `--locale wenyan --tree guides` and reported
- * `files to change: 0`: each guard was satisfied on its own and neither saw the
- * composition, while six of the ten locales carry `skills/` alone.
+ * The pre-scan version passed `--locale wenyan --tree guides` and reported `files to change: 0`:
+ * each guard was satisfied on its own and neither saw the composition, while six of the ten
+ * locales carry `skills/` alone.
+ *
+ * Since #677 this covers `--locale` too, content-based, on top of the directory-based pre-scan
+ * check above — which stays, because it is what licenses the `i18n/${ONLY_LOCALE}` interpolation
+ * in `WRITE_SCOPE` and runs before the dirty-tree check. Then the backstop, for the case no flag
+ * was given at all.
  */
 const scopeErrors = validateScope({
   onlyLocale: ONLY_LOCALE,
@@ -456,9 +460,16 @@ if (targets.length === 0) {
   process.exit(2);
 }
 
-// The history walk runs AFTER the scope is validated (#677), not before. It is the ~90 s step,
-// and being told you mistyped `--tree` at the end of it is a worse version of the same message.
-// Same reorder #634 made in the parity gate, and for the same reason.
+// The history walk runs AFTER the scope is validated (#677), not before, so a mistyped `--tree`
+// is refused before it rather than after. Same reorder #634 made in the parity gate.
+//
+// The magnitude is NOT measured for this tool, and an earlier draft of this comment called it
+// "the ~90 s step" on inherited lore. What is measured, on the parity gate and on this mount
+// (#635): of an 87 s unscoped run, 53 s was the TARGET walk's `existsSync`/`statSync` pass, not
+// the history build. This tool never passes `onlyId`, so its target walk still pays that in
+// full and necessarily runs before `validateScope` can say anything. The reorder is free and in
+// the right direction; how much it saves here is unknown, and saying so is cheaper than
+// repeating a number nobody took.
 // `ROOT`, explicitly. `buildEnglishFenceHistory` defaults to `fences.js`'s OWN module root, so
 // the argument-less call was correct only while this tool could not be pointed anywhere else.
 // Adding `--root` (#674) turned that default into a split-brain — targets from the fixture,
