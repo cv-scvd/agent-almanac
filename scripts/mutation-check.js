@@ -12,7 +12,8 @@
  *     --test 'npm run test:cli'
  *
  * Exit 0 = mutant killed (the check works).
- * Exit 1 = mutant survived (the line is uncovered), or the run was inconclusive.
+ * Exit 1 = mutant survived (the line is uncovered), the run was inconclusive, or the kill was
+ *          SUSPECT — the mutant looks BROKEN rather than caught (#621).
  *
  * ── Why it is this defensive ─────────────────────────────────────
  *
@@ -53,8 +54,9 @@ Options:
   --delete-matching <str>   Delete lines containing this literal substring
   --replace <old>::<new>    Replace literal <old> with <new>
   --allow-broad             Accept a kill that fails a large share of the suite. Use when
-                            the mutated line genuinely is load-bearing for most of it; the
-                            crash-signature check still applies and is not waived.
+                            the mutated line genuinely is load-bearing for most of it.
+  --allow-crash-text        Accept crash text in the output. Use when the asserted property IS
+                            a load or runtime failure, so the test's own message quotes one.
   --allow-multiple          Permit a mutation affecting more than one site. Off by
                             default: a collateral site can produce a kill that gets
                             credited to the line you meant to test.
@@ -200,6 +202,7 @@ for (let i = 0; i < argv.length; i++) {
   if (arg === '-h' || arg === '--help') opts.help = true;
   else if (arg === '--allow-multiple') opts.allowMultiple = true;
   else if (arg === '--allow-broad') opts.allowBroad = true;
+  else if (arg === '--allow-crash-text') opts.allowCrashText = true;
   else if (arg === '--file') opts.file = argv[++i];
   else if (arg === '--test') opts.test = argv[++i];
   else if (arg === '--delete-matching') opts.deleteMatching = argv[++i];
@@ -449,7 +452,7 @@ if (opts.expectKilledBy !== undefined) {
   }
 }
 
-const suspicion = crashSuspicion(mutantOutput, failCount, baselinePassCount, opts.allowBroad);
+const suspicion = crashSuspicion(mutantOutput, failCount, baselinePassCount, opts.allowBroad, opts.allowCrashText);
 if (suspicion.length > 0) {
   console.error(`SUSPECT KILL${failCount !== null ? ` — ${failCount} failing test(s)` : ''}, but the mutant looks BROKEN rather than caught.`);
   for (const reason of suspicion) console.error(`  - ${reason}`);

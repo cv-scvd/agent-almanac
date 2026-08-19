@@ -41,45 +41,14 @@ export const CRASH_SIGNATURES = [
   /\bCannot access '[^']*' before initialization\b/,
   /\bERR_MODULE_NOT_FOUND\b/,
   /\bCannot find (?:module|package)\b/,
-  /\bis not defined\b/,
 ];
 
-/**
- * Error TYPES of the failing tests, e.g. `AssertionError`, `ReferenceError`.
- *
- * node:test prints the error on its own indented line under each `✖` in the failing-tests
- * section, so the type is the first word of that line.
- */
-export function failureErrorTypes(output) {
-  return [...String(output ?? '').matchAll(/^\s+([A-Za-z]+Error)\b/gm)].map((m) => m[1]);
-}
-
-/**
- * Are ALL the failures ordinary assertion failures?
- *
- * This is what makes the crash signal usable rather than a tripwire, and it is not a
- * refinement — without it the check refuses to certify correct kills, with no waiver, because
- * crash signatures are deliberately unwaivable.
- *
- * Measured on this repo. `scripts/test/dependency-free.test.js` asserts that a module acquires
- * no package dependency, and on failure it EMBEDS the resolution error in its own assertion
- * message:
- *
- *   AssertionError [ERR_ASSERTION]: readme-sections.js acquired a package dependency:
- *   Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'js-yaml' imported from …
- *
- * Adding `import * as yaml from 'js-yaml'` to `readme-sections.js` is a perfect behavioural
- * kill — one failing test, the exact one written for that property — and the raw signature
- * scan reported it SUSPECT. A test whose subject IS a crash will always carry crash text in
- * its message; the error TYPE is what separates "a test asserted this" from "the module broke".
- *
- * Returns false when no error type could be parsed, so an unrecognised format falls back to the
- * signature scan rather than silently clearing it.
- */
-function errorTypesAreAllAssertions(output) {
-  const types = failureErrorTypes(output);
-  return types.length > 0 && types.every((type) => type === 'AssertionError');
-}
+// `/\bis not defined\b/` was here and is REMOVED. Node prints an uncaught ReferenceError as
+// `ReferenceError: x is not defined`, so it fired on the same output as the pattern above it and
+// added no coverage in its primary case. What it did add was the broadest false-positive surface
+// in the list: it is a plain-English phrase, far likelier than the identifier `ReferenceError` to
+// turn up in a future test NAME or fixture — and node:test prints every test name, passing or
+// failing, so one such name poisons every later run against that suite.
 
 /** Pull `fail N` out of node:test output; null if the format is not recognised. */
 export function parseFailCount(output) {
@@ -97,6 +66,18 @@ export function parsePassCount(output) {
 export const BROAD_KILL_SHARE = 0.25;
 
 /**
+ * Smallest baseline for which a SHARE means anything.
+ *
+ * On a four-test baseline a single honest failure is 25% and trips the signal — which is not a
+ * hypothetical: writing the tests for this file, a 2-of-8 case fired it and the surprise went
+ * into a commit message. The cost is not the one noisy run; it is that `--allow-broad` becomes
+ * routine on targeted single-file runs, and a waiver used by reflex stops being a decision.
+ *
+ * Below this, only the crash signature speaks.
+ */
+export const MIN_BASELINE_FOR_SHARE = 10;
+
+/**
  * Reasons to doubt that a red run is a behavioural kill. Empty means no doubt.
  *
  * Two independent signals, because neither is decidable from an exit code alone:
@@ -105,37 +86,53 @@ export const BROAD_KILL_SHARE = 0.25;
  *   - a failure count taking a large share of the suite, since a behavioural mutation usually
  *     kills the handful of tests written for that behaviour.
  *
- * They differ in one important way, and the difference is what `allowBroad` encodes. A crash
- * signature is NEVER legitimate — a crash cannot establish that a test asserts anything. A broad
- * failure often is: mutating a genuinely load-bearing line honestly fails most of the suite.
- * Measured — returning `[]` from `guideCategoryOrder` fails 13 of 15 with no runtime error, and
- * that is a real kill. So the share signal is waivable by an explicit flag, the way
- * `--allow-multiple` waives the one-site rule, and the waiver does not extend to the other.
+ * BOTH ARE HEURISTICS AND BOTH ARE WAIVABLE, and arriving there took a wrong turn worth
+ * recording. The first design said a crash signature is never legitimate and so never waivable —
+ * "a crash cannot establish that a test asserts anything". True of the crash; false of the
+ * SIGNATURE, which matches text rather than crashes. Two shapes in this repo render identically,
+ * and both are an `AssertionError` whose message embeds a subprocess crash:
+ *
+ *   dependency-free.test.js    asserts a module acquires no package dependency. The mutation adds
+ *                              one, the module fails to load, the test reports it — a perfect
+ *                              behavioural kill, one failing test, the one written for it.
+ *   fence-basis-stamp.test.js  asserts the normalizer works. The mutation deletes a binding, the
+ *                              module throws, 15 tests report it — the #621 crash exactly.
+ *
+ * Separating them by the failures' error TYPE was tried and does not work: in both, every failure
+ * is an `AssertionError` and the crash text sits inside its message. What actually distinguishes
+ * them is whether the crash IS the asserted property — semantic, not syntactic, and not decidable
+ * from a transcript. So SUSPECT names a doubt for a human to resolve, and the human answers with
+ * `--allow-crash-text`, rather than the tool asserting a certainty it does not have.
+ *
+ * The share signal has the same character: mutating a genuinely load-bearing line honestly fails
+ * most of the suite. Returning `[]` from `guideCategoryOrder` fails 13 of 15 with no runtime
+ * error at all, and that is a real kill.
  *
  * @param {string} output - combined stdout/stderr of the mutant run
  * @param {number|null} failCount - failing tests in the mutant run
  * @param {number|null} baselinePassCount - passing tests in the green baseline
  * @param {boolean} [allowBroad] - accept a broad failure as a legitimate kill
+ * @param {boolean} [allowCrashText] - accept crash text as belonging to the asserted property
  * @returns {string[]} human-readable reasons; empty if the kill looks behavioural
  */
-export function crashSuspicion(output, failCount, baselinePassCount, allowBroad = false) {
+export function crashSuspicion(output, failCount, baselinePassCount, allowBroad = false, allowCrashText = false) {
   const reasons = [];
   const text = String(output ?? '');
-  const matched = errorTypesAreAllAssertions(text)
-    ? []
-    : CRASH_SIGNATURES.filter((pattern) => pattern.test(text));
+  const matched = allowCrashText ? [] : CRASH_SIGNATURES.filter((pattern) => pattern.test(text));
   if (matched.length > 0) {
     const names = matched.map((pattern) => pattern.source.replace(/\\b/g, '')).join(', ');
     reasons.push(
       `the output contains ${matched.length === 1 ? 'a runtime error' : 'runtime errors'} (${names})`
     );
   }
-  if (!allowBroad && failCount !== null && baselinePassCount !== null && baselinePassCount > 0) {
+  if (!allowBroad && failCount !== null && baselinePassCount !== null
+      && baselinePassCount >= MIN_BASELINE_FOR_SHARE) {
     const share = failCount / baselinePassCount;
     if (share >= BROAD_KILL_SHARE) {
       reasons.push(
-        `${failCount} of ${baselinePassCount} baseline tests failed (${Math.round(share * 100)}%), ` +
-        'which is broad for one line — pass --allow-broad if that is genuinely expected'
+        `${failCount} test(s) failed against a baseline of ${baselinePassCount} passing ` +
+        `(${Math.round(share * 100)}%), which is broad for one line — pass --allow-broad if ` +
+        'that is genuinely expected'
       );
     }
   }

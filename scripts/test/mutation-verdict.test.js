@@ -14,10 +14,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   crashSuspicion,
-  failureErrorTypes,
   parseFailCount,
   parsePassCount,
   BROAD_KILL_SHARE,
+  MIN_BASELINE_FOR_SHARE,
   CRASH_SIGNATURES,
 } from '../lib/mutation-verdict.js';
 
@@ -49,7 +49,11 @@ test('an ordinary assertion failure is NOT suspect', () => {
   assert.deepEqual(crashSuspicion(ASSERTION_FAILURE, 2, 15), []);
 });
 
-test('a ReferenceError is suspect however few tests failed', () => {
+// NAME CAREFULLY. node:test prints every test name, passing or failing, so a name containing
+// crash text lands in the transcript of every future `mutation-check --test 'npm run
+// test:scripts'` run and trips the signature scan on kills that have nothing to do with it.
+// This one was called 'a ReferenceError is suspect …' and would have done exactly that.
+test('a runtime crash is suspect however few tests failed', () => {
   const reasons = crashSuspicion(REFERENCE_ERROR, 15, 490);
   assert.equal(reasons.length, 1, 'the share signal must not also fire at 15/490');
   assert.match(reasons[0], /runtime error/);
@@ -59,21 +63,15 @@ test('a broad failure is suspect without any runtime error', () => {
   // Measured shape: returning `[]` from `guideCategoryOrder` fails 13 of 15 and prints no
   // runtime error at all. The two signals are independent, and each must be able to fire alone —
   // otherwise one of them is decoration.
-  const reasons = crashSuspicion(ASSERTION_FAILURE.replace('fail 2', 'fail 13'), 13, 15);
+  // Counts are parameters, not parsed from the fixture — an earlier `.replace('fail 2', …)` here
+  // was doing nothing and reading as though it set up the case.
+  const reasons = crashSuspicion(ASSERTION_FAILURE, 13, 15);
   assert.equal(reasons.length, 1);
-  assert.match(reasons[0], /13 of 15 baseline tests failed \(87%\)/);
+  assert.match(reasons[0], /13 test\(s\) failed against a baseline of 15 passing \(87%\)/);
 });
 
 test('--allow-broad waives the share signal', () => {
-  assert.deepEqual(crashSuspicion(ASSERTION_FAILURE.replace('fail 2', 'fail 13'), 13, 15, true), []);
-});
-
-test('--allow-broad does NOT waive a crash signature', () => {
-  // The load-bearing asymmetry. A broad failure can be legitimate; a crash never establishes
-  // that a test asserts the behaviour, so no flag may buy past it.
-  const reasons = crashSuspicion(REFERENCE_ERROR, 400, 490, true);
-  assert.equal(reasons.length, 1);
-  assert.match(reasons[0], /runtime error/);
+  assert.deepEqual(crashSuspicion(ASSERTION_FAILURE, 13, 15, true), []);
 });
 
 test('the share threshold is a boundary, not a range', () => {
@@ -141,19 +139,37 @@ test at scripts/test/dependency-free.test.js:86:1
 ℹ fail 1
 `;
 
-test('a kill whose ASSERTION MESSAGE embeds crash text is not suspect', () => {
-  // The unwaivable false negative this file's first version shipped. Crash signatures are
-  // deliberately not waivable, so a false positive here refuses to certify a correct kill and
-  // offers no way past it — strictly worse than the blind spot being closed.
+test('a kill whose assertion message embeds crash text IS flagged, and is waivable', () => {
+  // THE MEASURED LIMIT, and why this is a heuristic rather than a verdict. This is a perfect
+  // behavioural kill — one failing test, the one written for that property — and it is
+  // INDISTINGUISHABLE from #621's crash: both are an `AssertionError` whose message embeds a
+  // subprocess crash. An error-TYPE discriminator was written, shipped, and removed, because it
+  // separates neither; what divides them is whether the crash IS the asserted property, which no
+  // transcript records.
   //
-  // A test whose SUBJECT is a crash will always carry crash text in its message. The error TYPE
-  // is what separates "a test asserted this" from "the module broke".
-  assert.deepEqual(crashSuspicion(ASSERTION_EMBEDDING_CRASH_TEXT, 1, 8), []);
+  // So the doubt is raised and the human answers it.
+  assert.equal(crashSuspicion(ASSERTION_EMBEDDING_CRASH_TEXT, 1, 8).length, 1);
+  assert.deepEqual(crashSuspicion(ASSERTION_EMBEDDING_CRASH_TEXT, 1, 8, false, true), []);
 });
 
-test('one non-assertion failure among assertion failures is still suspect', () => {
-  // The rule is "ALL failures are assertions", not "any failure is". A mutant that crashes one
-  // module while assertions fail elsewhere is still a broken mutant.
+test('--allow-crash-text waives the signature signal', () => {
+  assert.deepEqual(crashSuspicion(REFERENCE_ERROR, 15, 490, false, true), []);
+});
+
+test('each flag answers one doubt, not both', () => {
+  // One flag clearing both signals would let a reader waive a question they never considered.
+  const broadOnly = crashSuspicion(ASSERTION_FAILURE, 13, 15, false, true);
+  assert.equal(broadOnly.length, 1);
+  assert.match(broadOnly[0], /broad for one line/);
+
+  const crashOnly = crashSuspicion(REFERENCE_ERROR, 400, 490, true, false);
+  assert.equal(crashOnly.length, 1);
+  assert.match(crashOnly[0], /runtime error/);
+});
+
+test('crash text anywhere in the transcript raises the doubt', () => {
+  // The scan is deliberately whole-transcript: a mutant that crashes one module while assertions
+  // fail elsewhere is still worth a second look.
   const mixed = ASSERTION_EMBEDDING_CRASH_TEXT.replace(
     '  AssertionError [ERR_ASSERTION]: readme-sections.js',
     '  ReferenceError: stamped is not defined\n  AssertionError [ERR_ASSERTION]: readme-sections.js'
@@ -161,6 +177,8 @@ test('one non-assertion failure among assertion failures is still suspect', () =
   // Asserted on the REASON, not the count: 2 of 8 is also 25%, so the share signal fires too.
   // Pinning `length === 1` here failed for a reason that had nothing to do with the property
   // under test — a test can be red about the wrong thing just as a gate can.
+  // 8 is below MIN_BASELINE_FOR_SHARE, so only the crash signal can speak here — which is the
+  // point: the crash signal must not need the share signal's help.
   const reasons = crashSuspicion(mixed, 2, 8);
   assert.ok(reasons.some((reason) => /runtime error/.test(reason)), JSON.stringify(reasons));
 });
@@ -171,11 +189,13 @@ test('an unrecognised output format falls back to the signature scan', () => {
   // pass shape this repo keeps finding.
   const noErrorTypes = 'something broke: ReferenceError: x is not defined';
   assert.equal(crashSuspicion(noErrorTypes, 1, 8).length, 1);
-  assert.deepEqual(failureErrorTypes(noErrorTypes), []);
 });
 
-test('failureErrorTypes reads the error type from each failure block', () => {
-  assert.deepEqual(failureErrorTypes(ASSERTION_EMBEDDING_CRASH_TEXT), ['AssertionError']);
-  assert.deepEqual(failureErrorTypes('  ReferenceError: x\n  TypeError: y\n'), ['ReferenceError', 'TypeError']);
-  assert.deepEqual(failureErrorTypes(''), []);
+test('a small baseline does not let one honest failure look broad', () => {
+  // 1 of 4 is 25% and tripped the signal. The cost is not the noisy run — it is that
+  // `--allow-broad` becomes routine on targeted single-file runs, and a reflex waiver is not a
+  // decision. Below MIN_BASELINE_FOR_SHARE only the crash signature speaks.
+  assert.deepEqual(crashSuspicion(ASSERTION_FAILURE, 1, 4), []);
+  assert.deepEqual(crashSuspicion(ASSERTION_FAILURE, 3, MIN_BASELINE_FOR_SHARE - 1), []);
+  assert.equal(crashSuspicion(ASSERTION_FAILURE, 3, MIN_BASELINE_FOR_SHARE).length, 1);
 });
