@@ -4,7 +4,7 @@
 # Usage: bash scripts/bulk-scaffold-caveman.sh [--dry-run]
 
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)" # abort-ok: cd into this script's own parent; failure means the script was deleted mid-run
 cd "$ROOT"
 
 DRY_RUN=0

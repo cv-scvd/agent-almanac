@@ -23,7 +23,13 @@ export const cases = [
     file: 'scripts/validate-integrity.sh',
     find: "reg_count=$(grep 'total_agents:' agents/_registry.yml | tr -d '\\r' | awk '{print $2}' || true)",
     replace: "reg_count=$(grep 'total_agents:' agents/_registry.yml | tr -d '\\r' | awk '{print $2}')",
-    expect: 'can abort the script',
+    // The expect names the SITE, not just the message. The checker has one FAIL template
+    // (`FAIL: <file>:<line> can abort the script`), so a bare tail substring is tautologically
+    // true of any FAIL it can emit -- the `file:line` half went unasserted and gate-envelope's
+    // [WRONG-RED] branch was dead for all three killing cases. Demonstrated, not theorised:
+    // case 3 kills at bulk-scaffold-caveman.sh:14, and deleting the annotation on the line
+    // directly ABOVE it also killed, same expect, adjacent site.
+    expect: 'scripts/validate-integrity.sh:201 can abort the script',
   },
   {
     // The other way to defeat it: keep the code, drop the annotation that justified it. An
@@ -33,7 +39,7 @@ export const cases = [
     file: 'scripts/translate-content.sh',
     find: ' # abort-ok: awk exits 0 when no line matches; the -z check on the next line is the reader',
     replace: '',
-    expect: 'can abort the script',
+    expect: 'scripts/translate-content.sh:96 can abort the script',
   },
   {
     // DEFAULT-DENY, measured. The tempting design is a list of dangerous commands; this one
@@ -43,7 +49,7 @@ export const cases = [
     file: 'scripts/bulk-scaffold-caveman.sh',
     find: "TODAY=$(date +%Y-%m-%d)",
     replace: "TODAY=$(date +%Y-%m-%d | jq -R .)",
-    expect: 'can abort the script',
+    expect: 'scripts/bulk-scaffold-caveman.sh:14 can abort the script',
     // `date` alone is on the safe list, so the unmutated line is reported `safe`. Adding one
     // unknown command to the pipeline is what has to flip it — which is the property that
     // separates an enumerated-safe list from an enumerated-dangerous one.

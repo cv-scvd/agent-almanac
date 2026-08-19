@@ -32,6 +32,19 @@ export const cases = [
     file: 'agents/code-reviewer.md',
     find: 'intent: implementing\n',
     replace: '',
+    // AN INVARIANT THIS EXPECT DEPENDS ON, and it is asserted nowhere else: A1's template is
+    // `FAIL: $f missing required field: $field` over `for field in name description tools
+    // priority`, and A6a's is `FAIL: $f missing required field: intent`. They render
+    // byte-identically the moment `intent` is added to A1's list — a natural hardening edit,
+    // since A6a's own comment calls A1 the first reader. Do that AND restore the #647 defect
+    // and this case reports [KILLED] over a run where A6a never executed: A1 prints the
+    // expected line, the script then dies on the unguarded extraction, and A6-B13 never run.
+    //
+    // No substring can discriminate two identical lines, so the invariant is the control. It is
+    // restated beside A1's field list. The residual window is narrow — the blocking
+    // check-bare-substitutions.js runs BEFORE validate-integrity.sh in the workflow and would
+    // refuse the unguarded form — but the window exists if someone silences that site with an
+    // annotation rather than a guard.
     expect: 'missing required field: intent',
   },
   {

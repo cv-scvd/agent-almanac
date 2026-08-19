@@ -132,3 +132,96 @@ test('`local x=$(…)` is skipped, and that is the documented limit', () => {
   const out = checkScript(`${HEAD}f() {\n  local x=$(grep foo bar.txt)\n  echo "$x"\n}\n`);
   assert.equal(out.unguarded, 0);
 });
+
+// ── the shapes the first version could not see (#647 review) ────────────────
+//
+// Every one of these was found by an adversarial review, and they share a cause worth naming:
+// each fixture above uses the unquoted, line-start spelling, so the must-go-red exercise only
+// ever presented the checker with shapes it already handled. The gate's own negative evidence
+// was written against its own blind spot.
+
+test('a trailing comment mentioning `|| true` does NOT manufacture a guard', () => {
+  // THE DECISIVE ONE. The comment a careful author writes to explain why there is no guard was
+  // what created one — and appending exactly this house-style comment to the envelope's own
+  // kill case made the gate print `UNGUARDED: 0` and exit 0.
+  const out = checkScript(`${HEAD}x=$(grep foo bar.txt) # deliberately no \`|| true\`: the -z test below is the reader\n`);
+  assert.equal(out.unguarded, 1);
+});
+
+test('`|| true` inside a quoted program body does NOT guard', () => {
+  const awk = checkScript(`${HEAD}x=$(grep nomatch /dev/null | awk '{ if (n==0 || seen==1) print }')\n`);
+  assert.equal(awk.unguarded, 1);
+  const sed = checkScript(`${HEAD}x=$(grep nomatch /dev/null | sed 's/$/ || true/')\n`);
+  assert.equal(sed.unguarded, 1);
+});
+
+test('the quoted form `x="$(…)"` is scanned', () => {
+  // Three live sites were invisible, including two `ROOT="$(cd … && pwd)"` whose UNQUOTED twin
+  // in a third file already carried an annotation — so the blind spot shaped the remediation,
+  // not merely the reporting.
+  const out = checkScript(`${HEAD}x="$(grep foo bar.txt)"\n`);
+  assert.equal(out.scanned, 1);
+  assert.equal(out.unguarded, 1);
+});
+
+test('the quoted form is not swallowed as a quoted run', () => {
+  // Starting the span at the `"` rather than the `$(` made `codeOf` blank the whole pipeline,
+  // and an empty command list scores `safe` — an affirmative all-clear over a line with grep.
+  const out = checkScript(`${HEAD}ROOT="$(cd "$(dirname "$0")/.." && pwd)"\n`);
+  assert.equal(out.safe, 0);
+  assert.equal(out.unguarded, 1);
+});
+
+test('a mid-line assignment after `;` is scanned', () => {
+  // `rc=0; x=$(f) || rc=$?` — the shape three live sites use, and the `^` anchor meant deleting
+  // the guard did not even move the scanned count.
+  const bare = checkScript(`${HEAD}rc=0; x=$(grep foo bar.txt)\n`);
+  assert.equal(bare.unguarded, 1);
+  const guarded = checkScript(`${HEAD}rc=0; x=$(grep foo bar.txt) || rc=$?\n`);
+  assert.equal(guarded.unguarded, 0);
+});
+
+test('the split declaration `local x; x=$(…)` is scanned', () => {
+  // It DOES abort — unlike `local x=$(…)`, whose status is `local`'s. The split spelling is the
+  // recommended idiom precisely because the status propagates.
+  const out = checkScript(`${HEAD}f() {\n  local cur; cur=$(readlink "$1")\n  echo "$cur"\n}\n`);
+  assert.equal(out.unguarded, 1);
+});
+
+test('a second assignment on the same line gets its own verdict', () => {
+  // `stamp=$(date +%F) missing=$(grep -L …)` scored `safe` with an empty command list, because
+  // only the first head was stripped and `i = end` then skipped the rest of the line.
+  const out = checkScript(`${HEAD}stamp=$(date +%F) missing=$(grep -L '^x' /dev/null)\n`);
+  assert.equal(out.scanned, 2);
+  assert.equal(out.unguarded, 1);
+});
+
+test('`|| VAR=$(…)` is not accepted as a guard', () => {
+  // A fallback extraction inherits the inner substitution's status, so it aborts anyway. This is
+  // the shape an author reaches for when "fixing" a flagged site with a fallback rather than a
+  // guard — #647 reintroduced through the remediation, with the lint calling it handled.
+  const out = checkScript(`${HEAD}a=$(grep -m1 '^x:' f || a=$(grep -m1 '^y:' f))\n`);
+  // Two sites, not one: the inner assignment is a substitution in its own right and is also
+  // unguarded. What matters is that neither is waved through as `guarded`.
+  assert.equal(out.scanned, 2);
+  assert.equal(out.unguarded, 2);
+});
+
+test('a real corpus-style `# abort-ok:` containing `||` still reads as annotated', () => {
+  // The annotation test reads the RAW line on purpose — an annotation IS a comment — while the
+  // guard test reads code only. A live annotation whose prose contained `|| continue` was
+  // scoring `guarded` instead of `annotated`, which is why the summary reported one fewer
+  // annotated site than `git grep abort-ok` found on disk.
+  const out = checkScript(`${HEAD}x=$(readlink "$1") # abort-ok: guarded by the \`[ -L "$1" ] || continue\` test one line up\n`);
+  assert.equal(out.annotated, 1);
+  assert.equal(out.unguarded, 0);
+});
+
+test('a multi-line span closes at its own paren, not at end of line', () => {
+  // `label="$(printf … )${x:1}"` never closed: the substitution's `)` brought depth to 0, then
+  // the assignment's closing `"` reopened the quote state and the end test failed — so the span
+  // ran into later statements and harvested a command out of an unrelated echo.
+  const out = checkScript(`${HEAD}label="$(printf '%s' "\${v:0:1}" | tr '[:lower:]' '[:upper:]')\${v:1}"\necho "run npm run something"\n`);
+  assert.equal(out.safe, 1);
+  assert.equal(out.unguarded, 0);
+});

@@ -146,6 +146,11 @@ echo "--- A1: Agent frontmatter ---"
 for f in agents/*.md; do
   name=$(basename "$f")
   [[ "$name" == "_template.md" || "$name" == "README.md" ]] && continue
+  # DO NOT add `intent` here without reading scripts/envelopes/a6a-abort-capable-substitutions.mjs
+  # first. A6a owns that field and prints `FAIL: $f missing required field: intent`, which is
+  # byte-identical to what this loop would render for `intent` — and the envelope case proving
+  # A6a's diagnostic is reachable keys on exactly that string. Adding it here lets that case
+  # report [KILLED] over a run in which A6a never executed.
   for field in name description tools priority; do
     if ! grep -q "^${field}:" "$f"; then
       echo "FAIL: $f missing required field: $field"
@@ -234,8 +239,13 @@ for f in agents/*.md; do
   fi
   # A1 already fails a file with no `tools:`, so this is a second reader of the same fact
   # rather than the only one. It is here because the alternative is worse than a duplicate
-  # FAIL line: an empty `$tools` silently yields has_we=0 below, which reads as "advisory
-  # tools" and would let an `intent: implementing` agent with no tools field pass A6a.
+  # FAIL line: an empty `$tools` silently yields has_we=0 below, i.e. "no Write/Edit", so an
+  # ADVISORY agent with no `tools:` line agrees with itself and A6a emits nothing at all.
+  #
+  # The comment here first named the implementing case, which was backwards — that one is
+  # already caught, printing `intent=implementing but tools lack Write/Edit` from the check
+  # below. Advisory is the direction that escaped silently, and it is the direction a future
+  # reader would use to decide whether this guard is removable.
   if [ -z "$tools" ]; then
     echo "FAIL: $f missing required field: tools (A6a cannot judge intent without it)"
     failed=1; a6_fail=1; continue
@@ -809,7 +819,8 @@ fi
 # Fails CLOSED. An empty extraction is FAIL, never OK -- a pattern that drifts and matches
 # nothing is the vacuous pass this check exists to prevent (the A10 rule, applied here).
 #
-# Every extraction in A11 and A12 carries `|| true`, and that is load-bearing rather than
+# Every extraction in A11 and A12 carries `|| true` or a justified `# abort-ok:`, and that is
+# load-bearing rather than
 # noise. Under `set -euo pipefail` a bare `x=$(grep ... )` aborts the ENTIRE script the moment
 # grep matches nothing -- red with no diagnostic, the zero-check dead, and every later check
 # skipped. The envelope reported WRONG-RED on the first version of A11 for exactly this.
@@ -819,15 +830,21 @@ fi
 # The scope of that sentence is A11 and A12 ONLY. It said "every extraction below" until a
 # review pointed out that A12's own two lines -- copied from A4/A5 in round 1 -- had no guard,
 # which made the claim false about the exact failure class this gate exists to measure, five
-# lines above the note tracking that class. They are guarded now, but the rest of this script
-# is not: #647 is the sweep, and until it lands do not read this paragraph as covering A1-A10.
+# lines above the note tracking that class.
+#
+# That sentence used to end "the rest of this script is not [guarded]: #647 is the sweep, and
+# until it lands do not read this paragraph as covering A1-A10." #647 IS this commit, so both
+# halves were false on arrival. The whole file is now at zero unguarded sites --
+# `npm run check:bare-substitutions` reports 100 scanned / 0 UNGUARDED across all six tracked
+# shell scripts, against 30 on the parent commit -- and the rule at the top of this file, not
+# this paragraph, is where the guard policy lives.
 echo "--- A11: Guide category render coverage ---"
 a11_fail=0
 # Non-uniqued, empties dropped: this is a per-ENTRY list, not a set (A11a needs the count).
 a11_used=$(grep -E '^    category: ' guides/_registry.yml | tr -d '\r' \
   | sed -E 's/^    category: *//' | sed -E 's/^"(.*)"$/\1/' | sed -E "s/^'(.*)'$/\1/" \
   | sed '/^[[:space:]]*$/d' || true)
-a11_used_count=$(printf '%s\n' "$a11_used" | sed '/^[[:space:]]*$/d' | wc -l) # abort-ok: printf|sed|wc return 0 on empty input; the count is compared against a12 below
+a11_used_count=$(printf '%s\n' "$a11_used" | sed '/^[[:space:]]*$/d' | wc -l) # abort-ok: printf|sed|wc return 0 on empty input; the -ne and -eq 0 tests in A11a below read the count
 a11_entries=$(grep -c '^  - id: ' guides/_registry.yml || true)
 # `tr -d '\r'` FIRST: the range anchors are `$`-terminated, so on a CRLF file they would miss
 # both delimiters and the range would run to EOF. Moot under the repo's line-endings gate, but
@@ -985,7 +1002,12 @@ for f in teams/*.md; do
   [[ "$name" == "_template.md" || "$name" == "README.md" ]] && continue
   # Extract member ids from structured YAML: members:\n  - id: agent-name
   while IFS= read -r line; do
-    member=$(echo "$line" | sed -n 's/^  - id: *//p' | tr -d '\r' | xargs) # abort-ok: `sed -n …p` exits 0 with no output; the -n test on the next line reads it
+    # GUARDED, not annotated (#647 review). The first version claimed `sed -n …p` exits 0 on
+    # no match -- true, and irrelevant: `pipefail` surfaces the RIGHTMOST non-zero, and `xargs`
+    # exits 1 on an unmatched quote. A team file carrying `  - id: o'brien` killed this loop
+    # mid-B3 with one `xargs:` line on stderr and no FAIL -- an abort on the line above the
+    # check written to report the malformed input. The `-n` test below is the zero-case reader.
+    member=$(echo "$line" | sed -n 's/^  - id: *//p' | tr -d '\r' | xargs || true)
     if [ -n "$member" ]; then
       # Skip known placeholder values (dyad uses 'any' for flexible member)
       [[ "$member" == "any" ]] && continue
@@ -1016,7 +1038,8 @@ for f in agents/*.md; do
     fi
     if [ "$in_skills" -eq 1 ]; then
       if echo "$line" | grep -q '^  - '; then
-        skill_id=$(echo "$line" | sed 's/^  - //' | tr -d '\r' | xargs) # abort-ok: sed|tr|xargs return 0 on empty input; the -d test below reads the result
+        # Same `xargs` unmatched-quote abort as B3 above; the `-d` test below reads the empty case.
+        skill_id=$(echo "$line" | sed 's/^  - //' | tr -d '\r' | xargs || true)
         b4_checked=$((b4_checked + 1))
         if [ ! -d "skills/${skill_id}" ]; then
           echo "FAIL: $f references skill '$skill_id' but skills/${skill_id}/ not found"
@@ -1166,7 +1189,13 @@ else
   # Fallback: parse JS if YAML not yet extracted
   style_domains=$(grep -oP "'[a-z0-9-]+'" viz/build-icon-manifest.js | head -60 | sed "s/'//g" | sort -u || true)
 fi
-# `reg_domains` was asserted in B7 and is reused here; only the style side is new.
+# BOTH sides asserted, and `reg_domains` is not exempt for having been asserted in B7. That
+# assertion sets `b7_warn`, which nothing here reads -- so B10 would compare an EMPTY left side,
+# find nothing missing, and print its OK line six lines below B7's FAIL saying that every
+# comparison against it would pass vacuously. That contradiction is new-in-#647 reachable: before
+# the guard on `:1112`, an empty extraction aborted the script at B7 and B10 never ran at all.
+# Making B7 survivable is what made this line reachable and wrong.
+require_nonempty 'B10 registry domains (skills/_registry.yml)' "$reg_domains" || b10_warn=-1
 require_nonempty 'B10 style domains (viz/domain-styles.yml)' "$style_domains" || b10_warn=-1
 b10_missing=$(comm -23 <(echo "$reg_domains") <(echo "$style_domains") || true)
 if [ "$b10_warn" -eq 0 ] && [ -n "$b10_missing" ]; then

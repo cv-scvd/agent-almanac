@@ -27,7 +27,7 @@ CONTENT_TYPE="$1"
 ID="$2"
 LOCALE="$3"
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)" # abort-ok: cd into this script's own parent; failure means the script was deleted mid-run
 TODAY=$(date +%Y-%m-%d)
 SOURCE_COMMIT=$(git -C "$ROOT" log -1 --format=%h) # abort-ok: `git log -1` fails only in a repo with no commits, which is a broken invocation
 

@@ -75,7 +75,7 @@ missing=0 wrong=0 broken=0 stale=0 fixed=0
 ensure_link() {
   local link="$1" target="$2" label="$3"
   if [ -L "$link" ]; then
-    local cur; cur=$(readlink "$link")
+    local cur; cur=$(readlink "$link") # abort-ok: guarded by the `[ -L "$link" ]` test one line up
     if [ "$cur" = "$target" ]; then
       if [ ! -e "$link" ]; then
         # Correct target but dangling — the skills/<id>/ dir is missing (a
