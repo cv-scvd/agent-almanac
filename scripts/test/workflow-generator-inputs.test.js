@@ -34,7 +34,7 @@ ${steps.map((s) => `      - run: ${s}`).join('\n')}
 `;
 
 /** Build a throwaway tree and run the check over it. */
-function run({ paths, steps, files, scripts = {} }) {
+function run({ paths, steps, files, scripts = {}, warn = false }) {
   const dir = mkdtempSync(join(tmpdir(), 'gen-inputs-'));
   try {
     mkdirSync(join(dir, '.github/workflows'), { recursive: true });
@@ -42,12 +42,16 @@ function run({ paths, steps, files, scripts = {} }) {
     writeFileSync(join(dir, '.github/workflows/update-readmes.yml'), WORKFLOW(paths, steps));
     writeFileSync(join(dir, 'package.json'), JSON.stringify({ scripts }, null, 2));
     for (const [name, body] of Object.entries(files)) {
+      // mkdir the parent of every fixture, not just `scripts/lib` — a fixture that needs a nested
+      // directory should express that in its own path rather than in the helper.
+      mkdirSync(dirname(join(dir, name)), { recursive: true });
       writeFileSync(join(dir, name), body);
     }
     let output;
     let status = 0;
     try {
-      output = execFileSync('node', [CHECK, '--root', dir], { cwd: dir, encoding: 'utf8' });
+      const argv = warn ? [CHECK, '--root', dir, '--warn'] : [CHECK, '--root', dir];
+      output = execFileSync('node', argv, { cwd: dir, encoding: 'utf8' });
     } catch (error) {
       output = `${error.stdout || ''}${error.stderr || ''}`;
       status = error.status;
@@ -70,7 +74,7 @@ const BASE = {
 test('a fully listed graph passes', () => {
   const { output, status } = run(BASE);
   assert.equal(status, 0);
-  assert.match(output, /0 unlisted/);
+  assert.match(output, /; 0 unlisted$/m);
 });
 
 test('a transitive import that nobody listed is reported', () => {
@@ -115,7 +119,7 @@ test('an unparseable paths: filter fails instead of reporting nothing missing', 
   }
 });
 
-test('an unrecognised run: step fails rather than shrinking the graph', () => {
+test('a `bash <script>` step must resolve rather than shrinking the graph', () => {
   // The silent-shrink direction. With the step skipped, everything still reachable is listed,
   // so the summary would read `0 unlisted` over a fraction of the job.
   const { output, status } = run({ ...BASE, steps: [...BASE.steps, 'bash scripts/other.sh'] });
@@ -136,7 +140,7 @@ test('`npm run <name>` resolves through package.json', () => {
     files: { 'scripts/gen.js': 'console.log(1);\n' },
   });
   assert.equal(status, 0);
-  assert.match(output, /1 entry point/);
+  assert.match(output, /\b1 entry point\(s\)/);
 });
 
 test('`npm run <name>` naming an undefined script fails', () => {
@@ -176,10 +180,11 @@ test('a bare package specifier is not walked', () => {
 });
 
 test('a `run: |` block scalar is expanded line by line', () => {
-  // Five workflows in this repo use block scalars. Reading the `|` as the command would throw
-  // "could not be resolved" on an ordinary step — and would do so at the moment somebody added a
-  // multi-line step to a healer, which reads as the CHECK being broken rather than the step
-  // being unlisted.
+  // Five workflows in this repo use block scalars. Without the block branch the `|` is captured
+  // as the command and null-drops through the not-a-launcher pass, so the body goes unscanned and
+  // the run fails with `no node entry point resolved` — red, but for a reason that reads as the
+  // CHECK being broken rather than as the step being unlisted. (The first version of this comment
+  // claimed the naive mutant throws "could not be resolved"; traced, it does not.)
   const dir = mkdtempSync(join(tmpdir(), 'gen-inputs-'));
   try {
     mkdirSync(join(dir, '.github/workflows'), { recursive: true });
@@ -204,8 +209,8 @@ jobs:
     writeFileSync(join(dir, 'package.json'), '{"scripts":{}}');
     writeFileSync(join(dir, 'scripts/gen.js'), 'console.log(1);\n');
     const output = execFileSync('node', [CHECK, '--root', dir], { cwd: dir, encoding: 'utf8' });
-    assert.match(output, /1 entry point/);
-    assert.match(output, /0 unlisted/);
+    assert.match(output, /\b1 entry point\(s\)/);
+    assert.match(output, /; 0 unlisted$/m);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -242,7 +247,7 @@ jobs:
     writeFileSync(join(dir, 'package.json'), '{"scripts":{}}');
     writeFileSync(join(dir, 'scripts/gen.js'), 'console.log(1);\n');
     const output = execFileSync('node', [CHECK, '--root', dir], { cwd: dir, encoding: 'utf8' });
-    assert.match(output, /1 entry point/);
+    assert.match(output, /\b1 entry point\(s\)/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -266,4 +271,149 @@ test('an `npm run` naming a non-node script still fails — the invoker pass is 
   });
   assert.equal(status, 1);
   assert.match(output, /could not be resolved/);
+});
+
+// ── holes an adversarial review found, each now closed and pinned ───────────
+
+test('a `**` in the MIDDLE respects the suffix after it', () => {
+  // `i18n/**/*.md` is a live entry. The first version reduced any `**` entry to the prefix
+  // before it, so it read as "anything under i18n/" and would have called a future
+  // `i18n/x.js` covered when GitHub's `*.md` suffix would not trigger on it. FALSE PASS.
+  const out = run({
+    paths: ['scripts/gen.js', 'lib/**/*.md'],
+    steps: ['node scripts/gen.js'],
+    files: {
+      'scripts/gen.js': "import { a } from '../lib/deep/a.js';\nconsole.log(a);\n",
+      'lib/deep/a.js': 'export const a = 1;\n',
+    },
+  });
+  assert.equal(out.status, 1);
+  assert.match(out.output, /lib\/deep\/a\.js is imported by this workflow/);
+});
+
+test('a single `*` does not cross a directory separator', () => {
+  const shallow = run({
+    paths: ['scripts/*.js'],
+    steps: ['node scripts/gen.js'],
+    files: { 'scripts/gen.js': 'console.log(1);\n' },
+  });
+  assert.equal(shallow.status, 0);
+});
+
+test('a negation REVOKES an earlier glob grant', () => {
+  // GitHub applies the filter in order. Returning false for every negation is the right half —
+  // a negation never grants — and dropping the other half meant `['scripts/**', '!scripts/lib/a.js']`
+  // granted `a.js` via the glob while GitHub excludes it. FALSE PASS.
+  const out = run({
+    paths: ['scripts/**', '!scripts/lib/a.js'],
+    steps: ['node scripts/generate-readmes.js'],
+    files: BASE.files,
+  });
+  assert.equal(out.status, 1);
+  assert.match(out.output, /scripts\/lib\/a\.js is imported by this workflow/);
+});
+
+test('a compound `&&` command resolves EVERY segment, not just the head', () => {
+  // `node a.js && node b.js` resolved to `a.js` alone, with no error — a half-recognised command
+  // is a silent partial skip, which is what this file's doctrine says must never happen. The live
+  // shape exists in package.json's own `test` script.
+  const out = run({
+    paths: ['scripts/a.js'],
+    steps: ['node scripts/a.js && node scripts/b.js'],
+    files: { 'scripts/a.js': 'console.log(1);\n', 'scripts/b.js': 'console.log(2);\n' },
+  });
+  assert.equal(out.status, 1);
+  assert.match(out.output, /scripts\/b\.js is imported by this workflow/);
+});
+
+test('a non-npm launcher is not silently skipped', () => {
+  // `yarn`, `pnpm`, `python`, `make` fell through the not-a-launcher pass and vanished from the
+  // graph with no error unless they were the only entry.
+  const out = run({ ...BASE, steps: [...BASE.steps, 'python scripts/gen.py'] });
+  assert.equal(out.status, 1);
+  assert.match(out.output, /could not be resolved/);
+});
+
+test('`export … from` is an edge like `import`', () => {
+  // A re-exporting barrel module is in the graph and its own changes move generated output.
+  const out = run({
+    paths: ['scripts/generate-readmes.js'],
+    steps: ['node scripts/generate-readmes.js'],
+    files: {
+      'scripts/generate-readmes.js': "export { a } from './lib/a.js';\n",
+      'scripts/lib/a.js': 'export const a = 1;\n',
+    },
+  });
+  assert.equal(out.status, 1);
+  assert.match(out.output, /scripts\/lib\/a\.js is imported by this workflow/);
+});
+
+test('a `run: |2` block header is still recognised as a block', () => {
+  // An explicit indentation indicator is legal YAML. Without it the INLINE regex captured `|2`
+  // as the command, which null-dropped, and the whole block body went unscanned — silently, so
+  // long as the job had one other resolving entry.
+  const dir = mkdtempSync(join(tmpdir(), 'gen-inputs-'));
+  try {
+    mkdirSync(join(dir, '.github/workflows'), { recursive: true });
+    mkdirSync(join(dir, 'scripts'), { recursive: true });
+    writeFileSync(join(dir, '.github/workflows/update-readmes.yml'), `name: Update READMEs
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/listed.js'
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - run: node scripts/listed.js
+      - run: |2
+          node scripts/hidden.js
+`);
+    writeFileSync(join(dir, 'package.json'), '{"scripts":{}}');
+    writeFileSync(join(dir, 'scripts/listed.js'), 'console.log(1);\n');
+    writeFileSync(join(dir, 'scripts/hidden.js'), 'console.log(2);\n');
+    let status = 0;
+    let output = '';
+    try {
+      output = execFileSync('node', [CHECK, '--root', dir], { cwd: dir, encoding: 'utf8' });
+    } catch (error) {
+      output = `${error.stdout || ''}${error.stderr || ''}`;
+      status = error.status;
+    }
+    assert.equal(status, 1);
+    assert.match(output, /scripts\/hidden\.js is imported by this workflow/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('`--warn` downgrades findings but NEVER a structural refusal', () => {
+  // Same rule as `assertNotShallow`: a warn-only run over a filter the check could not read
+  // would not warn less, it would lie.
+  const finding = run({
+    ...BASE,
+    paths: ['scripts/generate-readmes.js'],
+    warn: true,
+  });
+  assert.equal(finding.status, 0, 'an unlisted module is a finding, downgradable by --warn');
+
+  const refusal = run({ ...BASE, steps: ['npm run nope'], warn: true });
+  assert.equal(refusal.status, 1, 'an unresolvable step is a refusal and must stay non-zero');
+  assert.match(refusal.output, /structural refusal/);
+});
+
+test('a bare `--root` with no value exits 2 rather than crashing', () => {
+  let status = 0;
+  let output = '';
+  try {
+    output = execFileSync('node', [CHECK, '--root'], { encoding: 'utf8' });
+  } catch (error) {
+    output = `${error.stdout || ''}${error.stderr || ''}`;
+    status = error.status;
+  }
+  assert.equal(status, 2);
+  assert.match(output, /--root needs a value/);
 });

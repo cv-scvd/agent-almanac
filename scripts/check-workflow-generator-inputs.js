@@ -51,9 +51,20 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname, relative, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const ROOT = process.argv.includes('--root')
-  ? process.argv[process.argv.indexOf('--root') + 1]
-  : join(dirname(fileURLToPath(import.meta.url)), '..');
+function flagValue(name) {
+  const at = process.argv.indexOf(name);
+  if (at === -1) return null;
+  const value = process.argv[at + 1];
+  // A bare trailing `--root` used to reach `join(undefined)` and crash with a TypeError.
+  // `gate-envelope.js` guards its flags the same way; mirroring it costs three lines.
+  if (!value || value.startsWith('--')) {
+    console.error(`ERROR: ${name} needs a value.`);
+    process.exit(2);
+  }
+  return value;
+}
+
+const ROOT = flagValue('--root') || join(dirname(fileURLToPath(import.meta.url)), '..');
 
 const WARN_ONLY = process.argv.includes('--warn');
 const LIST = process.argv.includes('--list');
@@ -105,7 +116,11 @@ function runSteps(workflowText) {
   const lines = workflowText.split(/\r?\n/);
   const commands = [];
   for (let i = 0; i < lines.length; i++) {
-    const block = lines[i].match(/^(\s*)-?\s*run:\s*[|>][-+]?\s*$/);
+    // `|2` (explicit indentation indicator) and a trailing `# comment` are legal YAML block
+    // headers. Without them the INLINE regex captured `|2` as the command, `entryScript`
+    // null-dropped it via the not-a-launcher pass, and the entire block body went unscanned --
+    // silently, so long as the job had one other resolving entry.
+    const block = lines[i].match(/^(\s*)-?\s*run:\s*[|>][-+]?\d*\s*(?:#.*)?$/);
     if (block) {
       const keyIndent = block[1].length;
       for (let j = i + 1; j < lines.length; j++) {
@@ -134,7 +149,11 @@ function runSteps(workflowText) {
  * otherwise shrink the graph, and the remaining modules would all still be listed, so the
  * check would report `0 unlisted` over a third of the job.
  */
-const NON_ENTRY_COMMANDS = [/^npm ci\b/, /^npm install\b/, /^npm run build\b/];
+// `/^npm run build\b/` was here and was DEAD: any command starting `npm run build` matches the
+// `npm run <name>` branch of `entryScript` first, so the escape hatch could never engage. Removed
+// rather than left as reassurance — an exemption nobody can reach is worse than none, because the
+// next reader assumes it works.
+const NON_ENTRY_COMMANDS = [/^npm ci\b/, /^npm install\b/];
 
 /**
  * Commands that could launch repo code, and therefore must resolve or be declared.
@@ -148,7 +167,14 @@ const NON_ENTRY_COMMANDS = [/^npm ci\b/, /^npm install\b/, /^npm run build\b/];
  * because a shell script can run node, and skipping it is the silent-shrink hole this check
  * exists to close.
  */
-const INVOKER_COMMANDS = [/^node\b/, /^npm\b/, /^npx\b/, /^bash\b/, /^sh\b/, /^Rscript\b/, /^\.\//];
+// `yarn`, `pnpm`, `deno`, `bun`, `python` and `make` are here because without them a step using
+// any of them fell through to the not-a-launcher pass, returned null, and vanished from the graph
+// with no error — the silent shrink this whole classification exists to prevent, reachable the
+// day someone adds a non-npm step.
+const INVOKER_COMMANDS = [
+  /^node\b/, /^npm\b/, /^npx\b/, /^yarn\b/, /^pnpm\b/, /^deno\b/, /^bun\b/,
+  /^bash\b/, /^sh\b/, /^Rscript\b/, /^python3?\b/, /^make\b/, /^\.\//,
+];
 
 /**
  * Resolve one shell command to the script it runs.
@@ -158,6 +184,21 @@ const INVOKER_COMMANDS = [/^node\b/, /^npm\b/, /^npx\b/, /^bash\b/, /^sh\b/, /^R
  * which is precisely how the graph would silently lose an entry point.
  */
 function entryScript(command, packageScripts, viaNpmRun = false) {
+  // A compound command is several commands. `node a.js && node b.js` resolved to `a.js` alone,
+  // and a package script `"x && y"` to x's resolution alone -- with no error either way, which
+  // directly contradicts this file's own stated doctrine that an unrecognised command is an
+  // error rather than a silent skip. A HALF-recognised command was a silent partial skip.
+  // Live shape in this repo: package.json's `test` is `npm run a && npm run b`.
+  if (/&&|\|\||;/.test(command)) {
+    return command
+      .split(/&&|\|\||;/)
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .flatMap((part) => {
+        const resolved = entryScript(part, packageScripts, viaNpmRun);
+        return resolved === null ? [] : [resolved].flat();
+      });
+  }
   const npmRun = command.match(/^npm run ([A-Za-z0-9:_-]+)/);
   if (npmRun) {
     const script = packageScripts[npmRun[1]];
@@ -191,30 +232,65 @@ function importGraph(entry, seen = new Set()) {
   }
   seen.add(rel);
   const text = readFileSync(absolute, 'utf8');
-  const specifiers = [...text.matchAll(/^\s*import\s[^'"]*['"](\.[^'"]+)['"]/gm)].map((m) => m[1]);
+  // `export … from './x.js'` is an edge as much as `import` is: a re-exporting barrel module
+  // sits in the graph and its own changes move generated output. The negated character class
+  // spans newlines, so multi-line forms are covered without an `s` flag.
+  const specifiers = [...text.matchAll(/^\s*(?:import|export)\s[^'"]*['"](\.[^'"]+)['"]/gm)]
+    .map((m) => m[1]);
   for (const specifier of specifiers) {
     importGraph(relative(ROOT, resolvePath(dirname(absolute), specifier)), seen);
   }
   return seen;
 }
 
-/** Does any `paths:` entry cover this file? Exact match, or a `**` prefix glob. */
+/**
+ * Compile one GitHub path-filter entry to a regex.
+ *
+ * `**` crosses `/`, `*` and `?` do not — that is GitHub's rule, and the difference is what the
+ * first version got wrong. It reduced any entry containing `**` to the prefix before it, so the
+ * LIVE entry `i18n/**\/*.md` was read as "anything under `i18n/`" and would have reported a
+ * future `i18n/<x>.js` as covered when GitHub's `*.md` suffix would not have triggered on it.
+ * That is a false PASS, which on this gate means "the healer will run" when it will not.
+ */
+function entryToRegExp(entry) {
+  let source = '^';
+  for (let i = 0; i < entry.length; i++) {
+    const ch = entry[i];
+    if (ch === '*' && entry[i + 1] === '*') { source += '.*'; i++; }
+    else if (ch === '*') source += '[^/]*';
+    else if (ch === '?') source += '[^/]';
+    else source += ch.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+  }
+  return new RegExp(`${source}$`);
+}
+
+/**
+ * Is this file covered by the filter, reading the entries IN ORDER?
+ *
+ * GitHub applies a filter as a sequence: a later `!pattern` revokes what an earlier positive
+ * granted. The first version returned `false` for every negation, which is the right half —
+ * a negation never grants — and silently dropped the other: with `['scripts/**', '!scripts/lib/a.js']`
+ * GitHub excludes `a.js` while `some()` granted it via the glob. False PASS again.
+ */
 function covered(file, entries) {
-  return entries.some((entry) => {
-    if (entry.startsWith('!')) return false;
-    if (entry === file) return true;
-    const star = entry.indexOf('**');
-    return star !== -1 && file.startsWith(entry.slice(0, star));
-  });
+  let result = false;
+  for (const entry of entries) {
+    const negated = entry.startsWith('!');
+    if (entryToRegExp(negated ? entry.slice(1) : entry).test(file)) result = !negated;
+  }
+  return result;
 }
 
 let findings = 0;
+// Structural refusals: the check could not measure at all. Counted separately because
+// `--warn` must not swallow them -- see the exit logic at the bottom.
+let refusals = 0;
 
 for (const workflow of HEALER_WORKFLOWS) {
   const absolute = join(ROOT, workflow);
   if (!existsSync(absolute)) {
     console.error(`FAIL: healer workflow not found: ${workflow}`);
-    findings++;
+    refusals++;
     continue;
   }
   const text = readFileSync(absolute, 'utf8');
@@ -224,7 +300,7 @@ for (const workflow of HEALER_WORKFLOWS) {
     // filter is legitimate; a filter this function failed to parse is the vacuous pass.
     console.error(`FAIL: ${workflow} — no push paths: entries parsed. If the filter was removed`);
     console.error('      deliberately, remove this workflow from HEALER_WORKFLOWS as well.');
-    findings++;
+    refusals++;
     continue;
   }
 
@@ -232,25 +308,35 @@ for (const workflow of HEALER_WORKFLOWS) {
   const commands = runSteps(text);
   let scripts;
   try {
-    scripts = commands.map((c) => entryScript(c, packageScripts)).filter(Boolean);
+    // `flat()` because a compound command resolves to a LIST of scripts, not one.
+    scripts = commands.flatMap((c) => entryScript(c, packageScripts) ?? []).flat().filter(Boolean);
   } catch (error) {
     // Reported rather than thrown, so one unparseable step does not hide the state of any
     // other healer workflow — and so the message names the command instead of a stack trace.
     console.error(`FAIL: ${workflow} — ${error.message}`);
     console.error('      Add it to NON_ENTRY_COMMANDS if it runs no repo JavaScript. Skipping it');
     console.error('      silently would shrink the import graph and report 0 unlisted over it.');
-    findings++;
+    refusals++;
     continue;
   }
   if (scripts.length === 0) {
     console.error(`FAIL: ${workflow} — no node entry point resolved from its run: steps.`);
-    findings++;
+    refusals++;
     continue;
   }
 
   const reachable = new Set();
-  for (const script of scripts) {
-    for (const module of importGraph(script)) reachable.add(module);
+  try {
+    for (const script of scripts) {
+      for (const module of importGraph(script)) reachable.add(module);
+    }
+  } catch (error) {
+    // Inside the try for the same reason the resolution is: `importGraph` throws on an import
+    // it cannot resolve, and an uncaught throw here would skip every remaining healer while the
+    // comment above promised the opposite.
+    console.error(`FAIL: ${workflow} — ${error.message}`);
+    refusals++;
+    continue;
   }
 
   const missing = [...reachable].filter((module) => !covered(module, entries)).sort();
@@ -276,4 +362,15 @@ if (findings > 0 && !WARN_ONLY) {
   console.log('healer, so the drift lands at some later unrelated commit instead.');
 }
 
-process.exitCode = findings > 0 && !WARN_ONLY ? 1 : 0;
+// `--warn` downgrades FINDINGS -- an unlisted module -- and never a REFUSAL. A refusal means the
+// check could not read the filter, could not resolve a step, or could not walk the graph, and a
+// warn-only run there would not warn less, it would lie. Same rule and same wording as
+// `assertNotShallow` in scripts/lib/git-freshness.js; CLAUDE.md states it as "warn-only describes
+// what a gate does with what it finds, never what it does when it cannot measure at all".
+if (refusals > 0) {
+  console.error('');
+  console.error(`${refusals} structural refusal(s): the check could not measure, so this exits`);
+  console.error('non-zero even under --warn.');
+}
+
+process.exitCode = refusals > 0 || (findings > 0 && !WARN_ONLY) ? 1 : 0;
