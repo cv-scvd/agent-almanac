@@ -97,6 +97,17 @@ on:
       # remembering to", and it refused the commit that made it true.
       - 'cli/adapters/*'
       - 'cli/lib/*'
+      # NOT import-graph inputs, and that is exactly why they need listing by hand (#691).
+      # `generateSecuritySurface` COUNTS these two directories with `readdirSync`, so adding a
+      # script or a workflow moves generated output — and `check:generator-inputs` cannot see it,
+      # because it derives the input set from imports and a directory listing is not an import.
+      #
+      # Single star, matching the non-recursive `readdirSync` scope, and it fires on deletions
+      # too. Without these, the drift lands at some later unrelated commit and surfaces as the
+      # daily schedule going red with nothing to auto-repair it — the failure this workflow's own
+      # header says it exists to prevent.
+      - 'scripts/*'
+      - 'workflows/*'
       # The toolchain is an input too. generate-readmes.js parses YAML with js-yaml, so a
       # Dependabot bump that changes `yaml.load` behaviour changes generated output while
       # touching no content file and no generator -- nothing here matched, so the healer never
