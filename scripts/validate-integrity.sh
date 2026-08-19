@@ -192,8 +192,97 @@ for f in guides/*.md; do
 done
 [ "$a3_fail" -eq 0 ] && echo "OK: All guide files have required frontmatter"
 
-# A4: Agent registry count
-echo "--- A4: Agent registry count ---"
+# ── Shared: registry entry set vs disk, for A4 and A5 (#648) ────────────────────
+#
+# A count is blind in two directions that matter, and A12 already learned both for guides:
+# a file added with valid frontmatter and the total bumped, but with NO registry entry, keeps
+# the numbers equal while being absent from every generated index -- because the READMEs render
+# from the entry LIST, not from the count. And a swap (one file added, one removed in the same
+# commit) leaves the number identical while both sides changed.
+#
+# Extracted rather than written twice, because A4 and A5 differ only in three nouns and the
+# duplicated version would drift the way this repo's other duplicated readers have.
+registry_entry_set() { # <tree> <registry> <section key>
+  local tree="$1" registry="$2" section="$3"
+  # `id` is declared HERE, not at its first loop, because the dupes loop now uses it too and a
+  # loop variable that leaks to the global scope would be shared between the A4 and A5 calls.
+  local reg_ids_all dupes reg_ids disk_ids id
+  local rc=0
+
+  # Scoped to the section, not the whole file: `default_skills:` in agents/_registry.yml also
+  # holds list entries, and an unscoped `- id:` grep would silently widen the set the day one
+  # of those gains an id.
+  # `"$` and not `"\$`: inside a single-quoted shell string a backslash reaches sed literally, so
+  # `s/^"(.*)"\$/` matched only an id ENDING IN A DOLLAR SIGN and the quote-strip was inert.
+  # Verified rather than reasoned -- `printf '"x"\n' | sed -E 's/^"(.*)"\$/\1/'` prints `"x"`.
+  # Nothing depends on it today (no id in either registry is quoted), which is exactly why it
+  # would have sat here until someone quoted one and got accused of a missing file. A11 and A12
+  # already use the correct form; this was the odd one out.
+  # Range ENDS at the next top-level key, not at EOF. Both registries happen to put their
+  # section last today, so `,$` gave the same answer -- and would keep giving it right up until
+  # someone appends a top-level key with its own `- id:` list, at which point the set silently
+  # widens and every extra id is reported as "only in registry". Entries are indented, so the
+  # first unindented `key:` after the section is the boundary; if none follows, the range still
+  # runs to EOF and nothing changes.
+  reg_ids_all=$(sed -n "/^${section}:/,/^[a-z_][a-z_0-9]*:/ { /^  - id: /p }" "$registry" | tr -d '\r' \
+    | sed -E 's/^  - id: *//' | sed -E 's/^"(.*)"$/\1/' | sort || true)
+
+  # Before `sort -u`, because uniquing would collapse a duplicate and let the set still match
+  # disk -- two entries pointing at one file forgiven by the check meant to pair them 1:1.
+  dupes=$(printf '%s\n' "$reg_ids_all" | uniq -d || true)
+  if [ -n "$dupes" ]; then
+    # One FAIL line per duplicate, for the same reason as the discrepancy loops below: the
+    # offending id has to sit on the line that says FAIL, or no envelope case can assert WHICH
+    # id was duplicated. The header-plus-indent form violated this function's own convention
+    # four lines above it.
+    while IFS= read -r id; do
+      [ -z "$id" ] && continue
+      echo "FAIL: $registry has two entries sharing one id: $id"
+      rc=1
+    done <<< "$dupes"
+  fi
+
+  # Same class: `/^\$/d` deleted lines consisting of a literal `$`, not empty lines.
+  reg_ids=$(printf '%s\n' "$reg_ids_all" | sed '/^$/d' | sort -u || true)
+  disk_ids=$(find "$tree" -maxdepth 1 -name '*.md' -not -name '_template.md' -not -name 'README.md' \
+    -exec basename {} .md \; | sort || true)
+
+  # Fail-closed. An empty extraction means the pattern drifted from the file it reads, and
+  # comparing an empty set against disk would report every file as missing -- loud, but for the
+  # wrong reason. Naming the real cause is what stops the next reader "fixing" the registry.
+  if [ -z "$reg_ids" ]; then
+    echo "FAIL: extracted 0 '- id:' values from $registry under '${section}:' -- pattern drift, not a clean tree"
+    return 1
+  fi
+  # ONE `FAIL:` LINE PER DISCREPANCY, not a header plus indented detail. Two reasons, and the
+  # second is the one that bit: a reader wants the offending id on the line that says FAIL, and
+  # `gate-envelope.js` kills a case only when one line contains both `FAIL` and the expected
+  # substring. With the detail indented under a header, an envelope asserting "the orphaned
+  # entry is named" reported [WRONG-RED] against a check that was naming it correctly -- the
+  # harness could not see it, so the case proved nothing either way.
+  local only_reg only_disk
+  only_reg=$(comm -23 <(printf '%s\n' "$reg_ids") <(printf '%s\n' "$disk_ids") || true)
+  only_disk=$(comm -13 <(printf '%s\n' "$reg_ids") <(printf '%s\n' "$disk_ids") || true)
+  if [ -n "$only_reg" ]; then
+    while IFS= read -r id; do
+      [ -z "$id" ] && continue
+      echo "FAIL: $registry: only in registry (no file): $id -- expected $tree/$id.md"
+      rc=1
+    done <<< "$only_reg"
+  fi
+  if [ -n "$only_disk" ]; then
+    while IFS= read -r id; do
+      [ -z "$id" ] && continue
+      echo "FAIL: $tree: only on disk (no registry entry): $id -- it renders in no generated index"
+      rc=1
+    done <<< "$only_disk"
+  fi
+  return "$rc"
+}
+
+# A4: Agent registry count and entry set
+echo "--- A4: Agent registry vs disk ---"
+a4_fail=0
 disk_count=$(find agents -maxdepth 1 -name '*.md' -not -name '_template.md' -not -name 'README.md' | wc -l) # abort-ok: find over a directory whose absence is not drift but a broken checkout
 # `|| true` and it is the point of this check: if `total_agents:` is ever renamed, the bare
 # form aborted the run rather than reporting the drift it exists to catch. The `!=` below is
@@ -201,21 +290,22 @@ disk_count=$(find agents -maxdepth 1 -name '*.md' -not -name '_template.md' -not
 reg_count=$(grep 'total_agents:' agents/_registry.yml | tr -d '\r' | awk '{print $2}' || true)
 if [ "$disk_count" != "$reg_count" ]; then
   echo "FAIL: agents disk=$disk_count registry=$reg_count"
-  failed=1
-else
-  echo "OK: $disk_count agents on disk match registry"
+  failed=1; a4_fail=1
 fi
+registry_entry_set agents agents/_registry.yml agents || { failed=1; a4_fail=1; }
+[ "$a4_fail" -eq 0 ] && echo "OK: $disk_count agents on disk match total_agents and the registry entry set"
 
-# A5: Team registry count
-echo "--- A5: Team registry count ---"
+# A5: Team registry count and entry set
+echo "--- A5: Team registry vs disk ---"
+a5_fail=0
 disk_count=$(find teams -maxdepth 1 -name '*.md' -not -name '_template.md' -not -name 'README.md' | wc -l) # abort-ok: find over a directory whose absence is not drift but a broken checkout
 reg_count=$(grep 'total_teams:' teams/_registry.yml | tr -d '\r' | awk '{print $2}' || true) # see A4
 if [ "$disk_count" != "$reg_count" ]; then
   echo "FAIL: teams disk=$disk_count registry=$reg_count"
-  failed=1
-else
-  echo "OK: $disk_count teams on disk match registry"
+  failed=1; a5_fail=1
 fi
+registry_entry_set teams teams/_registry.yml teams || { failed=1; a5_fail=1; }
+[ "$a5_fail" -eq 0 ] && echo "OK: $disk_count teams on disk match total_teams and the registry entry set"
 
 # A6: Agent intent contract (#285)
 echo "--- A6: Agent intent contract ---"
@@ -835,8 +925,9 @@ fi
 # That sentence used to end "the rest of this script is not [guarded]: #647 is the sweep, and
 # until it lands do not read this paragraph as covering A1-A10." #647 IS this commit, so both
 # halves were false on arrival. The whole file is now at zero unguarded sites --
-# `npm run check:bare-substitutions` reports 100 scanned / 0 UNGUARDED across all six tracked
-# shell scripts, against 30 on the parent commit -- and the rule at the top of this file, not
+# `npm run check:bare-substitutions` reports 0 UNGUARDED across all six tracked
+# shell scripts, against 30 unguarded on the commit that introduced the sweep -- and the rule at
+# the top of this file, not
 # this paragraph, is where the guard policy lives.
 echo "--- A11: Guide category render coverage ---"
 a11_fail=0

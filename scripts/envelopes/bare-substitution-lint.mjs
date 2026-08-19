@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 /**
  * Envelope for `scripts/check-bare-substitutions.js` itself (#647).
  *
@@ -16,6 +18,31 @@
 
 export const gate = { command: ['node', 'scripts/check-bare-substitutions.js'] };
 
+/**
+ * Line number of a unique substring in a repo file, resolved AT LOAD TIME.
+ *
+ * The three killing cases assert `<file>:<line> can abort the script`, because the checker's one
+ * FAIL template makes a bare tail substring tautologically true of any FAIL it can emit -- the
+ * `file:line` half is what makes [WRONG-RED] reachable at all. Line numbers are therefore load
+ * bearing and, hand-written, permanently stale: #648 inserted a function into
+ * `validate-integrity.sh` and moved the site TWICE in one session, each time turning a working
+ * lint into a [WRONG-RED] accusation.
+ *
+ * So the number is derived from the same anchor the mutation uses, and this throws rather than
+ * guessing when the anchor is missing or ambiguous -- an expect built from a wrong line silently
+ * un-asserts the half it exists to assert.
+ */
+function lineOf(file, needle) {
+  const lines = readFileSync(new URL(`../../${file}`, import.meta.url), 'utf8').split(/\r?\n/);
+  const hits = lines.flatMap((line, index) => (line.includes(needle) ? [index + 1] : []));
+  if (hits.length !== 1) {
+    throw new Error(`lineOf: ${hits.length} match(es) for ${JSON.stringify(needle)} in ${file}; need exactly 1`);
+  }
+  return hits[0];
+}
+
+const REGISTRY_TOTAL_ANCHOR = "reg_count=$(grep 'total_agents:'";
+
 export const cases = [
   {
     // The regression the lint exists to stop: someone "tidies away" a guard.
@@ -29,7 +56,12 @@ export const cases = [
     // [WRONG-RED] branch was dead for all three killing cases. Demonstrated, not theorised:
     // case 3 kills at bulk-scaffold-caveman.sh:14, and deleting the annotation on the line
     // directly ABOVE it also killed, same expect, adjacent site.
-    expect: 'scripts/validate-integrity.sh:201 can abort the script',
+    //
+    // The line number is DERIVED, not written down. Hand-maintained it went stale twice in one
+    // session as #648 grew the file above it, each time reporting [WRONG-RED] against a lint
+    // that had fired correctly -- a false accusation is the one thing an envelope must not
+    // produce, since its whole purpose is to be believed about whether a check works.
+    expect: `scripts/validate-integrity.sh:${lineOf('scripts/validate-integrity.sh', REGISTRY_TOTAL_ANCHOR)} can abort the script`,
   },
   {
     // The other way to defeat it: keep the code, drop the annotation that justified it. An
@@ -39,7 +71,7 @@ export const cases = [
     file: 'scripts/translate-content.sh',
     find: ' # abort-ok: awk exits 0 when no line matches; the -z check on the next line is the reader',
     replace: '',
-    expect: 'scripts/translate-content.sh:96 can abort the script',
+    expect: `scripts/translate-content.sh:${lineOf('scripts/translate-content.sh', 'CLOSE_LINE=$(awk')} can abort the script`,
   },
   {
     // DEFAULT-DENY, measured. The tempting design is a list of dangerous commands; this one
@@ -49,7 +81,7 @@ export const cases = [
     file: 'scripts/bulk-scaffold-caveman.sh',
     find: "TODAY=$(date +%Y-%m-%d)",
     replace: "TODAY=$(date +%Y-%m-%d | jq -R .)",
-    expect: 'scripts/bulk-scaffold-caveman.sh:14 can abort the script',
+    expect: `scripts/bulk-scaffold-caveman.sh:${lineOf('scripts/bulk-scaffold-caveman.sh', 'TODAY=$(date')} can abort the script`,
     // `date` alone is on the safe list, so the unmutated line is reported `safe`. Adding one
     // unknown command to the pipeline is what has to flip it — which is the property that
     // separates an enumerated-safe list from an enumerated-dangerous one.
