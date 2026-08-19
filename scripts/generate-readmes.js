@@ -17,7 +17,7 @@ import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import * as yaml from 'js-yaml';
 import { CONTENT_TYPES } from './lib/content-types.js';
-import { guideCategoryOrder, guideCategoryLabel } from './lib/guide-categories.js';
+import { guideCategoryOrder, guideCategoryLabel, guideCategoryNames } from './lib/guide-categories.js';
 import { applySections, renderTranslationsTable, renderLocaleTable } from './lib/readme-sections.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -129,7 +129,11 @@ function generateStats() {
     `- **${totalSkills} skills** across ${totalDomains} domains — structured, executable procedures`,
     `- **${totalAgents} agents** — specialized Claude Code personas covering development, review, compliance, and more`,
     `- **${totalTeams} teams** — predefined multi-agent compositions for complex workflows`,
-    `- **${totalGuides} guides** — human-readable workflow, infrastructure, and reference documentation`,
+    // Derived, not enumerated (#647). This line read "workflow, infrastructure, and reference"
+    // — three of the five categories on disk, written when there were three. It is the same
+    // drift class as #644's hardcoded category order, and it is why every count on this page
+    // comes from a registry: a literal list is correct exactly once.
+    `- **${totalGuides} guides** — human-readable documentation across ${guideCategoryNames(guideCategories, guides)}`,
     `- **Interactive visualization** — force-graph explorer with ${totalSkills} R-generated skill icons and 9 color themes`,
   ];
   return lines.join('\n');

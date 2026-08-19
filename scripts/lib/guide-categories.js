@@ -67,6 +67,26 @@ export function guideCategoryOrder(categoriesBlock, guides) {
  * @param {string} catId
  * @returns {string}
  */
+/**
+ * Render the category names as an English list: "a, b, c, d and e".
+ *
+ * Exists so prose can name the categories without hardcoding them. The line it replaces said
+ * "workflow, infrastructure, and reference" — true when there were three of them, and quietly
+ * false from the day `design` was added (#647).
+ *
+ * Order and membership come from `guideCategoryOrder`, so an undeclared category appearing
+ * only on a guide is named here too rather than silently dropped.
+ */
+export function guideCategoryNames(categoriesBlock, guides) {
+  const order = guideCategoryOrder(categoriesBlock, guides);
+  if (order.length === 0) return 'no categories';
+  if (order.length === 1) return `the ${order[0]} category`;
+  if (order.length === 2) return `${order[0]} and ${order[1]}`;
+  // Oxford comma, matching the line this replaced ("workflow, infrastructure, and reference")
+  // and the rest of the generated prose. Dropped at two items, where it would be wrong.
+  return `${order.slice(0, -1).join(', ')}, and ${order[order.length - 1]}`;
+}
+
 export function guideCategoryLabel(catId) {
   return catId[0].toUpperCase() + catId.slice(1);
 }

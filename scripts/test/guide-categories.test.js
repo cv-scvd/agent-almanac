@@ -18,7 +18,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { guideCategoryOrder, guideCategoryLabel } from '../lib/guide-categories.js';
+import { guideCategoryOrder, guideCategoryLabel, guideCategoryNames } from '../lib/guide-categories.js';
 
 const block = (...ids) => Object.fromEntries(ids.map((id) => [id, { description: id }]));
 const guidesIn = (...categories) => categories.map((category, i) => ({ id: `g${i}`, category }));
@@ -101,4 +101,33 @@ test('label capitalises the first letter and leaves the rest alone', () => {
 test('label does not title-case a hyphenated id — documented, not accidental', () => {
   // No category on disk has a hyphen; if one is added, this is the decision to revisit.
   assert.equal(guideCategoryLabel('edge-computing'), 'Edge-computing');
+});
+
+// ── guideCategoryNames (#647) ───────────────────────────────────────────────
+
+test('names render as an English list in registry order', () => {
+  // The literal it replaces said "workflow, infrastructure, and reference" — correct when
+  // there were three categories and quietly wrong from the day a fourth landed.
+  assert.equal(
+    guideCategoryNames({ workflow: 1, infrastructure: 1, reference: 1, design: 1, investigation: 1 }, []),
+    'workflow, infrastructure, reference, design, and investigation'
+  );
+});
+
+test('an undeclared category reaches the prose too', () => {
+  // Same rule as the ordering: a category that exists only on a guide is named rather than
+  // silently dropped, so the sentence cannot understate the corpus.
+  assert.equal(
+    guideCategoryNames({ workflow: 1 }, guidesIn('workflow', 'investigation')),
+    'workflow and investigation'
+  );
+});
+
+test('one and zero categories do not render a dangling conjunction', () => {
+  assert.equal(guideCategoryNames({ workflow: 1 }, []), 'the workflow category');
+  assert.equal(guideCategoryNames({}, []), 'no categories');
+});
+
+test('two categories join with "and" and no comma', () => {
+  assert.equal(guideCategoryNames({ workflow: 1, design: 1 }, []), 'workflow and design');
 });

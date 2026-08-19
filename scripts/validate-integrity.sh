@@ -5,8 +5,60 @@
 
 set -euo pipefail
 
+# ── When a command substitution needs `|| true`, and when it must NOT have one (#647) ──
+#
+# `set -e` plus `pipefail` means a bare `x=$(cmd | …)` carries the pipeline's exit status, so
+# the assignment can abort the entire script. There is no message: the run simply stops, and
+# every check below the abort is skipped while the log looks like a normal early exit. `grep`
+# is the usual culprit, because "found nothing" is exit 1 and is often the case the check is
+# hunting for. `| wc -l` does not rescue it -- `pipefail` returns the rightmost non-zero
+# status, so `grep(1) | wc -l(0)` still exits 1.
+#
+# The rule, and it runs in both directions:
+#
+#   `|| true`  belongs where the next lines EXPLICITLY handle the empty result -- a `-z` test,
+#              a count compared against an expected number, a loop that reports when it runs
+#              zero times. The guard converts a fatal abort into a value the check then judges.
+#
+#   NO guard   where nothing checks the empty case. There `|| true` is strictly worse than the
+#              abort: it turns a loud stop into a silent empty string, and an empty haystack
+#              makes every "is X missing from it" test pass. That is the vacuous pass the A10
+#              and A11 rules exist to forbid, arrived at from the other side.
+#
+# So a blanket sweep of `|| true` over every site is not a fix, and neither is removing them
+# all. Each site is a judgement about whether its zero-case has a reader.
+#
+# `scripts/check-bare-substitutions.js` enforces the first half mechanically: a substitution
+# whose pipeline can legitimately exit non-zero must either carry a guard or carry an
+# `# abort-ok:` annotation saying why it cannot. It cannot enforce the second half -- whether
+# a zero-check really follows is not decidable by grep -- which is why this comment exists.
+
 failed=0
 warn_count=0
+
+# ── Assert that a corpus extraction found something (#647) ──────────────────────
+#
+# This is the other half of the rule above, and the reason a blanket `|| true` sweep would
+# have made things worse rather than better.
+#
+# Every B7-B12 comparison has the shape `comm -23 <(extracted) <(reference)`. `comm -23`
+# prints lines present only on the LEFT, so an empty left side reports nothing missing —
+# and the check then prints its OK line. Replacing the abort with `|| true` at those sites
+# and stopping there would convert "the script died" into "all registry domains have
+# hand-tuned colours", measured over an empty registry. Louder is not the same as correct;
+# the extraction has to be asserted before its result is trusted.
+#
+# Returns non-zero so callers can guard the comparison itself, rather than reporting a
+# contradiction (FAIL on the extraction, OK on the comparison) in the same block.
+require_nonempty() { # <label> <value>
+  if [ -z "$2" ]; then
+    echo "FAIL: $1 extracted nothing — the pattern has drifted from the file it reads,"
+    echo "      so every comparison against it would pass vacuously"
+    failed=1
+    return 1
+  fi
+  return 0
+}
 
 # ── Shared: read one event's trigger paths out of a workflow (#641) ──────────────
 #
@@ -94,6 +146,11 @@ echo "--- A1: Agent frontmatter ---"
 for f in agents/*.md; do
   name=$(basename "$f")
   [[ "$name" == "_template.md" || "$name" == "README.md" ]] && continue
+  # DO NOT add `intent` here without reading scripts/envelopes/a6a-abort-capable-substitutions.mjs
+  # first. A6a owns that field and prints `FAIL: $f missing required field: intent`, which is
+  # byte-identical to what this loop would render for `intent` — and the envelope case proving
+  # A6a's diagnostic is reachable keys on exactly that string. Adding it here lets that case
+  # report [KILLED] over a run in which A6a never executed.
   for field in name description tools priority; do
     if ! grep -q "^${field}:" "$f"; then
       echo "FAIL: $f missing required field: $field"
@@ -137,8 +194,11 @@ done
 
 # A4: Agent registry count
 echo "--- A4: Agent registry count ---"
-disk_count=$(find agents -maxdepth 1 -name '*.md' -not -name '_template.md' -not -name 'README.md' | wc -l)
-reg_count=$(grep 'total_agents:' agents/_registry.yml | tr -d '\r' | awk '{print $2}')
+disk_count=$(find agents -maxdepth 1 -name '*.md' -not -name '_template.md' -not -name 'README.md' | wc -l) # abort-ok: find over a directory whose absence is not drift but a broken checkout
+# `|| true` and it is the point of this check: if `total_agents:` is ever renamed, the bare
+# form aborted the run rather than reporting the drift it exists to catch. The `!=` below is
+# the explicit zero-check -- an empty string never equals a number, so the FAIL prints.
+reg_count=$(grep 'total_agents:' agents/_registry.yml | tr -d '\r' | awk '{print $2}' || true)
 if [ "$disk_count" != "$reg_count" ]; then
   echo "FAIL: agents disk=$disk_count registry=$reg_count"
   failed=1
@@ -148,8 +208,8 @@ fi
 
 # A5: Team registry count
 echo "--- A5: Team registry count ---"
-disk_count=$(find teams -maxdepth 1 -name '*.md' -not -name '_template.md' -not -name 'README.md' | wc -l)
-reg_count=$(grep 'total_teams:' teams/_registry.yml | tr -d '\r' | awk '{print $2}')
+disk_count=$(find teams -maxdepth 1 -name '*.md' -not -name '_template.md' -not -name 'README.md' | wc -l) # abort-ok: find over a directory whose absence is not drift but a broken checkout
+reg_count=$(grep 'total_teams:' teams/_registry.yml | tr -d '\r' | awk '{print $2}' || true) # see A4
 if [ "$disk_count" != "$reg_count" ]; then
   echo "FAIL: teams disk=$disk_count registry=$reg_count"
   failed=1
@@ -165,10 +225,29 @@ declare -A AGENT_INTENT
 for f in agents/*.md; do
   name=$(basename "$f" .md)
   [[ "$name" == "_template" || "$name" == "README" ]] && continue
-  intent=$(grep -m1 '^intent:' "$f" | sed 's/^intent: *//' | tr -d '\r' | xargs)
-  tools=$(grep -m1 '^tools:' "$f" | tr -d '\r')
+  # `|| true` on both, and it is load-bearing rather than defensive (#647). Under
+  # `set -euo pipefail` a bare `x=$(grep … | …)` carries the pipeline's status, so an agent
+  # file WITHOUT `intent:` aborted the whole script on this line -- one line before the
+  # `-z` guard that exists to report it. The FAIL below could never print, and every check
+  # from A6 to B13 was skipped with no diagnostic at all. Both guards are correct under the
+  # rule in the header: an explicit zero-check follows each of them.
+  intent=$(grep -m1 '^intent:' "$f" | sed 's/^intent: *//' | tr -d '\r' | xargs || true)
+  tools=$(grep -m1 '^tools:' "$f" | tr -d '\r' || true)
   if [ -z "$intent" ]; then
     echo "FAIL: $f missing required field: intent"
+    failed=1; a6_fail=1; continue
+  fi
+  # A1 already fails a file with no `tools:`, so this is a second reader of the same fact
+  # rather than the only one. It is here because the alternative is worse than a duplicate
+  # FAIL line: an empty `$tools` silently yields has_we=0 below, i.e. "no Write/Edit", so an
+  # ADVISORY agent with no `tools:` line agrees with itself and A6a emits nothing at all.
+  #
+  # The comment here first named the implementing case, which was backwards — that one is
+  # already caught, printing `intent=implementing but tools lack Write/Edit` from the check
+  # below. Advisory is the direction that escaped silently, and it is the direction a future
+  # reader would use to decide whether this guard is removable.
+  if [ -z "$tools" ]; then
+    echo "FAIL: $f missing required field: tools (A6a cannot judge intent without it)"
     failed=1; a6_fail=1; continue
   fi
   if [[ "$intent" != "advisory" && "$intent" != "implementing" ]]; then
@@ -293,7 +372,7 @@ a8_readmes=$(sed -n '/^const MANAGED = \[/,/^\];/p' scripts/generate-readmes.js 
   | grep -oE "path: ['\"][^'\"]+['\"]" | sed -E "s/^path: ['\"]//; s/['\"]\$//" | sort -u || true)
 a8_locales=$(grep -E '^[[:space:]]*-[[:space:]]*code:' i18n/_config.yml | sed -E 's/.*code:[[:space:]]*//; s/[[:space:]]*$//' | tr -d '\r' || true)
 a8_status=$(printf '%s\n' "$a8_locales" | sed -E '/^$/d; s#^#i18n/#; s#$#/translation_status.yml#' || true)
-a8_expected=$(printf '%s\n%s\n' "$a8_readmes" "$a8_status" | sed -E '/^$/d' | sort -u)
+a8_expected=$(printf '%s\n%s\n' "$a8_readmes" "$a8_status" | sed -E '/^$/d' | sort -u) # abort-ok: printf|sed|sort-u return 0 on empty input; the -z checks two lines below read the result
 a8_fp=$(grep -m1 'file_pattern:' .github/workflows/update-readmes.yml | sed -E 's/.*file_pattern:[[:space:]]*"([^"]*)".*/\1/' | tr '\t' ' ' || true)
 if [ -z "$a8_readmes" ] || [ -z "$a8_locales" ] || [ -z "$a8_fp" ]; then
   echo "FAIL: A8 could not derive generated files, locales, or file_pattern"
@@ -456,7 +535,7 @@ while IFS= read -r f; do
   invoked=$(grep -oE "$a9_pattern" "$f" | grep -oE "${a9_bt}(${a9_tools})${a9_bt}" | tr -d "$a9_bt" | sort -u || true)
   # Frontmatter region only (skips body code-fence examples); supports both
   # `allowed-tools: A B C` and the YAML block-list form.
-  a9_fm=$(sed -n '2,/^---[[:space:]]*$/p' "$f" | tr -d '\r')
+  a9_fm=$(sed -n '2,/^---[[:space:]]*$/p' "$f" | tr -d '\r') # abort-ok: `sed -n` prints nothing and exits 0 when the range matches nothing
   a9_inline=$(printf '%s\n' "$a9_fm" | grep -m1 '^allowed-tools:' | sed 's/^allowed-tools:[[:space:]]*//' || true)
   a9_block=$(printf '%s\n' "$a9_fm" | awk '/^allowed-tools:[[:space:]]*$/{f=1;next} f&&/^[[:space:]]*-[[:space:]]/{sub(/^[[:space:]]*-[[:space:]]*/,"");print;next} f{exit}' || true)
   allowed=$(printf '%s %s' "$a9_inline" "$a9_block" | tr '\n' ' ')
@@ -740,7 +819,8 @@ fi
 # Fails CLOSED. An empty extraction is FAIL, never OK -- a pattern that drifts and matches
 # nothing is the vacuous pass this check exists to prevent (the A10 rule, applied here).
 #
-# Every extraction in A11 and A12 carries `|| true`, and that is load-bearing rather than
+# Every extraction in A11 and A12 carries `|| true` or a justified `# abort-ok:`, and that is
+# load-bearing rather than
 # noise. Under `set -euo pipefail` a bare `x=$(grep ... )` aborts the ENTIRE script the moment
 # grep matches nothing -- red with no diagnostic, the zero-check dead, and every later check
 # skipped. The envelope reported WRONG-RED on the first version of A11 for exactly this.
@@ -750,15 +830,21 @@ fi
 # The scope of that sentence is A11 and A12 ONLY. It said "every extraction below" until a
 # review pointed out that A12's own two lines -- copied from A4/A5 in round 1 -- had no guard,
 # which made the claim false about the exact failure class this gate exists to measure, five
-# lines above the note tracking that class. They are guarded now, but the rest of this script
-# is not: #647 is the sweep, and until it lands do not read this paragraph as covering A1-A10.
+# lines above the note tracking that class.
+#
+# That sentence used to end "the rest of this script is not [guarded]: #647 is the sweep, and
+# until it lands do not read this paragraph as covering A1-A10." #647 IS this commit, so both
+# halves were false on arrival. The whole file is now at zero unguarded sites --
+# `npm run check:bare-substitutions` reports 100 scanned / 0 UNGUARDED across all six tracked
+# shell scripts, against 30 on the parent commit -- and the rule at the top of this file, not
+# this paragraph, is where the guard policy lives.
 echo "--- A11: Guide category render coverage ---"
 a11_fail=0
 # Non-uniqued, empties dropped: this is a per-ENTRY list, not a set (A11a needs the count).
 a11_used=$(grep -E '^    category: ' guides/_registry.yml | tr -d '\r' \
   | sed -E 's/^    category: *//' | sed -E 's/^"(.*)"$/\1/' | sed -E "s/^'(.*)'$/\1/" \
   | sed '/^[[:space:]]*$/d' || true)
-a11_used_count=$(printf '%s\n' "$a11_used" | sed '/^[[:space:]]*$/d' | wc -l)
+a11_used_count=$(printf '%s\n' "$a11_used" | sed '/^[[:space:]]*$/d' | wc -l) # abort-ok: printf|sed|wc return 0 on empty input; the -ne and -eq 0 tests in A11a below read the count
 a11_entries=$(grep -c '^  - id: ' guides/_registry.yml || true)
 # `tr -d '\r'` FIRST: the range anchors are `$`-terminated, so on a CRLF file they would miss
 # both delimiters and the range would run to EOF. Moot under the repo's line-endings gate, but
@@ -916,7 +1002,12 @@ for f in teams/*.md; do
   [[ "$name" == "_template.md" || "$name" == "README.md" ]] && continue
   # Extract member ids from structured YAML: members:\n  - id: agent-name
   while IFS= read -r line; do
-    member=$(echo "$line" | sed -n 's/^  - id: *//p' | tr -d '\r' | xargs)
+    # GUARDED, not annotated (#647 review). The first version claimed `sed -n …p` exits 0 on
+    # no match -- true, and irrelevant: `pipefail` surfaces the RIGHTMOST non-zero, and `xargs`
+    # exits 1 on an unmatched quote. A team file carrying `  - id: o'brien` killed this loop
+    # mid-B3 with one `xargs:` line on stderr and no FAIL -- an abort on the line above the
+    # check written to report the malformed input. The `-n` test below is the zero-case reader.
+    member=$(echo "$line" | sed -n 's/^  - id: *//p' | tr -d '\r' | xargs || true)
     if [ -n "$member" ]; then
       # Skip known placeholder values (dyad uses 'any' for flexible member)
       [[ "$member" == "any" ]] && continue
@@ -947,7 +1038,8 @@ for f in agents/*.md; do
     fi
     if [ "$in_skills" -eq 1 ]; then
       if echo "$line" | grep -q '^  - '; then
-        skill_id=$(echo "$line" | sed 's/^  - //' | tr -d '\r' | xargs)
+        # Same `xargs` unmatched-quote abort as B3 above; the `-d` test below reads the empty case.
+        skill_id=$(echo "$line" | sed 's/^  - //' | tr -d '\r' | xargs || true)
         b4_checked=$((b4_checked + 1))
         if [ ! -d "skills/${skill_id}" ]; then
           echo "FAIL: $f references skill '$skill_id' but skills/${skill_id}/ not found"
@@ -1036,10 +1128,16 @@ echo "=== Category C: Pipeline Sync Validation ==="
 # B7: Palette domain coverage (registry domains vs cyberpunk color map)
 echo "--- B7: Palette domain coverage ---"
 b7_warn=0
-reg_domains=$(grep '^\s\+[a-z0-9_-]\+:$' skills/_registry.yml | grep -v 'skills:' | sed 's/://;s/^ *//' | sort)
-palette_domains=$(sed -n '/hand_domains.*list/,/hand_agents.*list/p' viz/R/palettes.R | grep -oP '^\s+"[a-z0-9-]+"' | sed 's/[" ]//g' | sort)
-b7_missing=$(comm -23 <(echo "$reg_domains") <(echo "$palette_domains"))
-if [ -n "$b7_missing" ]; then
+# Guarded and then ASSERTED, per the two rules at the top of this file. Both greps here are
+# corpus patterns that a reformat of `_registry.yml` or of `palettes.R` would silently stop
+# matching, and `comm -23` over an empty left side reports nothing missing -- so the guard
+# alone would turn a drifted pattern into this block's OK line.
+reg_domains=$(grep '^\s\+[a-z0-9_-]\+:$' skills/_registry.yml | grep -v 'skills:' | sed 's/://;s/^ *//' | sort || true)
+palette_domains=$(sed -n '/hand_domains.*list/,/hand_agents.*list/p' viz/R/palettes.R | grep -oP '^\s+"[a-z0-9-]+"' | sed 's/[" ]//g' | sort || true)
+require_nonempty 'B7 registry domains (skills/_registry.yml)' "$reg_domains" || b7_warn=-1
+require_nonempty 'B7 palette domains (viz/R/palettes.R)' "$palette_domains" || b7_warn=-1
+b7_missing=$(comm -23 <(echo "$reg_domains") <(echo "$palette_domains") || true)
+if [ "$b7_warn" -eq 0 ] && [ -n "$b7_missing" ]; then
   b7_count=$(echo "$b7_missing" | wc -l)
   echo "WARN: $b7_count domain(s) in registry without hand-tuned cyberpunk color (will use auto-fallback):"
   echo "$b7_missing" | sed 's/^/  - /'
@@ -1051,10 +1149,12 @@ fi
 # B8: Glyph mapping coverage (registry skill IDs vs SKILL_GLYPHS keys)
 echo "--- B8: Glyph mapping coverage ---"
 b8_warn=0
-reg_skills=$(grep '^      - id: ' skills/_registry.yml | sed 's/.*- id: //' | tr -d '\r' | sort)
-glyph_skills=$(grep -oP '^\s+"[a-z0-9-]+"' viz/R/glyphs.R | sed 's/[" ]//g' | sort)
-b8_missing=$(comm -23 <(echo "$reg_skills") <(echo "$glyph_skills"))
-if [ -n "$b8_missing" ]; then
+reg_skills=$(grep '^      - id: ' skills/_registry.yml | sed 's/.*- id: //' | tr -d '\r' | sort || true)
+glyph_skills=$(grep -oP '^\s+"[a-z0-9-]+"' viz/R/glyphs.R | sed 's/[" ]//g' | sort || true)
+require_nonempty 'B8 registry skill ids (skills/_registry.yml)' "$reg_skills" || b8_warn=-1
+require_nonempty 'B8 glyph keys (viz/R/glyphs.R)' "$glyph_skills" || b8_warn=-1
+b8_missing=$(comm -23 <(echo "$reg_skills") <(echo "$glyph_skills") || true)
+if [ "$b8_warn" -eq 0 ] && [ -n "$b8_missing" ]; then
   b8_count=$(echo "$b8_missing" | wc -l)
   echo "WARN: $b8_count skill(s) in registry without glyph mapping (will render with fallback):"
   echo "$b8_missing" | sed 's/^/  - /'
@@ -1066,10 +1166,12 @@ fi
 # B9: Agent glyph coverage (registry agent IDs vs AGENT_GLYPHS keys)
 echo "--- B9: Agent glyph coverage ---"
 b9_warn=0
-reg_agents=$(sed -n '/^agents:/,$ { /^  - id: /p }' agents/_registry.yml | sed 's/.*- id: //' | tr -d '\r' | sort)
-glyph_agents=$(grep -oP '^\s+"[a-z0-9-]+"' viz/R/agent_glyphs.R | sed 's/[" ]//g' | sort)
-b9_missing=$(comm -23 <(echo "$reg_agents") <(echo "$glyph_agents"))
-if [ -n "$b9_missing" ]; then
+reg_agents=$(sed -n '/^agents:/,$ { /^  - id: /p }' agents/_registry.yml | sed 's/.*- id: //' | tr -d '\r' | sort || true)
+glyph_agents=$(grep -oP '^\s+"[a-z0-9-]+"' viz/R/agent_glyphs.R | sed 's/[" ]//g' | sort || true)
+require_nonempty 'B9 registry agent ids (agents/_registry.yml)' "$reg_agents" || b9_warn=-1
+require_nonempty 'B9 agent glyph keys (viz/R/agent_glyphs.R)' "$glyph_agents" || b9_warn=-1
+b9_missing=$(comm -23 <(echo "$reg_agents") <(echo "$glyph_agents") || true)
+if [ "$b9_warn" -eq 0 ] && [ -n "$b9_missing" ]; then
   b9_count=$(echo "$b9_missing" | wc -l)
   echo "WARN: $b9_count agent(s) in registry without glyph mapping:"
   echo "$b9_missing" | sed 's/^/  - /'
@@ -1082,13 +1184,21 @@ fi
 echo "--- B10: DOMAIN_STYLES coverage ---"
 b10_warn=0
 if [ -f "viz/domain-styles.yml" ]; then
-  style_domains=$(grep '^[a-z0-9-]\+:' viz/domain-styles.yml | sed 's/:.*//' | sort)
+  style_domains=$(grep '^[a-z0-9-]\+:' viz/domain-styles.yml | sed 's/:.*//' | sort || true)
 else
   # Fallback: parse JS if YAML not yet extracted
-  style_domains=$(grep -oP "'[a-z0-9-]+'" viz/build-icon-manifest.js | head -60 | sed "s/'//g" | sort -u)
+  style_domains=$(grep -oP "'[a-z0-9-]+'" viz/build-icon-manifest.js | head -60 | sed "s/'//g" | sort -u || true)
 fi
-b10_missing=$(comm -23 <(echo "$reg_domains") <(echo "$style_domains"))
-if [ -n "$b10_missing" ]; then
+# BOTH sides asserted, and `reg_domains` is not exempt for having been asserted in B7. That
+# assertion sets `b7_warn`, which nothing here reads -- so B10 would compare an EMPTY left side,
+# find nothing missing, and print its OK line six lines below B7's FAIL saying that every
+# comparison against it would pass vacuously. That contradiction is new-in-#647 reachable: before
+# the guard on `:1112`, an empty extraction aborted the script at B7 and B10 never ran at all.
+# Making B7 survivable is what made this line reachable and wrong.
+require_nonempty 'B10 registry domains (skills/_registry.yml)' "$reg_domains" || b10_warn=-1
+require_nonempty 'B10 style domains (viz/domain-styles.yml)' "$style_domains" || b10_warn=-1
+b10_missing=$(comm -23 <(echo "$reg_domains") <(echo "$style_domains") || true)
+if [ "$b10_warn" -eq 0 ] && [ -n "$b10_missing" ]; then
   b10_count=$(echo "$b10_missing" | wc -l)
   echo "WARN: $b10_count domain(s) in registry without DOMAIN_STYLES entry (will use generic prompt):"
   echo "$b10_missing" | sed 's/^/  - /'
@@ -1112,8 +1222,15 @@ echo "--- B12: Global discovery-hub coverage ---"
 if [ -d "$HOME/.claude/skills" ]; then
   b12_reg=$(grep '^      - id: ' skills/_registry.yml | sed 's/.*- id: //' | tr -d '\r ' | grep -v '^_template$' | sort -u || true)
   b12_hub=$(find "$HOME/.claude/skills" -maxdepth 1 -mindepth 1 -printf '%f\n' 2>/dev/null | sort -u || true)
-  b12_missing=$(comm -23 <(echo "$b12_reg") <(echo "$b12_hub"))
-  if [ -n "$b12_missing" ]; then
+  # Only the registry side is asserted. An empty `b12_hub` is a legitimate state -- a machine
+  # that has never run sync-discovery-symlinks.sh -- and the comparison is exactly what should
+  # report it, so asserting it would fail an honest first run.
+  b12_ok=0
+  require_nonempty 'B12 registry skill ids (skills/_registry.yml)' "$b12_reg" || b12_ok=1
+  b12_missing=$(comm -23 <(echo "$b12_reg") <(echo "$b12_hub") || true)
+  if [ "$b12_ok" -ne 0 ]; then
+    : # the extraction already reported FAIL; comparing against it would be meaningless
+  elif [ -n "$b12_missing" ]; then
     b12_count=$(echo "$b12_missing" | wc -l)
     echo "WARN: $b12_count registered skill(s) missing from global ~/.claude/skills (run: bash scripts/sync-discovery-symlinks.sh --fix):"
     echo "$b12_missing" | sed 's/^/  - /'

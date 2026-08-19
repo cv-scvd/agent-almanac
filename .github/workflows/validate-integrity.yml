@@ -39,5 +39,21 @@ jobs:
         with:
           node-version: '24'
 
+      # Runs BEFORE the gate it guards, deliberately. A bare `x=$(grep …)` under
+      # `set -euo pipefail` aborts the whole script with no diagnostic, so a regression here
+      # makes validate-integrity.sh exit early and look like an ordinary pass-with-fewer-lines.
+      # Checking first means the reason is on screen above the silence (#647).
+      #
+      # Blocking, not `--warn`: the corpus is at zero unguarded sites as of this commit, so
+      # there is no backlog to ratchet down and nothing to warn about. A gate introduced clean
+      # can ship blocking on day one -- see CLAUDE.md § Ratcheting a Warn-Only Gate for the
+      # case where that is not true.
+      #
+      # Invoked as `node …` rather than `npm run check:bare-substitutions` to honour the
+      # no-`npm ci` constraint stated above without depending on npm's behaviour with an
+      # absent node_modules. The npm alias exists for local use.
+      - name: Check for abort-capable command substitutions
+        run: node scripts/check-bare-substitutions.js
+
       - name: Run integrity checks
         run: bash scripts/validate-integrity.sh

@@ -4,13 +4,13 @@
 # Usage: bash scripts/bulk-scaffold-caveman.sh [--dry-run]
 
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)" # abort-ok: cd into this script's own parent; failure means the script was deleted mid-run
 cd "$ROOT"
 
 DRY_RUN=0
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1
 
-SOURCE_COMMIT=$(git log -1 --format=%h)
+SOURCE_COMMIT=$(git log -1 --format=%h) # abort-ok: `git log -1` fails only in a repo with no commits, which is a broken invocation rather than drift
 TODAY=$(date +%Y-%m-%d)
 LOCALES=(caveman-lite caveman caveman-ultra wenyan-lite wenyan wenyan-ultra)
 CREATED=0
