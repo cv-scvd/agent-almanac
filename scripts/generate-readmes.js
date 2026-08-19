@@ -709,9 +709,21 @@ function generateSecuritySurface() {
   // the authority of the generated numbers around it without earning it: if `scripts/` were ever
   // added to `files`, or one of the three named tools renamed, the section would keep asserting
   // a falsehood and `check-readmes` would stay green (#686 review).
+  // `workflows/` is executable content a user is TOLD to copy and run, and the inventory omitted
+  // it entirely — a larger gap, for a section scoping executable content, than the `scripts/`
+  // mis-description #600 was filed about (#691). `_template.mjs` is excluded the same way
+  // `skills/_template/` is: it is scaffolding, not a workflow.
+  const workflowFiles = readdirSync(resolve(ROOT, 'workflows'))
+    .filter((f) => f.endsWith('.mjs') && !f.startsWith('_')).length;
+
   const shipped = JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8')).files || [];
   if (shipped.some((f) => f.replace(/^!/, '').startsWith('scripts'))) {
     throw new Error('SECURITY.md claims scripts/ does not ship, but package.json `files` says otherwise');
+  }
+  // The workflows claim is checkable too: if `workflows/` were ever added to `files`, the
+  // sentence saying it does not ship would keep passing `check-readmes` while being false.
+  if (shipped.some((f) => f.replace(/^!/, '').startsWith('workflows'))) {
+    throw new Error('SECURITY.md claims workflows/ does not ship, but package.json `files` says otherwise');
   }
   for (const tool of ['normalize-i18n-fences.js', 'mutation-check.js', 'gate-envelope.js']) {
     if (!existsSync(resolve(ROOT, 'scripts', tool))) {
@@ -723,6 +735,7 @@ function generateSecuritySurface() {
     '- **Visualization pipeline** (`viz/`): A containerized R + Node.js + Vite build system with a Dockerfile, shell scripts, and an icon rendering pipeline. The Docker entrypoint serves content via a Python HTTP server.',
     `- **Scripts** (\`scripts/\`): ${scriptFiles} top-level Node.js and shell tools — registry validation, README and translation generation, i18n gates, and a small number that deliberately mutate the working tree or run repository commands (\`normalize-i18n-fences.js\`, \`mutation-check.js\`, \`gate-envelope.js\`). Maintainer-invoked; \`scripts/\` is not in \`package.json\`'s \`files\` array, so none of it ships in the published package.`,
     `- **CLI** (\`cli/\`): The published package surface, and the only component that writes outside this repository. ${adapters.length} adapters install content into other tools' configuration directories, at global (home) or PROJECT scope depending on the adapter and the \`--scope\` flag, using ${strategyPhrase}. Adapters: ${adapters.map((a) => a.id).sort().join(', ')}.`,
+    `- **Workflows** (\`workflows/\`): ${workflowFiles} executable orchestration scripts. They are not auto-installed and do not ship in the published package; the documented way to use one is to COPY its \`.mjs\` into \`.claude/workflows/\` by hand, after which Claude Code's Workflow tool runs it and it may spawn subagents with whatever tools those agents carry. Read one before copying it — that instruction is the whole security boundary.`,
     '- **Claude Code configuration** (`.claude/`): Agent discovery symlinks and permission settings.',
   ].join('\n');
 }
