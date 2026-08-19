@@ -115,6 +115,38 @@ function syntaxCheck(absPath, text) {
   return { ok: true, checked: false, detail: `no dependency-free parser for ${ext || 'extensionless'}` };
 }
 
+/**
+ * TRIAGED SECURITY FINDING, and it is triaged CONDITIONALLY — read the condition before moving
+ * this tool.
+ *
+ * `semgrep`'s `javascript.lang.security.detect-child-process` fires here (PR #589, from an
+ * external report, closed as not-applicable). The pattern match is correct: `spawnSync` does
+ * receive its argv through a variable. Three facts make it not a vulnerability TODAY:
+ *
+ *   1. `command` is `spec.gate.command`, and `spec` is an ES module dynamically imported from
+ *      the `--spec` path. Anyone who can set that field already ran arbitrary top-level code at
+ *      import time. The spec is code by design — the trust model of an npm script or an ESLint
+ *      config — so supplying `gate.command` is a strictly weaker capability than the one needed
+ *      to supply it.
+ *   2. `scripts/` is not in `package.json`'s `files` array, so nothing here ships to a consumer.
+ *   3. Nothing in `.github/workflows/` runs this tool. It is maintainer-invoked, via
+ *      `npm run gate-envelope`.
+ *
+ * FACT 3 IS THE ONE THAT CAN CHANGE, and the whole triage rests on it. This is negative-evidence
+ * tooling of exactly the kind that gets wired into CI later, and `scripts/envelopes/*.mjs` are
+ * committed files a pull request may add or edit. The day a workflow runs this on a fork PR,
+ * a contributor-supplied spec executes arbitrary code in the runner with whatever token that job
+ * holds — and the finding stops being a false positive without anyone editing this line.
+ *
+ * So: wiring `gate-envelope` into CI is a security change, not a convenience. If you do it,
+ * pin the spec set rather than accepting `--spec` from the event, and say so here.
+ *
+ * The parameter is kept deliberately. #589 proposed reading `command` from the module scope
+ * instead, which stops the rule matching without changing the flow the rule was watching, and
+ * makes this function order-dependent: it would then be correct only because all three call
+ * sites happen to run after `command` is assigned, and a call added earlier would throw on the
+ * temporal dead zone.
+ */
 function runGate(command) {
   const [bin, ...args] = command;
   const r = spawnSync(bin, args, { cwd: ROOT, encoding: 'utf8' });
