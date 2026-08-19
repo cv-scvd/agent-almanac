@@ -21,12 +21,18 @@
  * applies here: a translation is clean when its folded tag sequence equals that of SOME revision
  * of its English source.
  *
- * Two foldings are load-bearing, both lifted from `normalize-i18n-fences.js`, which already
- * makes this exact judgement to decide whether ordinal mapping is sound:
+ * Two foldings are load-bearing, and both now come from `lib/fences.js` (`foldedTagSequence`),
+ * which is the definition production enforces against. They were originally lifted from
+ * `normalize-i18n-fences.js`, and that attribution is deliberately NOT kept: its `alignmentTag`
+ * still folds a brace fence to `text`, as its own comment beside `mirrorsBasis` admits — "cannot
+ * tell ```{r} from an untagged fence (#612)" — and #674 tracks it. Citing it as the authority for
+ * the brace arm would name the module that makes the opposite judgement.
  *
  *   - An untagged fence folds to `text`. `normalize-content-style.js --mode fences` retro-tagged
  *     untagged blocks as `text` on the newer side only, so that pairing is an artifact of a
- *     known repo tool rather than a translator action.
+ *     known repo tool rather than a translator action. A BRACE-INFO fence (```{r}) folds to `{`
+ *     instead, because `lang` is `''` for it too and collapsing both to `text` would let an
+ *     English ```{r} be swapped for a localisable ```text unseen — the escape this measures.
  *   - Alignment must NOT be expressed as `isGated(a) !== isGated(b)`. Under default-deny an
  *     untagged fence is gated while `text` is not, so that formulation makes every one of those
  *     benign pairings a misalignment — it stranded 169 repairable fences across 73 files when it
@@ -48,16 +54,37 @@
  *   node scripts/measure-tag-sequence-parity.js --locale de
  *   node scripts/measure-tag-sequence-parity.js --json
  *   node scripts/measure-tag-sequence-parity.js --list-retags   # every retag position, verbatim
+ *   node scripts/measure-tag-sequence-parity.js --root /tmp/fixture   # measure another tree
  */
 
 import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { extractFences } from './lib/fences.js';
+// `foldedTagSequence` and not a local fold (#612). The copy this replaces was
+// `fence.lang === '' ? 'text' : fence.lang`, which collapses a brace-info fence (```{r} — `lang`
+// empty, `info` non-empty) to `text` where production folds it to `{`. That placeholder exists
+// precisely so an English ```{r} cannot be swapped for a localisable ```text with neither the
+// sequence check nor the body check seeing it, so the reproducer had reintroduced the escape it
+// was written to reproduce. Latent: measured with this repair, 0 of the 3,648 translated files
+// walked, and no English source either, carries a TOP-LEVEL brace-info fence. Top-level is the
+// qualifier that matters — the corpus carries plenty NESTED inside ````markdown wrappers, where
+// they are body text rather than fences. Both sides are stated because the fold applies to the
+// English pool as well, so zero carriers on the translation side alone would not have implied the
+// two folds agree. The evidence that they did is the finding set being byte-identical across this
+// change; the counts are why that was expected. What makes it worth fixing anyway is that this
+// script is the instrument used to judge the gate's finding set, and it disagreed with the thing
+// it measures.
+import { foldedTagSequence } from './lib/fences.js';
 import { walkEnglishHistory } from './lib/english-history.js';
 import { collectTargets } from './check-i18n-fence-parity.js';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+// `--root` exists so this script can be run against a fixture, and it is NOT a convenience.
+// `collectTargets` is imported from `check-i18n-fence-parity.js`, whose own `--root` is parsed at
+// module scope against the IMPORTER's argv — that module's header says so in capitals. So before
+// this line, `--root /tmp/x` on THIS command line already redirected the translation side to the
+// fixture while the English history side stayed on the repo, and the two halves of the comparison
+// silently addressed different trees. Parsing the same flag here is what makes them agree.
+const ROOT = resolve(flagValue('--root', resolve(dirname(fileURLToPath(import.meta.url)), '..')));
 
 function flagValue(name, fallback) {
   const i = process.argv.indexOf(name);
@@ -74,10 +101,6 @@ const AS_JSON = process.argv.includes('--json');
 const LIST_RETAGS = process.argv.includes('--list-retags');
 const ONLY_LOCALE = flagValue('--locale', null);
 
-/** Untagged folds to `text`; see the header for why this is not optional. */
-const alignmentTag = (fence) => (fence.lang === '' ? 'text' : fence.lang);
-const sequenceOf = (text) => extractFences(text).map(alignmentTag);
-
 // Pool every folded tag sequence each English source has ever carried, keyed by `<tree>/<id>`.
 // Sequences are stored joined; the per-count index lets a mismatch be classified as unalignable
 // (no revision of that length) rather than as a retag.
@@ -85,7 +108,7 @@ const english = new Map();
 walkEnglishHistory(ROOT, (key, text) => {
   if (!english.has(key)) english.set(key, { sequences: new Set(), byCount: new Map() });
   const entry = english.get(key);
-  const seq = sequenceOf(text);
+  const seq = foldedTagSequence(text);
   entry.sequences.add(seq.join(','));
   if (!entry.byCount.has(seq.length)) entry.byCount.set(seq.length, new Set());
   entry.byCount.get(seq.length).add(seq.join(','));
@@ -100,7 +123,7 @@ for (const target of collectTargets()) {
   const entry = english.get(`${target.tree}/${target.id}`);
   if (!entry) { totals.orphan += 1; continue; }
 
-  const seq = sequenceOf(readFileSync(target.absPath, 'utf8'));
+  const seq = foldedTagSequence(readFileSync(target.absPath, 'utf8'));
   const joined = seq.join(',');
   let bucket;
   if (entry.sequences.has(joined)) {
