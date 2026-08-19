@@ -159,7 +159,13 @@ export const TREES = I18N_TREES;
  * `--id` stays here: it is this gate's debugging convenience, not a property of the corpus.
  */
 export function collectTargets() {
-  const { targets, localesReached, treesReached } = collectI18nTargets({ root: ROOT, onlyLocale: ONLY_LOCALE });
+  // `onlyId` narrows the WALK since #635, not only the filter below. The reached-sets are
+  // unaffected — see `collectI18nTargets` for how an out-of-scope entry still proves them — so
+  // `idsReached` is exact for the one membership question `validateScope` asks, and is simply a
+  // singleton or empty rather than the whole corpus.
+  const { targets, localesReached, treesReached } = collectI18nTargets({
+    root: ROOT, onlyLocale: ONLY_LOCALE, onlyId: ONLY_ID,
+  });
 
   // #634. Without this the gate answered a mistyped id with `OK: every gated code fence matches
   // an English source revision.` and exit 0 — technically true of the empty set, and the command
