@@ -744,3 +744,110 @@ test('the same fixture with matching tags IS repaired — the non-vacuity contro
   assert.match(r.stdout, /would restore/, 'a matching-tag divergence is still repairable');
   assert.match(r.stdout, /files to change: 1/);
 });
+
+// ── #677: the scope guards, through the shared predicate ────────────────────
+
+/** A fixture whose `i18n/` carries a locale DIRECTORY with no translated file in it. */
+function emptyLocaleFixture(t) {
+  const dir = mkdtempSync(join(tmpdir(), 'norm-scope-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  git(dir, ['init', '-b', 'main']);
+  git(dir, ['config', 'user.email', 'test@example.invalid']);
+  git(dir, ['config', 'user.name', 'Fixture']);
+
+  mkdirSync(join(dir, 'skills', 'demo-skill'), { recursive: true });
+  writeFileSync(join(dir, 'skills', 'demo-skill', 'SKILL.md'), englishSkill(), 'utf8');
+  git(dir, ['add', '-A']);
+  git(dir, ['commit', '-m', 'english source']);
+  const sourceCommit = git(dir, ['rev-parse', 'HEAD']);
+
+  // `de` is real and populated.
+  const translated = join(dir, 'i18n', 'de', 'skills', 'demo-skill', 'SKILL.md');
+  mkdirSync(dirname(translated), { recursive: true });
+  writeFileSync(translated, translatedSkill(sourceCommit), 'utf8');
+
+  // `fr` has the directory shape and nothing in it. `scannableLocales` — directory-based,
+  // pre-scan — says yes; `localesReached` — content-based, post-scan — says no. That gap is
+  // the behaviour change #677 is about, and it is why converting the guard was not a rename.
+  mkdirSync(join(dir, 'i18n', 'fr', 'skills'), { recursive: true });
+
+  git(dir, ['add', '-A']);
+  git(dir, ['commit', '-m', 'de translation']);
+  return dir;
+}
+
+const runAt = (dir, ...args) =>
+  spawnSync(process.execPath, [join(REPO, SCRIPT), '--root', dir, ...args], { encoding: 'utf8' });
+
+test('a locale whose directory exists but holds no translation is REFUSED (#677)', (t) => {
+  const dir = emptyLocaleFixture(t);
+  const r = runAt(dir, '--locale', 'fr', '--basis', 'head');
+  // Exit 2 and not merely non-zero: 1 would be a finding, and this is a refusal.
+  assert.equal(r.status, 2, r.stdout + r.stderr);
+  assert.match(r.stderr, /--locale 'fr' matched no translated content/);
+  assert.doesNotMatch(r.stdout, /files to change/,
+    'the run must not reach a summary it would report as a clean zero');
+});
+
+test('an unknown --tree names the known trees, rather than only "unreachable" (#677)', (t) => {
+  const dir = emptyLocaleFixture(t);
+  const r = runAt(dir, '--tree', 'recipes', '--basis', 'head');
+  assert.equal(r.status, 2, r.stdout + r.stderr);
+  assert.match(r.stderr, /--tree names no such content tree: recipes/);
+  assert.match(r.stderr, /Known trees:/,
+    'the hand-rolled guard this replaces could only say "unreachable", which reads as '
+    + '"correct name, empty corpus" for what is actually a typo');
+});
+
+test('a --locale/--tree pair that is individually valid but jointly empty is refused', (t) => {
+  // The composition the hand-rolled guard was written for, kept as a regression: `de` is real
+  // and `skills` is real, but `de` carries no `guides`.
+  const dir = emptyLocaleFixture(t);
+  const r = runAt(dir, '--locale', 'de', '--tree', 'guides', '--basis', 'head');
+  assert.equal(r.status, 2, r.stdout + r.stderr);
+  assert.match(r.stderr, /--tree matched no translated content in locale 'de': guides/);
+});
+
+test('a scope that DOES reach something still runs — the non-vacuity control', (t) => {
+  const dir = emptyLocaleFixture(t);
+  const r = runAt(dir, '--locale', 'de', '--basis', 'head');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /would restore/, 'the tool must still do its job for a live scope');
+});
+
+test('a corpus of orphan mirrors refuses rather than reporting a clean zero (#677)', (t) => {
+  // THE BACKSTOP'S REACHABLE CASE, and it took constructing to find. With no `--locale` and no
+  // `--tree`, `validateScope` has nothing to validate and returns clean — so the only thing
+  // between an all-orphan corpus and `files to change: 0` at exit 0 is the empty-targets check.
+  //
+  // `scannableLocales` says `de` is scannable (the directory shape is there), and
+  // `collectI18nTargets` drops the file because its English source does not exist. Two
+  // predicates, one directory-based and one content-based, disagreeing exactly as documented.
+  //
+  // Written because a mutation deleting the backstop survived all 39 tests: the guard was
+  // belt-and-braces with no belt.
+  const dir = mkdtempSync(join(tmpdir(), 'norm-orphan-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  git(dir, ['init', '-b', 'main']);
+  git(dir, ['config', 'user.email', 'test@example.invalid']);
+  git(dir, ['config', 'user.name', 'Fixture']);
+
+  // A real English source, so the repo is not empty and the walk has something to do.
+  mkdirSync(join(dir, 'skills', 'demo-skill'), { recursive: true });
+  writeFileSync(join(dir, 'skills', 'demo-skill', 'SKILL.md'), englishSkill(), 'utf8');
+  git(dir, ['add', '-A']);
+  git(dir, ['commit', '-m', 'english source']);
+
+  // The only mirror is an ORPHAN — no `skills/ghost/SKILL.md` exists.
+  const orphan = join(dir, 'i18n', 'de', 'skills', 'ghost', 'SKILL.md');
+  mkdirSync(dirname(orphan), { recursive: true });
+  writeFileSync(orphan, translatedSkill('0'.repeat(40)), 'utf8');
+  git(dir, ['add', '-A']);
+  git(dir, ['commit', '-m', 'an orphan mirror']);
+
+  const r = runAt(dir, '--basis', 'head');
+  assert.equal(r.status, 2, r.stdout + r.stderr);
+  assert.match(r.stderr, /this scope selected no translated files/);
+  assert.doesNotMatch(r.stdout, /files to change: 0/,
+    'a run that examined nothing must not print the same summary as a run that found nothing');
+});
