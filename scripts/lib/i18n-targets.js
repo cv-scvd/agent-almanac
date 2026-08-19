@@ -245,24 +245,25 @@ export function collectI18nTargets({ root, onlyLocale = null, onlyTrees = null, 
  *
  * ## Who actually calls this
  *
- * The docblock here said "shared so the three callers cannot disagree". It had one (#634). The
- * count is now two — `backfill-fence-basis.js` and `check-i18n-fence-parity.js` — and the
- * sentence is replaced by an inventory, because a number nobody can check is how the claim got
- * wrong in the first place.
+ * The docblock here said "shared so the three callers cannot disagree". It had one (#634), then
+ * two, and since #677 it has three: `backfill-fence-basis.js`, `check-i18n-fence-parity.js` and
+ * `normalize-i18n-fences.js`. The sentence is an inventory rather than a number because a number
+ * nobody can check is how the claim got wrong in the first place — and this paragraph has now
+ * been falsified twice by the very PRs that changed the membership it describes. Update it in the
+ * commit that moves a caller, not after.
  *
- * `normalize-i18n-fences.js` has a HAND COPY of the `--tree` arm (its own `unreachable` block),
- * and converting it would change behaviour rather than spelling — but not for the reason this
- * paragraph first gave. It said the normalizer "validates no locale at all", which is false: it
- * refuses an unscannable `--locale` at exit 2, with its own tests. The real delta is which
- * accept-list each asks:
+ * `normalize-i18n-fences.js` carried a HAND COPY of the `--tree` arm until #677, and converting
+ * it changed behaviour rather than spelling. Two deltas, both now live and both tested there:
  *
- *   normalize-i18n-fences.js   `scannableLocales` — pre-scan, DIRECTORY-based
- *   validateScope              `localesReached`   — post-scan, CONTENT-based
- *
- * An `i18n/xx/skills/` directory carrying no translated file passes the normalizer's guard today
- * and would refuse here. That is the behaviour change, and it is the one worth testing when #677
- * is done. The `--tree` half of the delta is smaller than it looks too: an unknown tree name is a
- * subset of unreached, so the normalizer already exits 2 on it and only the message differs.
+ *   locale   `scannableLocales` is pre-scan and DIRECTORY-based; `localesReached` here is
+ *            post-scan and CONTENT-based. An `i18n/xx/skills/` directory carrying no translated
+ *            file passed the normalizer's own guard and refuses here. Its pre-scan guard is kept
+ *            rather than replaced: it is load-bearing for the `i18n/${ONLY_LOCALE}` write-scope
+ *            interpolation and runs before the dirty-tree check, so this function cannot stand in
+ *            for it even in principle.
+ *   tree     an unknown tree NAME. It is a subset of unreached, so the hand copy already exited
+ *            2 on it and only the message differs — but "matched no translated content" reads as
+ *            "right name, empty corpus" for what is actually a typo.
  *
  * ## `onlyId` asks REACHED, never EXISTS
  *
@@ -301,9 +302,12 @@ export function validateScope({ onlyLocale, onlyTrees, onlyId = null, localesRea
     if (unknown.length) {
       errors.push(`ERROR: --tree names no such content tree: ${unknown.join(', ')}`);
       errors.push(`Known trees: ${[...known].sort().join(', ')}`);
-      return errors;
+      // NOT a `return`. `--tree recipes,guides` — one typo and one real-but-unreached tree —
+      // used to report only the typo, so the caller fixed it, reran, and learned about the
+      // second on the next round trip. The hand copy this replaced named both in one message,
+      // and losing that was a regression the #690 review caught.
     }
-    const unreached = [...onlyTrees].filter((t) => !treesReached.has(t));
+    const unreached = [...onlyTrees].filter((t) => known.has(t) && !treesReached.has(t));
     if (unreached.length) {
       errors.push(`ERROR: --tree matched no translated content${onlyLocale ? ` in locale '${onlyLocale}'` : ''}: ${unreached.join(', ')}`);
       errors.push('Nothing would be scanned, and the run would report a clean-looking zero.');

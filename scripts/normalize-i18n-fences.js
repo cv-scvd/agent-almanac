@@ -104,7 +104,7 @@ import {
 } from './lib/provenance.js';
 import { parseArgs, usageExit } from './lib/parse-args.js';
 import { catFileBatch } from './lib/git-batch.js';
-import { collectI18nTargets, presentTrees, scannableLocales } from './lib/i18n-targets.js';
+import { collectI18nTargets, presentTrees, scannableLocales, validateScope } from './lib/i18n-targets.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -377,22 +377,6 @@ function readBlobs(specs) {
 }
 
 assertNotShallow(ROOT);
-// `ROOT`, explicitly. `buildEnglishFenceHistory` defaults to `fences.js`'s OWN module root, so
-// the argument-less call was correct only while this tool could not be pointed anywhere else.
-// Adding `--root` (#674) turned that default into a split-brain — targets from the fixture,
-// history from the real repository — and the first fixture written against the new flag reported
-// `no English history for this id` for a file whose English source it had just committed.
-//
-// Latent before the flag existed, and the precedent is #559 — `buildEnglishFenceHistory`
-// closing over its own module root — not #634, which is a vacuous-scope guard and shares only
-// "latent until first exercised". A module-scope root is invisible until something tries to move
-// it, and the thing that tries is always the first test.
-//
-// Corroborated by timing rather than proven by it: the fixture went from 15 s to 0.35 s once the
-// walk stopped scanning the real corpus. The load-bearing evidence is functional — the run
-// reported `no English history for this id` for a file it had just committed — and a fixture
-// pins that, so the delta is colour and not a measurement to quote elsewhere.
-const history = buildEnglishFenceHistory(ROOT);
 
 // ---- gather targets ----
 //
@@ -440,25 +424,68 @@ const targets = collected.targets.map((t) => ({
 const treesInScope = collected.treesReached;
 
 /**
- * Validate `--tree` against what the SCOPED scan actually reached, not against
- * a corpus-wide union. Checked here rather than at parse time because the
- * accept-list is the scan's own output — the only formulation that cannot drift
- * from the scan — and before any write, so a mistyped or unreachable batch
- * cannot touch the corpus.
+ * Validate the scope against what the SCOPED scan actually reached, not against a corpus-wide
+ * union. Checked here rather than at parse time because the accept-list is the scan's own output
+ * — the only formulation that cannot drift from the scan — and before any write, so a mistyped
+ * or unreachable batch cannot touch the corpus.
  *
- * The pre-scan version passed `--locale wenyan --tree guides` and reported
- * `files to change: 0`: each guard was satisfied on its own and neither saw the
- * composition, while six of the ten locales carry `skills/` alone.
+ * The pre-scan version passed `--locale wenyan --tree guides` and reported `files to change: 0`:
+ * each guard was satisfied on its own and neither saw the composition, while six of the ten
+ * locales carry `skills/` alone.
+ *
+ * Since #677 this covers `--locale` too, content-based, on top of the directory-based pre-scan
+ * check above — which stays, because it is what licenses the `i18n/${ONLY_LOCALE}` interpolation
+ * in `WRITE_SCOPE` and runs before the dirty-tree check. Then the backstop, for the case no flag
+ * was given at all.
  */
-if (ONLY_TREES !== null) {
-  const unreachable = [...ONLY_TREES].filter((t) => !treesInScope.has(t));
-  if (unreachable.length) {
-    console.error(`ERROR: --tree matched no translated content${ONLY_LOCALE ? ` in locale '${ONLY_LOCALE}'` : ''}: ${unreachable.join(', ')}`);
-    console.error('Nothing would be scanned, and the run would report a clean-looking zero.');
-    console.error(`Reachable here: ${[...treesInScope].sort().join(', ') || '(none)'}`);
-    process.exit(2);
-  }
+const scopeErrors = validateScope({
+  onlyLocale: ONLY_LOCALE,
+  onlyTrees: ONLY_TREES,
+  localesReached: collected.localesReached,
+  treesReached: treesInScope,
+});
+if (scopeErrors.length) {
+  for (const line of scopeErrors) console.error(line);
+  process.exit(2);
 }
+
+// Belt-and-braces behind both guards, copied in intent from `backfill-fence-basis.js`: they
+// answer "is each flag reachable", this answers "did this run reach anything at all", and the
+// two come apart the moment a scope flag changes what the WALK collects rather than what a
+// filter keeps.
+if (targets.length === 0) {
+  console.error('ERROR: this scope selected no translated files. Nothing would be repaired.');
+  console.error(`Reachable locales: ${[...collected.localesReached].sort().join(', ') || '(none)'}`);
+  console.error(`Reachable trees:   ${[...treesInScope].sort().join(', ') || '(none)'}`);
+  process.exit(2);
+}
+
+// The history walk runs AFTER the scope is validated (#677), not before, so a mistyped `--tree`
+// is refused before it rather than after. Same reorder #634 made in the parity gate.
+//
+// The magnitude is NOT measured for this tool, and an earlier draft of this comment called it
+// "the ~90 s step" on inherited lore. What is measured, on the parity gate and on this mount
+// (#635): of an 87 s unscoped run, 53 s was the TARGET walk's `existsSync`/`statSync` pass, not
+// the history build. This tool never passes `onlyId`, so its target walk still pays that in
+// full and necessarily runs before `validateScope` can say anything. The reorder is free and in
+// the right direction; how much it saves here is unknown, and saying so is cheaper than
+// repeating a number nobody took.
+// `ROOT`, explicitly. `buildEnglishFenceHistory` defaults to `fences.js`'s OWN module root, so
+// the argument-less call was correct only while this tool could not be pointed anywhere else.
+// Adding `--root` (#674) turned that default into a split-brain — targets from the fixture,
+// history from the real repository — and the first fixture written against the new flag reported
+// `no English history for this id` for a file whose English source it had just committed.
+//
+// Latent before the flag existed, and the precedent is #559 — `buildEnglishFenceHistory`
+// closing over its own module root — not #634, which is a vacuous-scope guard and shares only
+// "latent until first exercised". A module-scope root is invisible until something tries to move
+// it, and the thing that tries is always the first test.
+//
+// Corroborated by timing rather than proven by it: the fixture went from 15 s to 0.35 s once the
+// walk stopped scanning the real corpus. The load-bearing evidence is functional — the run
+// reported `no English history for this id` for a file it had just committed — and a fixture
+// pins that, so the delta is colour and not a measurement to quote elsewhere.
+const history = buildEnglishFenceHistory(ROOT);
 
 // ---- resolve each target's English basis ----
 const specs = BASIS === 'source-commit'
