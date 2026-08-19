@@ -59,6 +59,12 @@ Guides, skills, agents, and teams are cross-referenced. The parent project `CLAU
 - The `references/` subdirectory pattern follows [agentskills.io progressive disclosure](https://agentskills.io/specification) — large code blocks (>15 lines), full configs, and multi-variant examples go in `references/EXAMPLES.md` with cross-references from the main SKILL.md
 - CI enforces validation on every PR (`.github/workflows/validate-skills.yml`): frontmatter fields, required sections, line counts, and registry sync. It ran only on PRs touching `skills/` until #641 removed the path filter so the job could become a required status check — a required check that does not report never goes green, it waits forever
 - CI also runs a repo-wide line-endings gate (`.github/workflows/validate-line-endings.yml`) that fails any PR whose committed blobs contain CRLF. Check locally with `npm run validate:line-endings` (reads the index, non-mutating). Repair: `git add --renormalize .` — and if a new file type is flagged, declare it in `.gitattributes` as `text eol=lf`
+- `npm test` is the release gate, and it runs **four** things: `validate:integrity`,
+  `check-readmes`, `test:scripts` and `test:cli`. It ran only the first two until #680, so
+  `release.yml`'s step named "Run tests" published to npm having executed neither suite. The CLI
+  surface was covered anyway — by `prepublishOnly`, npm's own lifecycle hook, which still runs
+  the CLI suite independently and must not be removed in favour of the step. `test:scripts` was
+  genuinely ungated
 - Changes under `scripts/` run `npm run test:scripts` (`.github/workflows/ci-scripts.yml`), the node:test suite in `scripts/test/`. Its `pretest:scripts` hook fails when the suite is empty — `node --test` exits 0 reporting `tests 0` when its glob matches nothing, so without that hook a rename or deletion leaves the job green having run nothing (#486)
 - To validate locally before committing:
   ```bash
