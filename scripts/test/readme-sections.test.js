@@ -314,3 +314,27 @@ test('declaresBash reads the FRONTMATTER, not the body', () => {
   const bodyOnly = '---\nname: x\nallowed-tools: Read\n---\n\n# x\n\n```yaml\nallowed-tools: Bash\n```\n';
   assert.equal(declaresBash(bodyOnly), false);
 });
+
+test('declaresBash fails closed on an unclosed frontmatter opener', () => {
+  // The fallback this replaces scanned the WHOLE FILE, which is the one case where "frontmatter,
+  // not body" has to hold and did not. Found by review, not by the four tests written first —
+  // all of which used well-formed input, because I wrote both the predicate and its fixtures.
+  const unclosed = '---\nname: x\nallowed-tools: Read\n\n# body\n\n```yaml\nallowed-tools: Bash\n```\n';
+  assert.equal(declaresBash(unclosed), false);
+});
+
+test('declaresBash: the known latent classes, pinned rather than left to be rediscovered', () => {
+  // None occurs in this corpus today. The function is exported and documented as THE predicate,
+  // so it travels — and each of these is a plausible future spelling.
+  //
+  // A trailing YAML comment on the inline form is a FALSE POSITIVE the word-boundary cannot see:
+  assert.equal(declaresBash('---\nallowed-tools: Read  # not Bash\n---\n'), true,
+    'known limitation: a commented mention counts. Recorded, not fixed — parsing YAML comments '
+    + 'here means parsing YAML, and the corpus has no instance.');
+  // A quoted or commented block item is a FALSE NEGATIVE for the same reason:
+  assert.equal(declaresBash('---\nallowed-tools:\n  - "Bash"\n---\n'), false,
+    'known limitation: a quoted item does not count.');
+  // And a hyphenated tool name matches, because `-` is a word boundary:
+  assert.equal(declaresBash('---\nallowed-tools: Bash-lite\n---\n'), true,
+    'known limitation: `\\bBash\\b` accepts `Bash-anything`.');
+});

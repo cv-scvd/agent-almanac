@@ -17,6 +17,7 @@ import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import * as yaml from 'js-yaml';
 import { CONTENT_TYPES } from './lib/content-types.js';
+import { listAdapters } from '../cli/adapters/index.js';
 import { guideCategoryOrder, guideCategoryLabel, guideCategoryNames } from './lib/guide-categories.js';
 import { applySections, renderTranslationsTable, renderLocaleTable, declaresBash } from './lib/readme-sections.js';
 
@@ -644,8 +645,16 @@ function generateTranslationsSection() {
  * numbers a registry already owns: "~60% of skills (177 of 297) include `Bash`" against a
  * registry recording 370, and "`scripts/`: A Node.js script for README generation from
  * registries" against a directory of 33 files including three that mutate the working tree on
- * purpose. Both drifted AGAIN between #600 being filed and being fixed — 369 to 370, 228 to the
- * number below — which is the argument for generating rather than re-typing.
+ * purpose.
+ *
+ * They drifted AGAIN between #600 being filed and being fixed, and the review caught this
+ * paragraph getting the drift wrong. The Bash NUMERATOR did not move — 228 then, 228 now. The
+ * denominator did, 369 -> 370. And the one that moved most is the one the sentence omitted:
+ * `scripts/` went 27 -> 33 while the issue was open. Six tools added, none of which would have
+ * prompted anyone to edit a sentence in SECURITY.md.
+ *
+ * That is the argument for generating rather than re-typing, and it was sitting unquoted in the
+ * paragraph making the argument.
  *
  * The Bash figure is the one that needed a definition more than a refresh. `SECURITY.md` quoted
  * a count with no stated predicate, so nobody — including its author — could check it. Two
@@ -681,11 +690,39 @@ function generateSecuritySurface() {
   const share = Math.round((declaring / ids.length) * 100);
   const scriptFiles = readdirSync(resolve(ROOT, 'scripts'))
     .filter((f) => f.endsWith('.js') || f.endsWith('.sh') || f.endsWith('.mjs')).length;
+
+  // DERIVED from the adapter registry, not listed by hand (#686 review). The hand-written
+  // version named 5 of 13 adapters and described them all as symlinking into home directories:
+  // four install strategies exist and several adapters install at PROJECT scope. A researcher
+  // scoping filesystem effects from that list would have tested a third of the surface and
+  // signed off — the exact misdirection #600 was filed about, in freshly authored text.
+  //
+  // Importing the registry also puts `cli/adapters/` on this generator's import graph, so
+  // `check:generator-inputs` starts guarding it without anyone remembering to.
+  const adapters = listAdapters();
+  const strategies = [...new Set(adapters.map((a) => a.strategy))].sort();
+  const strategyPhrase = strategies.length === 1
+    ? strategies[0]
+    : `${strategies.slice(0, -1).join(', ')} and ${strategies[strategies.length - 1]}`;
+
+  // The two claims here a machine can check, checked. Static prose inside AUTO markers borrows
+  // the authority of the generated numbers around it without earning it: if `scripts/` were ever
+  // added to `files`, or one of the three named tools renamed, the section would keep asserting
+  // a falsehood and `check-readmes` would stay green (#686 review).
+  const shipped = JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8')).files || [];
+  if (shipped.some((f) => f.replace(/^!/, '').startsWith('scripts'))) {
+    throw new Error('SECURITY.md claims scripts/ does not ship, but package.json `files` says otherwise');
+  }
+  for (const tool of ['normalize-i18n-fences.js', 'mutation-check.js', 'gate-envelope.js']) {
+    if (!existsSync(resolve(ROOT, 'scripts', tool))) {
+      throw new Error(`SECURITY.md names scripts/${tool}, which does not exist`);
+    }
+  }
   return [
     `- **Skills, agents, teams, guides**: Markdown and YAML documentation. ${declaring} of ${ids.length} skills (~${share}%) declare \`Bash\` in their \`allowed-tools\`, meaning they instruct AI agents to execute shell commands when followed. Review any skill before letting an agent execute it.`,
     '- **Visualization pipeline** (`viz/`): A containerized R + Node.js + Vite build system with a Dockerfile, shell scripts, and an icon rendering pipeline. The Docker entrypoint serves content via a Python HTTP server.',
-    `- **Scripts** (\`scripts/\`): ${scriptFiles} Node.js and shell tools — registry validation, README and translation generation, i18n gates, and a small number that deliberately mutate the working tree or run repository commands (\`normalize-i18n-fences.js\`, \`mutation-check.js\`, \`gate-envelope.js\`). Maintainer-invoked; \`scripts/\` is not in \`package.json\`'s \`files\` array, so none of it ships in the published package.`,
-    '- **CLI** (`cli/`): The published package surface. Installs skills, agents and teams into agent home directories by creating symlinks and writing rule files under `~/.claude/`, `~/.hermes/`, and the Cursor, Windsurf and Copilot configuration directories.',
+    `- **Scripts** (\`scripts/\`): ${scriptFiles} top-level Node.js and shell tools — registry validation, README and translation generation, i18n gates, and a small number that deliberately mutate the working tree or run repository commands (\`normalize-i18n-fences.js\`, \`mutation-check.js\`, \`gate-envelope.js\`). Maintainer-invoked; \`scripts/\` is not in \`package.json\`'s \`files\` array, so none of it ships in the published package.`,
+    `- **CLI** (\`cli/\`): The published package surface, and the only component that writes outside this repository. ${adapters.length} adapters install content into other tools' configuration directories, at global (home) or PROJECT scope depending on the adapter and the \`--scope\` flag, using ${strategyPhrase}. Adapters: ${adapters.map((a) => a.id).sort().join(', ')}.`,
     '- **Claude Code configuration** (`.claude/`): Agent discovery symlinks and permission settings.',
   ].join('\n');
 }

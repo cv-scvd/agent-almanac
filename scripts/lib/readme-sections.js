@@ -229,7 +229,13 @@ export function renderTranslationsTable(locales, sourceCounts, contentTypes) {
 export function declaresBash(text) {
   if (!text.startsWith('---')) return false;
   const end = text.indexOf('\n---', 3);
-  const frontmatter = end === -1 ? text : text.slice(3, end);
+  // FAIL CLOSED on an unclosed opener. The first version fell back to scanning the whole file,
+  // which contradicts this function's own "frontmatter, not body" promise in precisely the
+  // malformed case where the promise matters (#686 review). No corpus instance exists — CI
+  // validates frontmatter — and a predicate that quietly widens its own scope is how the count
+  // it feeds becomes wrong later.
+  if (end === -1) return false;
+  const frontmatter = text.slice(3, end);
   const inline = frontmatter.match(/^allowed-tools:[ \t]*(\S.*)$/m);
   if (inline) return /\bBash\b/.test(inline[1]);
   const block = frontmatter.match(/^allowed-tools:[ \t]*\n((?:[ \t]+-.*\n?)+)/m);
