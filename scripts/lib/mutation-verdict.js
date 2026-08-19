@@ -44,6 +44,43 @@ export const CRASH_SIGNATURES = [
   /\bis not defined\b/,
 ];
 
+/**
+ * Error TYPES of the failing tests, e.g. `AssertionError`, `ReferenceError`.
+ *
+ * node:test prints the error on its own indented line under each `✖` in the failing-tests
+ * section, so the type is the first word of that line.
+ */
+export function failureErrorTypes(output) {
+  return [...String(output ?? '').matchAll(/^\s+([A-Za-z]+Error)\b/gm)].map((m) => m[1]);
+}
+
+/**
+ * Are ALL the failures ordinary assertion failures?
+ *
+ * This is what makes the crash signal usable rather than a tripwire, and it is not a
+ * refinement — without it the check refuses to certify correct kills, with no waiver, because
+ * crash signatures are deliberately unwaivable.
+ *
+ * Measured on this repo. `scripts/test/dependency-free.test.js` asserts that a module acquires
+ * no package dependency, and on failure it EMBEDS the resolution error in its own assertion
+ * message:
+ *
+ *   AssertionError [ERR_ASSERTION]: readme-sections.js acquired a package dependency:
+ *   Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'js-yaml' imported from …
+ *
+ * Adding `import * as yaml from 'js-yaml'` to `readme-sections.js` is a perfect behavioural
+ * kill — one failing test, the exact one written for that property — and the raw signature
+ * scan reported it SUSPECT. A test whose subject IS a crash will always carry crash text in
+ * its message; the error TYPE is what separates "a test asserted this" from "the module broke".
+ *
+ * Returns false when no error type could be parsed, so an unrecognised format falls back to the
+ * signature scan rather than silently clearing it.
+ */
+function errorTypesAreAllAssertions(output) {
+  const types = failureErrorTypes(output);
+  return types.length > 0 && types.every((type) => type === 'AssertionError');
+}
+
 /** Pull `fail N` out of node:test output; null if the format is not recognised. */
 export function parseFailCount(output) {
   const match = String(output ?? '').match(/^\s*\S*\s*fail\s+(\d+)\s*$/m);
@@ -83,7 +120,10 @@ export const BROAD_KILL_SHARE = 0.25;
  */
 export function crashSuspicion(output, failCount, baselinePassCount, allowBroad = false) {
   const reasons = [];
-  const matched = CRASH_SIGNATURES.filter((pattern) => pattern.test(String(output ?? '')));
+  const text = String(output ?? '');
+  const matched = errorTypesAreAllAssertions(text)
+    ? []
+    : CRASH_SIGNATURES.filter((pattern) => pattern.test(text));
   if (matched.length > 0) {
     const names = matched.map((pattern) => pattern.source.replace(/\\b/g, '')).join(', ');
     reasons.push(

@@ -14,6 +14,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   crashSuspicion,
+  failureErrorTypes,
   parseFailCount,
   parsePassCount,
   BROAD_KILL_SHARE,
@@ -117,4 +118,64 @@ test('parseFailCount and parsePassCount read node:test summaries', () => {
   assert.equal(parseFailCount('no summary here'), null);
   assert.equal(parsePassCount('no summary here'), null);
   assert.equal(parseFailCount(undefined), null);
+});
+
+// ── the false SUSPECT that self-review caught (#621) ────────────────────────
+
+// A LEGITIMATE behavioural kill whose assertion message embeds crash text. Real output,
+// captured from `scripts/test/dependency-free.test.js` after adding a package import to
+// `readme-sections.js` — one failing test, the exact one written for that property.
+const ASSERTION_EMBEDDING_CRASH_TEXT = `
+✖ failing tests:
+
+test at scripts/test/dependency-free.test.js:86:1
+✖ readme-sections.js keeps the zero-import property it claims (358.098293ms)
+  AssertionError [ERR_ASSERTION]: readme-sections.js acquired a package dependency:
+  node:internal/modules/package_json_reader:301
+    throw new ERR_MODULE_NOT_FOUND(packageName, fileURLToPath(base), null);
+
+  Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'js-yaml' imported from /tmp/x/readme-sections.js
+      at Object.getPackageJSONURL (node:internal/modules/package_json_reader:301:9)
+ℹ tests 8
+ℹ pass 7
+ℹ fail 1
+`;
+
+test('a kill whose ASSERTION MESSAGE embeds crash text is not suspect', () => {
+  // The unwaivable false negative this file's first version shipped. Crash signatures are
+  // deliberately not waivable, so a false positive here refuses to certify a correct kill and
+  // offers no way past it — strictly worse than the blind spot being closed.
+  //
+  // A test whose SUBJECT is a crash will always carry crash text in its message. The error TYPE
+  // is what separates "a test asserted this" from "the module broke".
+  assert.deepEqual(crashSuspicion(ASSERTION_EMBEDDING_CRASH_TEXT, 1, 8), []);
+});
+
+test('one non-assertion failure among assertion failures is still suspect', () => {
+  // The rule is "ALL failures are assertions", not "any failure is". A mutant that crashes one
+  // module while assertions fail elsewhere is still a broken mutant.
+  const mixed = ASSERTION_EMBEDDING_CRASH_TEXT.replace(
+    '  AssertionError [ERR_ASSERTION]: readme-sections.js',
+    '  ReferenceError: stamped is not defined\n  AssertionError [ERR_ASSERTION]: readme-sections.js'
+  );
+  // Asserted on the REASON, not the count: 2 of 8 is also 25%, so the share signal fires too.
+  // Pinning `length === 1` here failed for a reason that had nothing to do with the property
+  // under test — a test can be red about the wrong thing just as a gate can.
+  const reasons = crashSuspicion(mixed, 2, 8);
+  assert.ok(reasons.some((reason) => /runtime error/.test(reason)), JSON.stringify(reasons));
+});
+
+test('an unrecognised output format falls back to the signature scan', () => {
+  // No parseable error-type line means the discriminator cannot speak. It must not then CLEAR
+  // the crash signal — that would turn a parse failure into an all-clear, which is the vacuous
+  // pass shape this repo keeps finding.
+  const noErrorTypes = 'something broke: ReferenceError: x is not defined';
+  assert.equal(crashSuspicion(noErrorTypes, 1, 8).length, 1);
+  assert.deepEqual(failureErrorTypes(noErrorTypes), []);
+});
+
+test('failureErrorTypes reads the error type from each failure block', () => {
+  assert.deepEqual(failureErrorTypes(ASSERTION_EMBEDDING_CRASH_TEXT), ['AssertionError']);
+  assert.deepEqual(failureErrorTypes('  ReferenceError: x\n  TypeError: y\n'), ['ReferenceError', 'TypeError']);
+  assert.deepEqual(failureErrorTypes(''), []);
 });
