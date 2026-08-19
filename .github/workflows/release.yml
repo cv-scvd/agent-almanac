@@ -1,9 +1,19 @@
 name: Release
 
+# `workflow_dispatch` is here because the 1.9.0 publish failed and the only way to exercise the
+# publish path was to push another tag — the operation you least want to repeat while diagnosing
+# a failed publish (#681). A dry run stops after `npm pack`, so the path can be ASKED A QUESTION
+# rather than only fired at a tag and observed.
 on:
   push:
     tags:
       - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build and authenticate only — do not publish or create a release'
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -25,12 +35,35 @@ jobs:
       - name: Run tests
         run: npm test
 
+      # WHO ARE WE, asked before we try to write. `npm publish` failing with E404 on a PUT is
+      # npm's deliberate response to an unauthorised write — it returns 404 rather than 403 so
+      # the response cannot be used to probe which private packages exist. That single response
+      # is produced by at least five distinct faults: an expired token, a read-only token, a
+      # granular token scoped to a package list not including this one, a revoked token, and
+      # `NODE_AUTH_TOKEN` arriving empty. `npm whoami` separates them: a username, or ENEEDAUTH.
+      #
+      # `continue-on-error`, DELIBERATELY, and the choice is the whole point. As a blocking gate
+      # this would turn a diagnostic into a new failure mode — a transient registry hiccup would
+      # refuse a release that would otherwise have succeeded. As a diagnostic it can only add a
+      # line to the log, which is exactly what was missing when 1.9.0 failed and the fault had
+      # to be inferred from a 404.
+      - name: Who is the runner (diagnostic, never a gate)
+        continue-on-error: true
+        run: npm whoami
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN_2 }}
+
+      - name: Build the tarball (dry run stops here)
+        run: npm pack --dry-run
+
       - name: Publish to npm
+        if: github.event_name == 'push' || inputs.dry_run == false
         run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN_2 }}
 
       - name: Create GitHub Release
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
