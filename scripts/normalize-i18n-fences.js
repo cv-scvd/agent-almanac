@@ -88,12 +88,12 @@
  *   node scripts/normalize-i18n-fences.js --tree guides,agents  # restrict to trees
  */
 
-import { readFileSync, writeFileSync, existsSync, statSync } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { spawnSync } from 'child_process';
 import {
-  extractFences, toLines, isGated, buildEnglishFenceHistory, TREES, contentKey,
+  extractFences, toLines, isGated, buildEnglishFenceHistory,
   foldedTagSequence, compareTagSequence, mirrorsBasis,
 } from './lib/fences.js';
 import { assertNotShallow } from './lib/git-freshness.js';
