@@ -194,7 +194,25 @@ export function collectTargets() {
     process.exit(2);
   }
 
-  return targets.filter((t) => !ONLY_ID || t.id === ONLY_ID);
+  const scoped = targets.filter((t) => !ONLY_ID || t.id === ONLY_ID);
+
+  // Belt-and-braces behind `validateScope`, copied in intent from `backfill-fence-basis.js`.
+  // That guard answers "is each flag reachable"; this answers "did this run actually reach
+  // anything", and the two come apart the moment a scope flag changes what the WALK collects
+  // rather than what the filter keeps.
+  //
+  // Unreachable today: a reached id implies at least one target, so `validateScope` refuses
+  // first. It is here for #635, which narrows the walk itself — after that, any bug in the
+  // narrowing that yields zero targets for a legitimate scope fails closed instead of printing
+  // `OK: every gated code fence matches an English source revision.` over nothing. A guard added
+  // after the flag that needs it is a guard written by the incident.
+  if (scoped.length === 0) {
+    console.error('ERROR: this scope selected no translated files. Nothing would be compared.');
+    console.error(`Reachable locales: ${[...localesReached].sort().join(', ') || '(none)'}`);
+    process.exit(2);
+  }
+
+  return scoped;
 }
 
 // `compareTagSequence` moved to `scripts/lib/fences.js` (#552 backfill). Two reasons, and the
