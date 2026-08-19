@@ -73,6 +73,7 @@ import {
 import { collectI18nTargets, validateScope, I18N_TREES } from './lib/i18n-targets.js';
 import { FENCE_BASIS_FIELD, readFrontmatterField } from './lib/provenance.js';
 import { CONTENT_TYPES } from './lib/content-types.js';
+import { historicalPathspecs } from './lib/content-paths.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -159,7 +160,13 @@ export const TREES = I18N_TREES;
  * `--id` stays here: it is this gate's debugging convenience, not a property of the corpus.
  */
 export function collectTargets() {
-  const { targets, localesReached, treesReached } = collectI18nTargets({ root: ROOT, onlyLocale: ONLY_LOCALE });
+  // `onlyId` narrows the WALK since #635, not only the filter below. The reached-sets are
+  // unaffected — see `collectI18nTargets` for how an out-of-scope entry still proves them — so
+  // `idsReached` is exact for the one membership question `validateScope` asks, and is simply a
+  // singleton or empty rather than the whole corpus.
+  const { targets, localesReached, treesReached } = collectI18nTargets({
+    root: ROOT, onlyLocale: ONLY_LOCALE, onlyId: ONLY_ID,
+  });
 
   // #634. Without this the gate answered a mistyped id with `OK: every gated code fence matches
   // an English source revision.` and exit 0 — technically true of the empty set, and the command
@@ -194,7 +201,25 @@ export function collectTargets() {
     process.exit(2);
   }
 
-  return targets.filter((t) => !ONLY_ID || t.id === ONLY_ID);
+  const scoped = targets.filter((t) => !ONLY_ID || t.id === ONLY_ID);
+
+  // Belt-and-braces behind `validateScope`, copied in intent from `backfill-fence-basis.js`.
+  // That guard answers "is each flag reachable"; this answers "did this run actually reach
+  // anything", and the two come apart the moment a scope flag changes what the WALK collects
+  // rather than what the filter keeps.
+  //
+  // Unreachable today: a reached id implies at least one target, so `validateScope` refuses
+  // first. It is here for #635, which narrows the walk itself — after that, any bug in the
+  // narrowing that yields zero targets for a legitimate scope fails closed instead of printing
+  // `OK: every gated code fence matches an English source revision.` over nothing. A guard added
+  // after the flag that needs it is a guard written by the incident.
+  if (scoped.length === 0) {
+    console.error('ERROR: this scope selected no translated files. Nothing would be compared.');
+    console.error(`Reachable locales: ${[...localesReached].sort().join(', ') || '(none)'}`);
+    process.exit(2);
+  }
+
+  return scoped;
 }
 
 // `compareTagSequence` moved to `scripts/lib/fences.js` (#552 backfill). Two reasons, and the
@@ -250,7 +275,27 @@ function main() {
   // not the history, which is #635.
   const targets = collectTargets();
 
-  const history = buildEnglishFenceHistory(ROOT);
+  // #635, second half: the pathspec is THREADED from the targets just collected, never
+  // re-derived. A second answer to "which English files are in scope" is the drift this repo
+  // keeps paying for, and the reorder #634 made — scope before walk — is what makes threading
+  // possible at all.
+  //
+  // NOT sound because "`git log -- <file>` lists every commit touching that file" — that
+  // sentence stood here, is false, and is why `collectSpecs` passes `--full-history` on the
+  // narrowed walk (#682). Read that function's docblock for the two divergence classes and for
+  // what the resulting pool actually guarantees. The failure this could have introduced is
+  // the opposite of a missed finding: a truncated pool turns a legitimately STALE mirror into a
+  // violation, since staleness immunity is "matches SOME English revision". That is what the
+  // fixture in `scripts/test/fence-parity-scope-guard.test.js` pins, on a stale-but-valid mirror
+  // rather than a clean one — a clean file passes under a broken pool too.
+  // `historicalPathspecs`, not `t.englishRel` alone: `contentKey` maps the pre-flatten
+  // `skills/<domain>/<id>/SKILL.md` onto today's key, and a file-level pathspec that names only
+  // the current path drops that whole era from the pool (#682). See the function's docblock for
+  // why the alias list lives beside `contentKey` rather than here.
+  const historyPaths = ONLY_ID
+    ? [...new Set(targets.flatMap((t) => historicalPathspecs(t.englishRel)))]
+    : null;
+  const history = buildEnglishFenceHistory(ROOT, { paths: historyPaths });
   const findings = [];
   let filesCompared = 0;
   let fencesCompared = 0;

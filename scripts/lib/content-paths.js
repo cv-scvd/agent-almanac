@@ -64,6 +64,86 @@ export function contentKey(relPath) {
  * because every caller happens to `statSync(...).isFile()` afterwards — which is the
  * "unreachable because of ambient state" framing #519 exists to reject.
  */
+/**
+ * Every path shape a `git log` pathspec must carry to see one key's whole history (#682).
+ *
+ * `contentKey` is deliberately many-to-one: `skills/<domain>/<id>/SKILL.md` and
+ * `skills/<id>/SKILL.md` key to the same `skills/<id>`. That is what makes the pre-flatten era
+ * — 863 path occurrences in this repository's history — reachable under today's ids.
+ *
+ * It also means a pathspec built from the CURRENT path alone is not the same walk. A tree-level
+ * pathspec (`-- skills agents teams guides`) matches both shapes and never had to know; a
+ * file-level one matches only what it names. Scoping the walk (#635) is what turned an invariant
+ * of `contentKey` into a requirement on its callers, and the failure it produced was silent and
+ * in the strict direction: a mirror whose fence body existed only in pre-flatten English is
+ * clean under the corpus-wide walk and a VIOLATION under `--id`. A false accusation against a
+ * translation nobody touched, on the command CLAUDE.md tells a contributor to run.
+ *
+ * So the alias list lives here, beside the function whose many-to-one mapping creates it, rather
+ * than in the caller that happens to need it first. A second caller deriving its own answer is
+ * the drift this directory keeps closing.
+ *
+ * ## Which shapes this covers, MEASURED rather than reasoned
+ *
+ * `contentKey` accepts two families, and the first reaches every tree, not only `skills`:
+ *
+ *   branch 1  `<tree>/<...any depth...>/<id>/SKILL.md`   keys on the second-to-last segment
+ *   branch 2  `<tree>/<id>.md`                            requires exactly two segments
+ *
+ * So three shapes other than today's could key to a live id. This function covers one of them by
+ * construction and two only because history does not contain them:
+ *
+ *   skills/<...>/<id>/SKILL.md                COVERED — see the line comments below
+ *   skills/<id>.md                            not covered
+ *   agents|teams|guides/<...>/<id>/SKILL.md   not covered
+ *
+ * Measured against CI's own ruler — `git log --format= --name-only -- skills agents teams guides`,
+ * default simplification from HEAD, because the superset claim is relative to the walk CI runs:
+ * the only hit is `skills/README.md`, for which `contentKey` returns null. **Zero occurrences.**
+ *
+ * That is a fact about this history, not a property of `contentKey`. An earlier draft argued the
+ * flat trees structurally cannot need an alias "because `contentKey`'s flat branch requires
+ * `parts.length === 2`" — true of the flat branch, silent about the `SKILL.md` branch, which
+ * keys `agents/x/foo/SKILL.md` to `agents/foo` perfectly well. That is the same shape as the
+ * sentence this whole fix exists to correct: an argument true of its neighbour. If either
+ * uncovered shape ever appears, this function must gain it in the same commit.
+ *
+ * The glob's semantics, and why the comment it replaces was wrong twice, are in the line
+ * comments below — a star followed by a slash cannot appear inside a block comment, and writing
+ * the pathspec with spaces around the star to smuggle it in here would have been a third
+ * inaccuracy about the very literal under discussion.
+ *
+ * @param {string} englishRel repo-relative path to an English source, as `contentKey` takes it
+ * @returns {string[]} pathspecs covering every historical shape of that key, current one first
+ */
+// ## The glob, measured
+//
+// `skills/*/<id>/SKILL.md` is a DEFAULT pathspec, and in one `*` DOES cross `/`:
+//
+//   git ls-files -- 'skills/*/foo/SKILL.md'          -> skills/dom/foo, skills/a/b/foo
+//   git ls-files -- ':(glob)skills/*/foo/SKILL.md'   -> skills/dom/foo
+//
+// So the alias covers EVERY nesting depth, not the single pre-flatten segment. The comment this
+// replaces asserted the opposite — "`*` does not cross `/` in a git pathspec's fnmatch, so this
+// matches exactly one intervening domain segment" — and justified the gap it believed it was
+// leaving with "deeper nestings … `contentKey` would key to a different id anyway", which is also
+// false: `contentKey` keys on the SECOND-TO-LAST segment, so `skills/a/b/foo/SKILL.md` keys to
+// `skills/foo` too. Two wrong claims whose errors cancelled, leaving code more correct than its
+// own comment.
+//
+// DO NOT "tighten" this to `:(glob)`. That is the edit the wrong comment invited, and it would
+// reopen the hole for any nesting deeper than one segment.
+export function historicalPathspecs(englishRel) {
+  const parts = englishRel.split('/');
+  if (parts[0] === 'skills' && parts[parts.length - 1] === 'SKILL.md') {
+    const id = parts[parts.length - 2];
+    // Default pathspec: `*` crosses `/`, so this covers every nesting depth rather than only
+    // the one-segment pre-flatten shape. Deliberate — see the docblock, and do not use `:(glob)`.
+    return [englishRel, `skills/*/${id}/SKILL.md`];
+  }
+  return [englishRel];
+}
+
 function isExcludedId(id) {
   const stem = id.endsWith('.md') ? id.slice(0, -3) : id;
   return stem.startsWith('_') || stem === 'README';

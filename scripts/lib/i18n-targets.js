@@ -132,7 +132,7 @@ export function scannableLocales(root) {
  *   localesReached: Set<string>, treesReached: Set<string>, localesPresent: string[],
  * }}
  */
-export function collectI18nTargets({ root, onlyLocale = null, onlyTrees = null, withText = false }) {
+export function collectI18nTargets({ root, onlyLocale = null, onlyTrees = null, onlyId = null, withText = false }) {
   const i18nDir = resolve(root, 'i18n');
   const targets = [];
   const localesReached = new Set();
@@ -153,6 +153,28 @@ export function collectI18nTargets({ root, onlyLocale = null, onlyTrees = null, 
         const englishRel = nested ? `${tree}/${entry}/SKILL.md` : `${tree}/${entry}`;
         const key = contentKey(englishRel);
         if (key === null) continue;
+
+        // #635. Four `existsSync`/`statSync` calls per entry, over 3,648 entries, is the bulk of
+        // a scoped run's cost on a 9p mount — 53 s of the 87 s, measured, and the reason a
+        // per-file check is a check people stop running.
+        //
+        // An out-of-scope entry is skipped, but ONLY once it can no longer prove anything. The
+        // two reached-sets are the reason it might: `localesReached` is corpus-wide and answers
+        // "does this locale carry translated content at all", and `treesReached` is
+        // locale-scoped. Both need a real entry to prove, and neither may be narrowed by `--id`
+        // without changing what `validateScope` means — a `--locale de --id beta` where `de` has
+        // content but not `beta` must name the ID, not the locale, or the reader is sent after
+        // the wrong fault. `scripts/test/fence-parity-scope-guard.test.js` pins exactly that.
+        //
+        // So the skip is "already proven", not "not asked for": the first real entry in each
+        // locale, and in each in-scope tree, is walked in full and everything after it is free.
+        // With `onlyId` null nothing here fires and the walk is the old walk.
+        const id = nested ? entry : entry.replace(/\.md$/, '');
+        if (onlyId !== null && id !== onlyId) {
+          const provesLocale = !localesReached.has(locale);
+          const provesTree = (!onlyLocale || locale === onlyLocale) && !treesReached.has(tree);
+          if (!provesLocale && !provesTree) continue;
+        }
 
         const absPath = join(i18nDir, locale, englishRel);
         const english = join(root, englishRel);
@@ -193,11 +215,13 @@ export function collectI18nTargets({ root, onlyLocale = null, onlyTrees = null, 
         if (onlyLocale && locale !== onlyLocale) continue;
         treesReached.add(tree);
         if (onlyTrees && !onlyTrees.has(tree)) continue;
+        // Reached here only to prove one of the sets above; it is not a target of this run.
+        if (onlyId !== null && id !== onlyId) continue;
 
         const target = {
           locale,
           tree,
-          id: nested ? entry : entry.replace(/\.md$/, ''),
+          id,
           key,
           absPath,
           english,
@@ -249,8 +273,10 @@ export function collectI18nTargets({ root, onlyLocale = null, onlyTrees = null, 
  *
  * Guarding with `existsSync('skills/' + id)` instead would pass for a real skill nobody has
  * translated and still compare nothing — the proxy-predicate mistake this function exists to
- * avoid. There are deliberately no reachable ids in the message: the corpus carries hundreds, and
- * a wall of them is not a diagnostic.
+ * avoid. There are deliberately no reachable ids in the message: the corpus carries hundreds, a
+ * wall of them is not a diagnostic, and since #635 the caller may pass a walk narrowed to the
+ * requested id, in which case `idsReached` is a singleton or empty and has no size worth
+ * quoting. Membership is the only thing this arm reads, and membership is exact either way.
  *
  * @param {object} opts
  * @param {string|null} opts.onlyLocale
@@ -296,8 +322,8 @@ export function validateScope({ onlyLocale, onlyTrees, onlyId = null, localesRea
     if (!idsReached.has(onlyId)) {
       errors.push(`ERROR: --id '${onlyId}' matched no translated content${onlyLocale ? ` in locale '${onlyLocale}'` : ''}.`);
       errors.push('Nothing would be compared, and the run would report a clean-looking zero.');
-      errors.push(`Translated content ids reachable here: ${idsReached.size}. A typo and a real but`);
-      errors.push('untranslated id land in the same place, and both mean this run examines nothing.');
+      errors.push('A typo and a real but untranslated id land here alike; both mean this run');
+      errors.push('examines nothing.');
     }
   }
   return errors;

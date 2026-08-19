@@ -38,6 +38,7 @@ import { execFileSync, spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
 import { validateScope } from '../lib/i18n-targets.js';
+import { collectSpecs } from '../lib/english-history.js';
 
 const CHECKER = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'check-i18n-fence-parity.js');
 
@@ -176,4 +177,212 @@ test('a reachable id produces no errors — the arm can stay silent', () => {
     localesReached: new Set(['de']), treesReached: new Set(['skills']),
     idsReached: new Set(['alpha', 'beta']),
   }), []);
+});
+
+// ── #635: the scoped run must consult the same POOL, not just the same files ─
+
+test('a STALE but valid mirror stays clean under a scoped history walk', () => {
+  // THE ONE FAILURE SCOPING CAN INTRODUCE, and the reason a clean-file equivalence check proves
+  // nothing. Staleness immunity is "the body matches SOME English revision", so a pool truncated
+  // to HEAD turns a legitimately stale mirror into a violation — a false accusation against a
+  // translation nobody touched, which is the confound this gate was built to avoid.
+  //
+  // English here has two revisions; the mirror carries the OLDER body. Under the corpus-wide
+  // walk that is clean. It must stay clean when `--id` narrows the `git log` pathspec, and it
+  // would not if the narrowed walk fed only the working tree.
+  const dir = mkdtempSync(join(tmpdir(), 'aa-stale-'));
+  try {
+    const git = (...args) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' });
+    git('init', '-q', '-b', 'main');
+    git('config', 'user.email', 'test@example.com');
+    git('config', 'user.name', 'test');
+
+    mkdirSync(join(dir, 'skills', 'alpha'), { recursive: true });
+    const withBody = (body) => `# alpha\n\n\`\`\`yaml\n${body}\n\`\`\`\n`;
+
+    writeFileSync(join(dir, 'skills', 'alpha', 'SKILL.md'), withBody('a: 1'));
+    git('add', '-A'); git('commit', '-qm', 'english v1');
+
+    writeFileSync(join(dir, 'skills', 'alpha', 'SKILL.md'), withBody('a: 2'));
+    git('add', '-A'); git('commit', '-qm', 'english v2');
+
+    // The mirror is on v1 — stale, and legitimately so.
+    mkdirSync(join(dir, 'i18n', 'de', 'skills', 'alpha'), { recursive: true });
+    writeFileSync(join(dir, 'i18n', 'de', 'skills', 'alpha', 'SKILL.md'), withBody('a: 1'));
+
+    const scoped = run(dir, '--id', 'alpha', '--json');
+    assert.equal(scoped.status, 0, scoped.stdout + scoped.stderr);
+    const report = JSON.parse(scoped.stdout);
+    assert.equal(report.filesCompared, 1, 'the fixture must actually have been compared');
+    assert.equal(report.violations, 0, 'a body from an OLDER revision is a legal basis');
+
+    // Non-vacuity: the same fixture with a body English never carried IS a violation, so the
+    // assertion above is not passing because the gate has stopped looking.
+    writeFileSync(join(dir, 'i18n', 'de', 'skills', 'alpha', 'SKILL.md'), withBody('a: 99'));
+    const invented = JSON.parse(run(dir, '--id', 'alpha', '--json').stdout);
+    assert.equal(invented.violations, 1, 'an invented body must still be caught');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the scoped and unscoped runs agree on the same id', () => {
+  // Equivalence at the report level, on a fixture carrying a real finding in a file the scoped
+  // run must NOT look at — so an over-wide scope is caught as well as an over-narrow one.
+  const dir = mkdtempSync(join(tmpdir(), 'aa-equiv-'));
+  try {
+    const git = (...args) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' });
+    git('init', '-q', '-b', 'main');
+    git('config', 'user.email', 'test@example.com');
+    git('config', 'user.name', 'test');
+
+    for (const id of ['alpha', 'beta']) {
+      mkdirSync(join(dir, 'skills', id), { recursive: true });
+      writeFileSync(join(dir, 'skills', id, 'SKILL.md'), doc(id));
+    }
+    git('add', '-A'); git('commit', '-qm', 'english');
+
+    // Both mirrors invent a body, so the unscoped run finds two violations.
+    for (const id of ['alpha', 'beta']) {
+      mkdirSync(join(dir, 'i18n', 'de', 'skills', id), { recursive: true });
+      writeFileSync(join(dir, 'i18n', 'de', 'skills', id, 'SKILL.md'),
+        doc(id).replace('a: 1', 'a: 999'));
+    }
+
+    const all = JSON.parse(run(dir, '--json').stdout);
+    assert.equal(all.violations, 2, 'the fixture carries a finding in each');
+
+    const one = JSON.parse(run(dir, '--id', 'alpha', '--json').stdout);
+    assert.equal(one.filesCompared, 1, 'exactly the scoped file');
+    assert.equal(one.violations, 1, 'and exactly its finding');
+    assert.deepEqual(one.findings, all.findings.filter((f) => /\/alpha\//.test(f.file)),
+      'the scoped findings must be the unscoped ones for that id, unchanged');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a body from the PRE-FLATTEN era is still a legal basis under --id', () => {
+  // #682, found by adversarial review and confirmed on the corpus: 863 pre-flatten path
+  // occurrences exist in this repository's history, and `contentKey` maps
+  // `skills/<domain>/<id>/SKILL.md` onto today's `skills/<id>` deliberately. A tree-level
+  // pathspec matches both shapes; a file-level one naming only the current path does not, so
+  // scoping dropped that whole era from the pool.
+  //
+  // The failure is in the STRICT direction, which is why no existing test could see it: a mirror
+  // stale to the pre-flatten era is clean corpus-wide and a VIOLATION under `--id`. That is a
+  // false accusation against a translation nobody touched, produced by the command CLAUDE.md
+  // tells a contributor to run on the file they just edited.
+  //
+  // MUST-GO-RED: drop the `skills/*/<id>/SKILL.md` alias from `historicalPathspecs` and this
+  // test reports `violations: 1`.
+  const dir = mkdtempSync(join(tmpdir(), 'aa-flatten-'));
+  try {
+    const git = (...args) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' });
+    git('init', '-q', '-b', 'main');
+    git('config', 'user.email', 'test@example.com');
+    git('config', 'user.name', 'test');
+    const withBody = (body) => `# foo\n\n\`\`\`yaml\n${body}\n\`\`\`\n`;
+
+    // The pre-flatten layout: skills/<domain>/<id>/SKILL.md.
+    mkdirSync(join(dir, 'skills', 'dom', 'foo'), { recursive: true });
+    writeFileSync(join(dir, 'skills', 'dom', 'foo', 'SKILL.md'), withBody('a: 1'));
+    git('add', '-A'); git('commit', '-qm', 'pre-flatten v1');
+
+    writeFileSync(join(dir, 'skills', 'dom', 'foo', 'SKILL.md'), withBody('a: 2'));
+    git('add', '-A'); git('commit', '-qm', 'pre-flatten v2');
+
+    git('mv', join('skills', 'dom', 'foo'), join('skills', 'foo'));
+    git('commit', '-qm', 'flatten');
+
+    // The mirror is stale to the pre-flatten era — its body exists ONLY under the old path.
+    mkdirSync(join(dir, 'i18n', 'de', 'skills', 'foo'), { recursive: true });
+    writeFileSync(join(dir, 'i18n', 'de', 'skills', 'foo', 'SKILL.md'), withBody('a: 1'));
+
+    const unscoped = JSON.parse(run(dir, '--json').stdout);
+    assert.equal(unscoped.violations, 0, 'the corpus-wide walk sees the pre-flatten revision');
+
+    const scoped = JSON.parse(run(dir, '--id', 'foo', '--json').stdout);
+    assert.equal(scoped.filesCompared, 1, 'the fixture must actually have been compared');
+    assert.equal(scoped.violations, 0, 'and the scoped walk must see it too');
+
+    // Non-vacuity: a body that existed under NEITHER layout is still caught.
+    writeFileSync(join(dir, 'i18n', 'de', 'skills', 'foo', 'SKILL.md'), withBody('a: 99'));
+    assert.equal(JSON.parse(run(dir, '--id', 'foo', '--json').stdout).violations, 1,
+      'an invented body must still be a violation');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a revision on a MERGE-SIMPLIFIED side branch is still a legal basis under --id', () => {
+  // #682, divergence 2. `git log -- <file>` does not list every commit touching that file: with
+  // default simplification a merge parent TREESAME *for the pathspec* is pruned, and one file is
+  // TREESAME far more often than four trees. A side branch that edits a fence and then reverts
+  // it, while changing anything else, is invisible to the file pathspec and visible to the tree
+  // pathspec. Measured on this exact shape before the fix: pool `{a=1}` vs `{a=1, a=2}`.
+  //
+  // MUST-GO-RED: drop `--full-history` from `collectSpecs` and this reports `violations: 1`.
+  const dir = mkdtempSync(join(tmpdir(), 'aa-merge-'));
+  try {
+    const git = (...args) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' });
+    git('init', '-q', '-b', 'main');
+    git('config', 'user.email', 'test@example.com');
+    git('config', 'user.name', 'test');
+    const write = (id, body) => {
+      mkdirSync(join(dir, 'skills', id), { recursive: true });
+      writeFileSync(join(dir, 'skills', id, 'SKILL.md'), `# ${id}\n\n\`\`\`yaml\n${body}\n\`\`\`\n`);
+    };
+
+    write('foo', 'a: 1'); write('bar', 'b: 0');
+    git('add', '-A'); git('commit', '-qm', 'base');
+
+    git('checkout', '-q', '-b', 'side');
+    write('foo', 'a: 2');
+    git('add', '-A'); git('commit', '-qm', 'foo v2 on side');
+    // The branch must net-change something OTHER than foo, or foo is not TREESAME-pruned; and
+    // the merge must be --no-ff, since a fast-forward keeps history linear and hides the class.
+    write('foo', 'a: 1'); write('bar', 'b: 1');
+    git('add', '-A'); git('commit', '-qm', 'revert foo, change bar');
+
+    git('checkout', '-q', 'main');
+    git('merge', '-q', '--no-ff', 'side', '-m', 'merge');
+
+    // The mirror carries the body that existed only on the pruned side branch.
+    //
+    // Written through the same template-literal helper as everything else here. The first
+    // version built this string with `'…\\`\\`\\`yaml…'.replace(/\\`/g, '`')`, which is a NO-OP:
+    // inside single quotes a backslash-backtick is a useless escape that already yields a plain
+    // backtick, so the regex matched nothing. The bytes were right and the reasoning was not,
+    // which is the kind of fixture that later gets trusted for the wrong reason.
+    const mirror = join(dir, 'i18n', 'de', 'skills', 'foo', 'SKILL.md');
+    mkdirSync(join(dir, 'i18n', 'de', 'skills', 'foo'), { recursive: true });
+    writeFileSync(mirror, `# foo\n\n\`\`\`yaml\na: 2\n\`\`\`\n`);
+
+    assert.equal(JSON.parse(run(dir, '--json').stdout).violations, 0,
+      'the corpus-wide walk sees the side-branch revision');
+
+    const scoped = JSON.parse(run(dir, '--id', 'foo', '--json').stdout);
+    assert.equal(scoped.filesCompared, 1, 'the fixture must actually have been compared');
+    assert.equal(scoped.violations, 0, 'and the scoped walk must see it too');
+
+    // Non-vacuity, matching the sibling fixtures: a body that existed on NO branch is caught.
+    // Without it this test's green rests on `filesCompared` plus the other tests proving the
+    // gate can find anything at all, which is a dependency between tests rather than a control.
+    writeFileSync(mirror, `# foo\n\n\`\`\`yaml\na: 99\n\`\`\`\n`);
+    assert.equal(JSON.parse(run(dir, '--id', 'foo', '--json').stdout).violations, 1,
+      'an invented body must still be a violation');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('collectSpecs refuses an empty paths list rather than picking a meaning', () => {
+  // `[]` is not "no scope". Left alone it split the walk two ways at once: `[] ?? CONTENT_TYPES`
+  // keeps `[]`, so `git log` ran UNPATHED and pooled all content history, while the working-tree
+  // feed iterated zero paths and fed nothing. Unreachable from the gate — its empty-scope
+  // backstop guarantees at least one target — and a mutation deleting the throw therefore
+  // survived the whole suite, which is the same "dead branch, benefit of the doubt" this file
+  // already refuses for `validateScope`.
+  assert.throws(() => collectSpecs(process.cwd(), []), /paths is empty/);
 });

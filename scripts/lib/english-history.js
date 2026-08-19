@@ -66,12 +66,88 @@ import { catFileBatch, GIT_BUFFER } from './git-batch.js';
  * every test stays green, because a deleted file's earlier revisions still arrive by their own
  * specs.
  *
+ * `paths`, when given, replaces the tree-level pathspec with an explicit file list (#635). It is
+ * threaded from the caller's already-collected targets rather than re-derived here, because a
+ * second derivation of "which files are in scope" is the drift this module keeps closing.
+ *
+ * A narrowed pathspec is EQUAL OR STRICTER against the unscoped walk, never simply "equivalent".
+ * That wording was in this docblock and was wrong twice (#682); both divergences erred in the
+ * strict direction, which is the dangerous one — a false violation against a translation nobody
+ * touched, on the command CLAUDE.md tells a contributor to run.
+ *
+ *   1. THE FLATTEN. `contentKey` maps `skills/<domain>/<id>/SKILL.md` onto today's `skills/<id>`
+ *      on purpose, so a tree-level pathspec pooled the pre-flatten era — 863 path occurrences in
+ *      this history — under the current key, and a file-level pathspec naming only the current
+ *      path did not. Closed by `historicalPathspecs`, which supplies both shapes.
+ *   2. MERGE SIMPLIFICATION. `git log -- <file>` does NOT list every commit touching that file:
+ *      without `--full-history` a merge parent TREESAME for the pathspec is pruned, and one file
+ *      is TREESAME far more often than four trees. Closed by passing `--full-history` on the
+ *      narrowed walk only.
+ *
+ * With both closed the narrowed pool is a SUPERSET of what the tree walk yields for the covered
+ * path shapes — see `historicalPathspecs`, whose coverage is a measured fact about this history
+ * rather than a property of `contentKey`.
+ *
+ * "Superset therefore lenient" holds for the BODY pool and only for it. That pool is a Set and
+ * the violation test is membership, so growth can only remove findings. `buildEnglishFenceHistory`
+ * builds two more things from this same walk, and `compareTagSequence` is NOT monotone under
+ * growth: a sequence absent from the pool with no count-matched revision is `unalignable` and
+ * silent, while the same sequence with a count-matched revision present is a positional finding.
+ * A revision that only `--full-history` reaches can therefore turn unjudged into a finding on a
+ * file CI holds green.
+ *
+ * That is not #682's false accusation — the mirror genuinely matches no revision, so the scoped
+ * finding is defensible and CI is the one under-reporting — but it is a real scoped-vs-unscoped
+ * divergence in the finding direction, and the blanket "a scoped run can only ever be more
+ * permissive" that stood here was false. Two paragraphs below, this same docblock documents the
+ * collector's non-monotonicity under SHRINKAGE; asserting monotonicity under growth above it was
+ * the contradiction a second review round caught.
+ *
+ * Renames remain, and are genuinely equivalent rather than merely tolerable: without `--follow`
+ * the pre-rename revisions are absent here, and they are absent from the unscoped pool for this
+ * key too, since they were keyed to the OLD path. That argument holds for an id rename and is
+ * exactly what fails for the flatten, where the old path keys to the CURRENT id — which is how
+ * divergence 1 hid behind a sentence that was true of its neighbour.
+ *
  * @param {string} root repository root
+ * @param {string[]|null} [paths] explicit English paths; null walks all four content trees
  * @returns {string[]} specs in `git log` order, newest commit first
  */
-export function collectSpecs(root) {
+export function collectSpecs(root, paths = null) {
+  // `[]` is not "no scope", and left alone it splits the walk in two directions at once: `[] ??
+  // CONTENT_TYPES` keeps `[]`, so `git log` runs UNPATHED and pools all content history, while
+  // the working-tree feed below iterates zero paths and feeds nothing. Unreachable from the gate
+  // — its backstop guarantees at least one target — but this module's whole subject is two
+  // answers to one question, so it refuses rather than picking one (#682).
+  if (paths !== null && paths.length === 0) {
+    throw new Error('collectSpecs: paths is empty. Pass null to walk every content tree; '
+      + 'an empty list would pool all history and feed no working tree.');
+  }
   const log = execFileSync(
-    'git', ['log', '--format=%x00%H', '--name-only', '--', ...CONTENT_TYPES],
+    'git',
+    [
+      'log', '--format=%x00%H', '--name-only',
+      // `--full-history` ONLY on the narrowed walk, and it is a correctness fix rather than a
+      // completeness nicety (#682). Default history simplification prunes a merge parent that is
+      // TREESAME *for the pathspec*, and TREESAME is far easier to satisfy for one file than for
+      // four trees: a side branch that edits a fence and then reverts it, while changing anything
+      // else, is TREESAME for that one file and is pruned entirely. Measured on a fixture — the
+      // file pathspec pooled `{a=1}` where the tree pathspec pooled `{a=1, a=2}`.
+      //
+      // Direction matters. Without this the scoped pool is a strict SUBSET, so a mirror stale to
+      // the pruned revision is clean corpus-wide and a violation under `--id` — a false
+      // accusation. With it the scoped pool is every distinct blob of that path, hence a superset
+      // of what the tree walk can produce, and for the BODY pool that makes the divergence
+      // lenient. It does not for the tag-sequence pool, which is not monotone under growth — see
+      // the module docblock. And CI is unchanged rather than all-seeing: it runs the same
+      // corpus-wide walk it always did.
+      //
+      // Not applied to the unscoped walk, which would change the corpus verdict this PR pins as
+      // byte-identical. That the two walks simplify differently is now a stated property, not an
+      // assumed equivalence — see the docblock above.
+      ...(paths === null ? [] : ['--full-history']),
+      '--', ...(paths ?? CONTENT_TYPES),
+    ],
     { cwd: root, encoding: 'utf8', maxBuffer: GIT_BUFFER },
   );
 
@@ -155,6 +231,11 @@ export function collectSpecs(root) {
  * second kind, run the gate and this script and diff their finding sets: the agreement is what is
  * being re-measured. The first kind is covered by the row above.
  *
+ * Run the gate UNSCOPED for that diff (#682). Since #635 a `--id` on the gate's command line
+ * narrows its pathspec while `measure-tag-sequence-parity.js` keeps its own tree-level walk, so
+ * a scoped diff can disagree for walk reasons rather than regression reasons — and the two
+ * divergence classes named in `collectSpecs` are exactly where it would.
+ *
  * There is deliberately no `trees` option. An earlier draft had one, defaulting to
  * `CONTENT_TYPES` and used by nobody — and it could not have worked, because `contentKey`
  * decides membership against `CONTENT_TYPES` regardless of what the option says. Passing
@@ -166,9 +247,11 @@ export function collectSpecs(root) {
  *
  * @param {string} root repository root
  * @param {(key: string, text: string, meta: {fromWorkingTree: boolean, path: string}) => void} onBlob
+ * @param {object} [opts]
+ * @param {string[]|null} [opts.paths] explicit English paths to walk; null walks all four trees
  */
-export function walkEnglishHistory(root, onBlob) {
-  const specs = collectSpecs(root);
+export function walkEnglishHistory(root, onBlob, { paths = null } = {}) {
+  const specs = collectSpecs(root, paths);
 
   // The parse moved to `scripts/lib/git-batch.js` (#587), because a third copy of it lived in
   // `normalize-i18n-fences.js` with a different buffer and a different failure policy — the
@@ -180,6 +263,27 @@ export function walkEnglishHistory(root, onBlob) {
     const key = contentKey(path);
     if (key !== null) onBlob(key, text, { fromWorkingTree: false, path });
   });
+
+  // The working-tree feed is narrowed by the SAME set as the pathspec, so the pool is not
+  // split-brained: HEAD's body for every file, history for a few.
+  //
+  // Honest scope of that claim, corrected after review (#682): it is behaviourally NEUTRAL
+  // today. `current` — the map this feed populates in `buildEnglishFenceHistory` — has no
+  // production consumer; the deleted-fence check that would read it is the acknowledged #480
+  // gap, and the gate's own comment says so. Under `--id` the gate reads only scoped keys, which
+  // get the working-tree feed either way. So this is the right invariant for a future #480 and
+  // for any caller that reads `current`, not a fix for a live defect. The first version of this
+  // comment justified it by a consumer that does not exist.
+  if (paths !== null) {
+    for (const rel of paths) {
+      const key = contentKey(rel);
+      if (key === null) continue;
+      const path = join(root, rel);
+      if (!existsSync(path) || !statSync(path).isFile()) continue;
+      onBlob(key, readFileSync(path, 'utf8'), { fromWorkingTree: true, path: rel });
+    }
+    return;
+  }
 
   for (const tree of CONTENT_TYPES) {
     const base = join(root, tree);
