@@ -104,7 +104,7 @@
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { spawnSync } from 'child_process';
-import { extractFences, toLines, isGated } from './lib/fences.js';
+import { extractFences, toLines, isGated, foldedTagSequence } from './lib/fences.js';
 import { parseArgs, usageExit } from './lib/parse-args.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -368,8 +368,15 @@ for (const path of changed) {
   // a `text` -> `yaml` retag keeps the count and makes a translated table the
   // "before body" of a frozen fence. The sibling normalizer validates the tag
   // sequence before trusting the ordinal; so does this.
-  const alignmentTag = (f) => (f.lang === '' ? 'text' : f.lang);
-  const misaligned = headFences.findIndex((f, i) => alignmentTag(f) !== alignmentTag(baseFences[i]));
+  //
+  // Through `foldedTagSequence` since #674, and the comment above is the reason the local copy
+  // survived this long: "so does this" was true of the check and false of the FOLD. The copy
+  // here collapsed a brace-info fence to `text` exactly like an untagged one, so a base->head
+  // retag between those two shapes was not reported as a divergence and the comparison went on
+  // to trust an ordinal it had not established.
+  const headSeq = foldedTagSequence(headFences);
+  const baseSeq = foldedTagSequence(baseFences);
+  const misaligned = headSeq.findIndex((tag, i) => tag !== baseSeq[i]);
   if (misaligned >= 0) {
     skippedFiles.push({
       path,
