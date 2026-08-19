@@ -99,14 +99,13 @@ jobs:
       # heuristic. Exits 1 listing each stale file.
       - run: npm run check-readmes
 
-      # The healer's TRIGGERS, which `check-readmes` cannot see (#618). This gate answers
-      # "is the committed output stale right now"; that one answers "will the healer run at
-      # the commit that makes it stale". A generator module missing from
-      # update-readmes.yml's `paths:` leaves the drift to land at some later unrelated push,
-      # and that list had been extended four times, once per omission.
+      # `npm run check:generator-inputs` (#618) briefly lived here, on the argument that this
+      # workflow owns the generated-README surface and that `readmes` is job-blocking, which
+      # is the right severity for a latent scheduling defect. It moved to
+      # validate-integrity.yml because the severity argument assumed the check would run at
+      # all: its subject is a generator module or the healer's `paths:` filter, and the
+      # trigger list above is deliberately the OUTPUT set, so a PR adding an import to
+      # `scripts/generate-readmes.js` and touching no README never reaches this job.
       #
-      # It lives here rather than in validate-integrity.yml because this is the workflow
-      # that owns the generated-README surface, and `readmes` is job-blocking rather than
-      # merge-blocking — which is the right severity: an unlisted input is a latent
-      # scheduling defect, not incorrect committed content.
-      - run: npm run check:generator-inputs
+      # Recorded rather than deleted, because "why is that check over there and not here" is
+      # exactly the question this file's header answers for everything else.
