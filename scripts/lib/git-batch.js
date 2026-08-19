@@ -2,10 +2,13 @@
  * git-batch.js — one `git cat-file --batch` positional parse (#587).
  *
  * #559 unified this parse across the two blob-pool walkers and said `GIT_BUFFER` was "now
- * declared once". True of the walkers, false of the repo: `normalize-i18n-fences.js` carried a
- * third copy with the older 512 MiB buffer, its own `process.exit(1)` failure policy, and no
- * `batch.error` branch — so post-#559 there were again two buffer values at different sizes and
- * both failure policies coexisting.
+ * declared once". True of the walkers, false of the repo. There were FOUR copies:
+ * `normalize-i18n-fences.js` carried one with the older 512 MiB buffer, its own
+ * `process.exit(1)` policy and no `batch.error` branch; `backfill-fence-basis.js` carried
+ * another — correct policy, old buffer, and DROPPING absences rather than recording them.
+ *
+ * The fourth was found while writing this file, by grepping for the buffer rather than trusting
+ * the count in the issue. The first draft of this header said "three".
  *
  * ## Why the fragment and not the callers
  *
@@ -41,6 +44,14 @@ import { spawnSync } from 'node:child_process';
  * this is not a considered split being flattened, it is the split being finished. Raising a
  * caller's ceiling cannot break it: `maxBuffer` bounds what the parent will accept, and the
  * failure it prevents is a truncated pool.
+ *
+ * TWO OTHER `GIT_BUFFER` DECLARATIONS REMAIN, and they are not copies of this one:
+ * `lib/git-freshness.js` at 256 MiB for its `git log`, and `check-placeholder-drift.js` at
+ * 512 MiB for plain `git` calls. Whether those should also be one number is a separate question
+ * about a separate call, and answering it by extension here would be raising ceilings with no
+ * reason stated — the thing #559 found had already happened once. Named rather than left to be
+ * rediscovered, because an inventory that stops at the copies it happened to notice is the
+ * failure this file exists to end.
  */
 export const GIT_BUFFER = 2048 * 1024 * 1024;
 
