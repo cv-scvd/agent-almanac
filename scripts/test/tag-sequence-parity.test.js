@@ -233,6 +233,28 @@ test('isRetagEscape separates the two populations #598 catalogued', () => {
   ]), true);
 });
 
+test('foldedTagSequence emits no comma and no empty tag — the join alphabet the pool depends on', () => {
+  // Sequences are pooled as `seq.join(',')` and their length is recovered by splitting that
+  // string back apart, so a tag containing a comma would inflate the recovered length and a tag
+  // that is the empty string would collide with the no-fence revision. Both are unreachable
+  // today: `lang` is the [0] segment of a split whose delimiter class already contains the
+  // comma, and the two fallbacks are comma-free literals. That is a property of the extractor,
+  // not of the corpus — and #676 removed the last caller that carried a true array length
+  // alongside the joined form, so nothing else would disagree if it ever stopped holding.
+  const alphabet = (src) => foldedTagSequence(src);
+  for (const tag of alphabet([
+    '```js,foo', 'x', '```', '', '```{r setup}', 'y', '```', '', '```', 'z', '```', '', '```JSON',
+    'w', '```',
+  ].join('\n'))) {
+    assert.ok(!tag.includes(','), `folded tag ${JSON.stringify(tag)} contains a comma`);
+    assert.notEqual(tag, '', 'folded tag is the empty string');
+  }
+  // Named explicitly rather than left to the loop: the info string most likely to smuggle one in.
+  assert.deepEqual(alphabet('```js,foo\nx\n```\n'), ['js']);
+  assert.deepEqual(alphabet('```{r}\nx\n```\n'), ['{']);
+  assert.deepEqual(alphabet('```\nx\n```\n'), ['text']);
+});
+
 test('isRetagEscape treats a brace fence as frozen — the escape must not survive its own fix', () => {
   // `foldedTagSequence` emits `{` for ```{r} precisely so this classifies as an escape. If the
   // fold ever collapsed braces to `text` this would silently become drift and stop blocking.

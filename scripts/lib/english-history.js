@@ -237,6 +237,17 @@ export function collectSpecs(root, paths = null) {
  * The per-count index this paragraph used to cite as the reason for pooling inline is gone.
  * `compareTagSequence` derives counts itself, which is what made the copy removable.
  *
+ * Which leaves the inline pool carrying a load the efficiency argument above understates, and it
+ * belongs on the record rather than in silence. Sharing the fold (#612) and then the triage
+ * (#676) each retired a leg of a differential oracle, and the triage leg had a confirmed kill:
+ * the hand copy is the "independent measurement of the same property [that] disagreed by exactly
+ * 3" which caught `compareTagSequence` treating `''.split(',')` as a one-fence revision — a bug
+ * no test saw. After #676 a fault in that classifier moves the gate and the reproducer
+ * identically, so their finding-set diff can never surface one again; the regression tests in
+ * `scripts/test/tag-sequence-parity.test.js` are now the only cover for that class, and they
+ * cover the known bug rather than the next one. Pooling inline is what preserves the one
+ * remaining channel — call `buildEnglishFenceHistory` here and the diff detects nothing at all.
+ *
  * Run the gate UNSCOPED for that diff (#682). Since #635 a `--id` on the gate's command line
  * narrows its pathspec while `measure-tag-sequence-parity.js` keeps its own tree-level walk, so
  * a scoped diff can disagree for walk reasons rather than regression reasons — and the two

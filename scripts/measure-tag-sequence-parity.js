@@ -75,7 +75,7 @@ import { fileURLToPath } from 'url';
 // change; the counts are why that was expected. What makes it worth fixing anyway is that this
 // script is the instrument used to judge the gate's finding set, and it disagreed with the thing
 // it measures.
-import { foldedTagSequence, compareTagSequence } from './lib/fences.js';
+import { foldedTagSequence, compareTagSequence, isRetagEscape } from './lib/fences.js';
 import { walkEnglishHistory } from './lib/english-history.js';
 import { collectTargets } from './check-i18n-fence-parity.js';
 
@@ -188,9 +188,15 @@ if (retags.length) {
 
   // The distribution that decides whether this is a gate or a backlog: a retag TO a localisable
   // tag is the #481 escape; anything else is ordinary tag drift and a likely false positive.
-  const escapes = retags.filter((r) => r.positions.some(
-    (p) => ['text', 'markdown', 'md'].includes(p.translated) && !['text', 'markdown', 'md'].includes(p.english),
-  ));
+  //
+  // `isRetagEscape`, and NOT a hand copy of it — which is the same sentence the rest of this
+  // change is about, one predicate over. This filter was a literal `['text','markdown','md']`
+  // pair until the review of #694 read the file the fix had just landed in and found it: the
+  // fourth literal copy that `isRetagEscape`'s own docstring names and forbids. `LOCALISABLE_TAGS`
+  // is a designed extension point (`fences.js` states the procedure for adding a tag), so the
+  // copy was not merely redundant — adding a tag would have moved the gate's blocking boundary
+  // and left this instrument's escape/drift split silently behind, which is #676 exactly.
+  const escapes = retags.filter((r) => isRetagEscape(r.positions));
   console.log(`\nof those, ${escapes.length} involve a frozen tag becoming localisable — the #481 escape proper.`);
   console.log(`the remaining ${retags.length - escapes.length} are other tag drift, and are the false-positive risk.`);
 }
