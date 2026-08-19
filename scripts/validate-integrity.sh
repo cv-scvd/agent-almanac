@@ -204,25 +204,46 @@ done
 # duplicated version would drift the way this repo's other duplicated readers have.
 registry_entry_set() { # <tree> <registry> <section key>
   local tree="$1" registry="$2" section="$3"
-  local reg_ids_all dupes reg_ids disk_ids
+  # `id` is declared HERE, not at its first loop, because the dupes loop now uses it too and a
+  # loop variable that leaks to the global scope would be shared between the A4 and A5 calls.
+  local reg_ids_all dupes reg_ids disk_ids id
   local rc=0
 
   # Scoped to the section, not the whole file: `default_skills:` in agents/_registry.yml also
   # holds list entries, and an unscoped `- id:` grep would silently widen the set the day one
   # of those gains an id.
-  reg_ids_all=$(sed -n "/^${section}:/,\$ { /^  - id: /p }" "$registry" | tr -d '\r' \
-    | sed -E 's/^  - id: *//' | sed -E 's/^"(.*)"\$/\1/' | sort || true)
+  # `"$` and not `"\$`: inside a single-quoted shell string a backslash reaches sed literally, so
+  # `s/^"(.*)"\$/` matched only an id ENDING IN A DOLLAR SIGN and the quote-strip was inert.
+  # Verified rather than reasoned -- `printf '"x"\n' | sed -E 's/^"(.*)"\$/\1/'` prints `"x"`.
+  # Nothing depends on it today (no id in either registry is quoted), which is exactly why it
+  # would have sat here until someone quoted one and got accused of a missing file. A11 and A12
+  # already use the correct form; this was the odd one out.
+  # Range ENDS at the next top-level key, not at EOF. Both registries happen to put their
+  # section last today, so `,$` gave the same answer -- and would keep giving it right up until
+  # someone appends a top-level key with its own `- id:` list, at which point the set silently
+  # widens and every extra id is reported as "only in registry". Entries are indented, so the
+  # first unindented `key:` after the section is the boundary; if none follows, the range still
+  # runs to EOF and nothing changes.
+  reg_ids_all=$(sed -n "/^${section}:/,/^[a-z_][a-z_0-9]*:/ { /^  - id: /p }" "$registry" | tr -d '\r' \
+    | sed -E 's/^  - id: *//' | sed -E 's/^"(.*)"$/\1/' | sort || true)
 
   # Before `sort -u`, because uniquing would collapse a duplicate and let the set still match
   # disk -- two entries pointing at one file forgiven by the check meant to pair them 1:1.
   dupes=$(printf '%s\n' "$reg_ids_all" | uniq -d || true)
   if [ -n "$dupes" ]; then
-    echo "FAIL: $registry has two entries sharing one id:"
-    printf '%s\n' "$dupes" | sed 's/^/      /'
-    rc=1
+    # One FAIL line per duplicate, for the same reason as the discrepancy loops below: the
+    # offending id has to sit on the line that says FAIL, or no envelope case can assert WHICH
+    # id was duplicated. The header-plus-indent form violated this function's own convention
+    # four lines above it.
+    while IFS= read -r id; do
+      [ -z "$id" ] && continue
+      echo "FAIL: $registry has two entries sharing one id: $id"
+      rc=1
+    done <<< "$dupes"
   fi
 
-  reg_ids=$(printf '%s\n' "$reg_ids_all" | sed '/^\$/d' | sort -u || true)
+  # Same class: `/^\$/d` deleted lines consisting of a literal `$`, not empty lines.
+  reg_ids=$(printf '%s\n' "$reg_ids_all" | sed '/^$/d' | sort -u || true)
   disk_ids=$(find "$tree" -maxdepth 1 -name '*.md' -not -name '_template.md' -not -name 'README.md' \
     -exec basename {} .md \; | sort || true)
 
@@ -239,7 +260,7 @@ registry_entry_set() { # <tree> <registry> <section key>
   # substring. With the detail indented under a header, an envelope asserting "the orphaned
   # entry is named" reported [WRONG-RED] against a check that was naming it correctly -- the
   # harness could not see it, so the case proved nothing either way.
-  local only_reg only_disk id
+  local only_reg only_disk
   only_reg=$(comm -23 <(printf '%s\n' "$reg_ids") <(printf '%s\n' "$disk_ids") || true)
   only_disk=$(comm -13 <(printf '%s\n' "$reg_ids") <(printf '%s\n' "$disk_ids") || true)
   if [ -n "$only_reg" ]; then
@@ -904,8 +925,9 @@ fi
 # That sentence used to end "the rest of this script is not [guarded]: #647 is the sweep, and
 # until it lands do not read this paragraph as covering A1-A10." #647 IS this commit, so both
 # halves were false on arrival. The whole file is now at zero unguarded sites --
-# `npm run check:bare-substitutions` reports 100 scanned / 0 UNGUARDED across all six tracked
-# shell scripts, against 30 on the parent commit -- and the rule at the top of this file, not
+# `npm run check:bare-substitutions` reports 0 UNGUARDED across all six tracked
+# shell scripts, against 30 unguarded on the commit that introduced the sweep -- and the rule at
+# the top of this file, not
 # this paragraph, is where the guard policy lives.
 echo "--- A11: Guide category render coverage ---"
 a11_fail=0

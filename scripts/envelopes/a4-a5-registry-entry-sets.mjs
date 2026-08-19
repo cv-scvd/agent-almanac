@@ -66,7 +66,11 @@ export const cases = [
     file: 'agents/_registry.yml',
     find: '  - id: security-analyst\n',
     replace: '  - id: code-reviewer\n',
-    expect: 'has two entries sharing one id',
+    // Names the duplicated ID, not just the fact of duplication. The check emitted a header
+    // plus indented detail until an adversarial review pointed out that the offending id then
+    // sits on a line the harness cannot assert -- so a case could pass while the check named the
+    // wrong id, or no id at all.
+    expect: 'has two entries sharing one id: code-reviewer',
   },
   {
     // FAIL-CLOSED. Renaming the section key makes the `sed` range match nothing, so the
@@ -77,6 +81,6 @@ export const cases = [
     file: 'agents/_registry.yml',
     find: '\nagents:\n',
     replace: '\nagentz:\n',
-    expect: "pattern drift, not a clean tree",
+    expect: 'pattern drift, not a clean tree',
   },
 ];

@@ -226,7 +226,7 @@ test('a multi-line span closes at its own paren, not at end of line', () => {
   assert.equal(out.unguarded, 0);
 });
 
-test('a function-body assignment inside `$( … )` on a continuation is still scanned', () => {
+test('an assignment inside a shell FUNCTION body is still scanned', () => {
   // Sanity check that the scanner still sees sites inside a shell FUNCTION, which is where
   // `registry_entry_set` (#648) puts three of them. Regression guard for any future narrowing
   // of ASSIGNMENT_GLOBAL back toward a line-start anchor.
