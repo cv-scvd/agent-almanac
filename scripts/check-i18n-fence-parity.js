@@ -73,6 +73,7 @@ import {
 import { collectI18nTargets, validateScope, I18N_TREES } from './lib/i18n-targets.js';
 import { FENCE_BASIS_FIELD, readFrontmatterField } from './lib/provenance.js';
 import { CONTENT_TYPES } from './lib/content-types.js';
+import { historicalPathspecs } from './lib/content-paths.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -285,7 +286,13 @@ function main() {
   // violation, since staleness immunity is "matches SOME English revision". That is what the
   // fixture in `scripts/test/fence-parity-scope-guard.test.js` pins, on a stale-but-valid mirror
   // rather than a clean one — a clean file passes under a broken pool too.
-  const historyPaths = ONLY_ID ? [...new Set(targets.map((t) => t.englishRel))] : null;
+  // `historicalPathspecs`, not `t.englishRel` alone: `contentKey` maps the pre-flatten
+  // `skills/<domain>/<id>/SKILL.md` onto today's key, and a file-level pathspec that names only
+  // the current path drops that whole era from the pool (#682). See the function's docblock for
+  // why the alias list lives beside `contentKey` rather than here.
+  const historyPaths = ONLY_ID
+    ? [...new Set(targets.flatMap((t) => historicalPathspecs(t.englishRel)))]
+    : null;
   const history = buildEnglishFenceHistory(ROOT, { paths: historyPaths });
   const findings = [];
   let filesCompared = 0;

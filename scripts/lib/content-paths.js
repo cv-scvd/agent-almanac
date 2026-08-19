@@ -64,6 +64,44 @@ export function contentKey(relPath) {
  * because every caller happens to `statSync(...).isFile()` afterwards — which is the
  * "unreachable because of ambient state" framing #519 exists to reject.
  */
+/**
+ * Every path shape a `git log` pathspec must carry to see one key's whole history (#682).
+ *
+ * `contentKey` is deliberately many-to-one: `skills/<domain>/<id>/SKILL.md` and
+ * `skills/<id>/SKILL.md` key to the same `skills/<id>`. That is what makes the pre-flatten era
+ * — 863 path occurrences in this repository's history — reachable under today's ids.
+ *
+ * It also means a pathspec built from the CURRENT path alone is not the same walk. A tree-level
+ * pathspec (`-- skills agents teams guides`) matches both shapes and never had to know; a
+ * file-level one matches only what it names. Scoping the walk (#635) is what turned an invariant
+ * of `contentKey` into a requirement on its callers, and the failure it produced was silent and
+ * in the strict direction: a mirror whose fence body existed only in pre-flatten English is
+ * clean under the corpus-wide walk and a VIOLATION under `--id`. A false accusation against a
+ * translation nobody touched, on the command CLAUDE.md tells a contributor to run.
+ *
+ * So the alias list lives here, beside the function whose many-to-one mapping creates it, rather
+ * than in the caller that happens to need it first. A second caller deriving its own answer is
+ * the drift this directory keeps closing.
+ *
+ * Flat trees (`agents`, `teams`, `guides`) have never had a second shape, and `contentKey`'s
+ * flat branch requires `parts.length === 2`, so there is nothing to alias for them. If that ever
+ * changes, it changes in `contentKey` first and this function must follow in the same commit.
+ *
+ * @param {string} englishRel repo-relative path to an English source, as `contentKey` takes it
+ * @returns {string[]} pathspecs covering every historical shape of that key, current one first
+ */
+export function historicalPathspecs(englishRel) {
+  const parts = englishRel.split('/');
+  if (parts[0] === 'skills' && parts[parts.length - 1] === 'SKILL.md') {
+    const id = parts[parts.length - 2];
+    // `*` does not cross `/` in a git pathspec's fnmatch, so this matches exactly one
+    // intervening domain segment — the pre-flatten shape — and not deeper nestings that
+    // `contentKey` would key to a different id anyway.
+    return [englishRel, `skills/*/${id}/SKILL.md`];
+  }
+  return [englishRel];
+}
+
 function isExcludedId(id) {
   const stem = id.endsWith('.md') ? id.slice(0, -3) : id;
   return stem.startsWith('_') || stem === 'README';

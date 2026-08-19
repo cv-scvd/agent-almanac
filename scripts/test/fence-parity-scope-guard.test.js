@@ -260,3 +260,105 @@ test('the scoped and unscoped runs agree on the same id', () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('a body from the PRE-FLATTEN era is still a legal basis under --id', () => {
+  // #682, found by adversarial review and confirmed on the corpus: 863 pre-flatten path
+  // occurrences exist in this repository's history, and `contentKey` maps
+  // `skills/<domain>/<id>/SKILL.md` onto today's `skills/<id>` deliberately. A tree-level
+  // pathspec matches both shapes; a file-level one naming only the current path does not, so
+  // scoping dropped that whole era from the pool.
+  //
+  // The failure is in the STRICT direction, which is why no existing test could see it: a mirror
+  // stale to the pre-flatten era is clean corpus-wide and a VIOLATION under `--id`. That is a
+  // false accusation against a translation nobody touched, produced by the command CLAUDE.md
+  // tells a contributor to run on the file they just edited.
+  //
+  // MUST-GO-RED: drop the `skills/*/<id>/SKILL.md` alias from `historicalPathspecs` and this
+  // test reports `violations: 1`.
+  const dir = mkdtempSync(join(tmpdir(), 'aa-flatten-'));
+  try {
+    const git = (...args) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' });
+    git('init', '-q', '-b', 'main');
+    git('config', 'user.email', 'test@example.com');
+    git('config', 'user.name', 'test');
+    const withBody = (body) => `# foo\n\n\`\`\`yaml\n${body}\n\`\`\`\n`;
+
+    // The pre-flatten layout: skills/<domain>/<id>/SKILL.md.
+    mkdirSync(join(dir, 'skills', 'dom', 'foo'), { recursive: true });
+    writeFileSync(join(dir, 'skills', 'dom', 'foo', 'SKILL.md'), withBody('a: 1'));
+    git('add', '-A'); git('commit', '-qm', 'pre-flatten v1');
+
+    writeFileSync(join(dir, 'skills', 'dom', 'foo', 'SKILL.md'), withBody('a: 2'));
+    git('add', '-A'); git('commit', '-qm', 'pre-flatten v2');
+
+    git('mv', join('skills', 'dom', 'foo'), join('skills', 'foo'));
+    git('commit', '-qm', 'flatten');
+
+    // The mirror is stale to the pre-flatten era — its body exists ONLY under the old path.
+    mkdirSync(join(dir, 'i18n', 'de', 'skills', 'foo'), { recursive: true });
+    writeFileSync(join(dir, 'i18n', 'de', 'skills', 'foo', 'SKILL.md'), withBody('a: 1'));
+
+    const unscoped = JSON.parse(run(dir, '--json').stdout);
+    assert.equal(unscoped.violations, 0, 'the corpus-wide walk sees the pre-flatten revision');
+
+    const scoped = JSON.parse(run(dir, '--id', 'foo', '--json').stdout);
+    assert.equal(scoped.filesCompared, 1, 'the fixture must actually have been compared');
+    assert.equal(scoped.violations, 0, 'and the scoped walk must see it too');
+
+    // Non-vacuity: a body that existed under NEITHER layout is still caught.
+    writeFileSync(join(dir, 'i18n', 'de', 'skills', 'foo', 'SKILL.md'), withBody('a: 99'));
+    assert.equal(JSON.parse(run(dir, '--id', 'foo', '--json').stdout).violations, 1,
+      'an invented body must still be a violation');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a revision on a MERGE-SIMPLIFIED side branch is still a legal basis under --id', () => {
+  // #682, divergence 2. `git log -- <file>` does not list every commit touching that file: with
+  // default simplification a merge parent TREESAME *for the pathspec* is pruned, and one file is
+  // TREESAME far more often than four trees. A side branch that edits a fence and then reverts
+  // it, while changing anything else, is invisible to the file pathspec and visible to the tree
+  // pathspec. Measured on this exact shape before the fix: pool `{a=1}` vs `{a=1, a=2}`.
+  //
+  // MUST-GO-RED: drop `--full-history` from `collectSpecs` and this reports `violations: 1`.
+  const dir = mkdtempSync(join(tmpdir(), 'aa-merge-'));
+  try {
+    const git = (...args) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' });
+    git('init', '-q', '-b', 'main');
+    git('config', 'user.email', 'test@example.com');
+    git('config', 'user.name', 'test');
+    const write = (id, body) => {
+      mkdirSync(join(dir, 'skills', id), { recursive: true });
+      writeFileSync(join(dir, 'skills', id, 'SKILL.md'), `# ${id}\n\n\`\`\`yaml\n${body}\n\`\`\`\n`);
+    };
+
+    write('foo', 'a: 1'); write('bar', 'b: 0');
+    git('add', '-A'); git('commit', '-qm', 'base');
+
+    git('checkout', '-q', '-b', 'side');
+    write('foo', 'a: 2');
+    git('add', '-A'); git('commit', '-qm', 'foo v2 on side');
+    // The branch must net-change something OTHER than foo, or foo is not TREESAME-pruned; and
+    // the merge must be --no-ff, since a fast-forward keeps history linear and hides the class.
+    write('foo', 'a: 1'); write('bar', 'b: 1');
+    git('add', '-A'); git('commit', '-qm', 'revert foo, change bar');
+
+    git('checkout', '-q', 'main');
+    git('merge', '-q', '--no-ff', 'side', '-m', 'merge');
+
+    // The mirror carries the body that existed only on the pruned side branch.
+    mkdirSync(join(dir, 'i18n', 'de', 'skills', 'foo'), { recursive: true });
+    writeFileSync(join(dir, 'i18n', 'de', 'skills', 'foo', 'SKILL.md'),
+      '# foo\n\n\`\`\`yaml\na: 2\n\`\`\`\n'.replace(/\\`/g, '`'));
+
+    assert.equal(JSON.parse(run(dir, '--json').stdout).violations, 0,
+      'the corpus-wide walk sees the side-branch revision');
+
+    const scoped = JSON.parse(run(dir, '--id', 'foo', '--json').stdout);
+    assert.equal(scoped.filesCompared, 1, 'the fixture must actually have been compared');
+    assert.equal(scoped.violations, 0, 'and the scoped walk must see it too');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
