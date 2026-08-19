@@ -88,7 +88,7 @@
  *   node scripts/normalize-i18n-fences.js --tree guides,agents  # restrict to trees
  */
 
-import { readFileSync, writeFileSync, readdirSync, existsSync, statSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, statSync } from 'fs';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { spawnSync } from 'child_process';
@@ -103,6 +103,7 @@ import {
 } from './lib/provenance.js';
 import { parseArgs, usageExit } from './lib/parse-args.js';
 import { catFileBatch } from './lib/git-batch.js';
+import { collectI18nTargets, presentTrees, scannableLocales } from './lib/i18n-targets.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -196,10 +197,9 @@ const tagOf = (fence) => (fence.lang === '' ? 'untagged' : fence.lang);
  * Membership in the scan's own list is the only formulation that cannot drift
  * from the scan.
  */
-const hasTree = (locale, tree) => {
-  const p = join(I18N_DIR, locale, tree);
-  return existsSync(p) && statSync(p).isDirectory();
-};
+// `hasTree`, `PRESENT_TREES` and `SCANNABLE_LOCALES` come from `./lib/i18n-targets.js` (#623),
+// so this file performs no `readdirSync` over `i18n/` at all and the pre-scan guards cannot drift
+// from the walk they gate.
 
 /**
  * Scoped to content trees, so the mirrors can be repaired as their own batch —
@@ -212,8 +212,7 @@ const hasTree = (locale, tree) => {
  * translations for would otherwise report the clean-looking zero both guards
  * exist to reject.
  */
-const PRESENT_TREES = TREES.filter((tree) =>
-  readdirSync(I18N_DIR).some((locale) => hasTree(locale, tree)));
+const PRESENT_TREES = presentTrees(ROOT);
 
 const ONLY_TREES = opts.tree === null ? null : new Set(
   opts.tree.split(',').map((t) => t.trim().toLowerCase()).filter((t) => t !== ''),
@@ -231,8 +230,7 @@ if (ONLY_TREES !== null && ONLY_TREES.size === 0) {
 // It is checked after the scan instead, against the trees the SCOPED run
 // actually visited — the same shape as `--tag`, and for the same reason.
 
-const SCANNABLE_LOCALES = readdirSync(I18N_DIR).filter((entry) =>
-  PRESENT_TREES.some((tree) => hasTree(entry, tree)));
+const SCANNABLE_LOCALES = scannableLocales(ROOT);
 
 if (ONLY_LOCALE && !SCANNABLE_LOCALES.includes(ONLY_LOCALE)) {
   console.error(`ERROR: --locale '${ONLY_LOCALE}' is not a translated locale under i18n/.`);
@@ -344,47 +342,45 @@ assertNotShallow(ROOT);
 const history = buildEnglishFenceHistory();
 
 // ---- gather targets ----
-const targets = [];
+//
+// The walk moved to `scripts/lib/i18n-targets.js` (#623). #622 extracted it because the gate and
+// this tool had each grown a copy and the copies had ALREADY DRIFTED on the two points that
+// decide whether a scoped run reaching nothing reports a clean zero or exits 2 — one recorded
+// its reached-trees before the `--tree` filter and one after (validating a filter against the
+// post-filter set is circular and always passes), and one checked `isFile` where the other
+// checked only `existsSync`. This file was left on its own copy there to keep a 3,415-file diff
+// auditable, which made the count 2 → 2 rather than 2 → 3.
+//
+// `SCANNABLE_LOCALES` and `PRESENT_TREES` stay: the `--locale` guard above fires BEFORE the scan
+// and needs them, and `gitStatus(...PRESENT_TREES)` and `WRITE_SCOPE` read them too. They select
+// the same targets the lib's own enumeration does — both only record a locale or tree once an
+// entry has passed every existence check — so this is a narrowing of what the walk decides, not
+// of what it returns.
+const collected = collectI18nTargets({
+  root: ROOT,
+  onlyLocale: ONLY_LOCALE,
+  onlyTrees: ONLY_TREES,
+  withText: true,
+});
+
+const targets = collected.targets.map((t) => ({
+  locale: t.locale,
+  tree: t.tree,
+  key: t.key,
+  // The lib calls it `absPath`; everything downstream here reads `path`. Renamed at the seam
+  // rather than in the lib, whose other two callers already use `absPath`.
+  path: t.absPath,
+  english: t.english,
+  englishRel: t.englishRel,
+  relPath: t.relPath,
+  text: t.text,
+  // Not the lib's job: it returns content, and provenance has its own reader. `readFrontmatterField`
+  // is the anchored one from #552 — the same call the old inline walk made.
+  sourceCommit: readFrontmatterField(t.text, SOURCE_COMMIT_FIELD),
+}));
+
 /** Trees the locale-scoped scan found translated content in, before `--tree`. */
-const treesInScope = new Set();
-for (const locale of SCANNABLE_LOCALES) {
-  if (ONLY_LOCALE && locale !== ONLY_LOCALE) continue;
-  for (const tree of PRESENT_TREES) {
-    if (!hasTree(locale, tree)) continue;
-    for (const entry of readdirSync(join(I18N_DIR, locale, tree))) {
-      // `skills/<id>/SKILL.md` for skills, `<tree>/<id>.md` for the mirrors.
-      // `contentKey` decides which names are content at all, so `_template.md`,
-      // `README.md` and `_registry.yml` fall out here rather than needing a
-      // second list that could drift from the checker's.
-      const englishRel = tree === 'skills' ? `${tree}/${entry}/SKILL.md` : `${tree}/${entry}`;
-      const key = contentKey(englishRel);
-      if (key === null) continue;
-      const translated = join(I18N_DIR, locale, englishRel);
-      const english = join(ROOT, englishRel);
-      // `isFile`, not merely `existsSync`, matching the checker. For skills the
-      // entry is a directory and the file is `SKILL.md`, so existence alone was
-      // safe by construction; on the mirror branch the ENTRY is the file, and a
-      // directory named `foo.md` would reach readFileSync and kill the run with
-      // EISDIR where the checker skips it.
-      if (!existsSync(translated) || !statSync(translated).isFile()) continue;
-      if (!existsSync(english) || !statSync(english).isFile()) continue;
-      // Recorded BEFORE the `--tree` filter, so the accept-list describes what
-      // this locale-scoped run could have reached rather than what it selected.
-      // Collected after the existence checks, so it means "carries translated
-      // content" and not merely "has a directory of that name" — the same
-      // distinction the `--locale` guard turns on.
-      treesInScope.add(tree);
-      if (ONLY_TREES && !ONLY_TREES.has(tree)) continue;
-      const text = readFileSync(translated, 'utf8');
-      targets.push({
-        locale, tree, key, path: translated, english, englishRel,
-        relPath: `i18n/${locale}/${englishRel}`,
-        text,
-        sourceCommit: readFrontmatterField(text, SOURCE_COMMIT_FIELD),
-      });
-    }
-  }
-}
+const treesInScope = collected.treesReached;
 
 /**
  * Validate `--tree` against what the SCOPED scan actually reached, not against

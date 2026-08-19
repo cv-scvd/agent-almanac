@@ -72,6 +72,47 @@ export const I18N_TREES = CONTENT_TYPES.map((dir) => {
  *   localesReached: Set<string>, treesReached: Set<string>, localesPresent: string[],
  * }}
  */
+/**
+ * Does `<i18n>/<locale>/<tree>` exist as a directory?
+ *
+ * Directory-ness, not mere existence — the same test the walk applies one level down, so a file
+ * named like a tree cannot make a locale look scannable.
+ */
+export function hasTree(root, locale, tree) {
+  const path = join(resolve(root, 'i18n'), locale, tree);
+  return existsSync(path) && statSync(path).isDirectory();
+}
+
+/**
+ * Trees this repository actually carries translations for.
+ *
+ * A corpus-wide union, and that is its limit: it answers "does any locale have this tree", which
+ * stops being the scan's own list the moment `--locale` narrows the scan. `--tree` must NOT be
+ * validated against it — that is `validateScope`'s job, against `treesReached`. Kept because the
+ * dirty-check pathspec and the write scope need a tree list BEFORE the scan runs.
+ */
+export function presentTrees(root) {
+  const i18nDir = resolve(root, 'i18n');
+  if (!existsSync(i18nDir)) return [];
+  const locales = readdirSync(i18nDir);
+  return I18N_TREES.map(({ dir }) => dir).filter((tree) => locales.some((l) => hasTree(root, l, tree)));
+}
+
+/**
+ * Locales carrying at least one present tree.
+ *
+ * The `--locale` accept-list, and it has to be computable BEFORE the scan: rejecting an
+ * unreachable locale after a ~90s history build is a worse tool. `localesReached` from the walk
+ * is the stricter, content-based answer and is what `validateScope` uses; this is the cheap
+ * pre-scan one.
+ */
+export function scannableLocales(root) {
+  const i18nDir = resolve(root, 'i18n');
+  if (!existsSync(i18nDir)) return [];
+  const trees = presentTrees(root);
+  return readdirSync(i18nDir).filter((entry) => trees.some((tree) => hasTree(root, entry, tree)));
+}
+
 export function collectI18nTargets({ root, onlyLocale = null, onlyTrees = null, withText = false }) {
   const i18nDir = resolve(root, 'i18n');
   const targets = [];
