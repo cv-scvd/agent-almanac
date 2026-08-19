@@ -222,14 +222,20 @@ export function collectSpecs(root, paths = null) {
  * `scripts/measure-tag-sequence-parity.js`, and it is deliberately NOT scoped out of this table
  * for being a measurement script: `fences.js` cites it as the reproducer for the tag-sequence
  * finding set, so a change to this walk that moves its numbers moves the evidence the gate was
- * tuned against. Since #612 it folds through `foldedTagSequence`, so its sequences and the
- * `.sequences` row above are now built from the same fold and a walk change moves both the same
- * way. It still pools INLINE rather than calling `buildEnglishFenceHistory`, because it also
- * needs a per-count index the pool does not carry — so a change to that builder's own logic,
- * as opposed to this walk's, still does not reach it — and re-running this script ALONE cannot
- * detect such a change, since by that same sentence it measures the unchanged pipeline. For the
- * second kind, run the gate and this script and diff their finding sets: the agreement is what is
- * being re-measured. The first kind is covered by the row above.
+ * tuned against. Since #612 it folds through `foldedTagSequence` and since #676 it classifies
+ * through `compareTagSequence`, so both the fold and the triage are production's, and a walk
+ * change moves the gate and the reproducer the same way.
+ *
+ * It still pools INLINE rather than calling `buildEnglishFenceHistory` — it needs the sequence
+ * pool alone, and that builder also collects fence bodies and a HEAD snapshot it would discard.
+ * So a change to THAT builder's own logic, as opposed to this walk's, still does not reach it,
+ * and re-running this script alone cannot detect such a change: by that same sentence it
+ * measures the unchanged pipeline. For that kind, run the gate and this script and diff their
+ * finding sets — the agreement is what is being re-measured, and the gate must be run UNSCOPED
+ * for it (#682).
+ *
+ * The per-count index this paragraph used to cite as the reason for pooling inline is gone.
+ * `compareTagSequence` derives counts itself, which is what made the copy removable.
  *
  * Run the gate UNSCOPED for that diff (#682). Since #635 a `--id` on the gate's command line
  * narrows its pathspec while `measure-tag-sequence-parity.js` keeps its own tree-level walk, so
