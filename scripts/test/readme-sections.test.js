@@ -19,7 +19,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   replaceSection, applySections, renderTranslationsTable, renderLocaleTable,
-  FALLBACK_MARK, UNMEASURED,
+  FALLBACK_MARK, UNMEASURED, declaresBash,
 } from '../lib/readme-sections.js';
 
 const doc = (inner) => [
@@ -278,4 +278,63 @@ test('the footnote appears only when something actually fell back', () => {
     TYPES,
   );
   assert.ok(!allMeasured.includes('File count, not a measurement'));
+});
+
+// ── #600: the SECURITY.md Bash predicate ────────────────────────────────────
+
+test('declaresBash reads both spellings the corpus actually uses', () => {
+  // The claim this backs — "N of M skills declare Bash" — was previously hand-maintained with
+  // NO stated predicate, so nobody could check it, and it was wrong in both terms. Two spellings
+  // exist and a naive grep sees one.
+  const inline = '---\nname: x\nallowed-tools: Read Write Edit Bash Grep Glob\n---\n\n# x\n';
+  const block = '---\nname: x\nallowed-tools:\n  - Bash\n  - Read\nmetadata:\n  domain: general\n---\n\n# x\n';
+  assert.equal(declaresBash(inline), true, 'inline form');
+  assert.equal(declaresBash(block), true, 'block form — one real skill uses it');
+});
+
+test('declaresBash is false when Bash is absent, in either spelling', () => {
+  assert.equal(declaresBash('---\nname: x\nallowed-tools: Read Write Grep\n---\n'), false);
+  assert.equal(declaresBash('---\nname: x\nallowed-tools:\n  - Read\n  - Glob\n---\n'), false);
+  assert.equal(declaresBash('---\nname: x\n---\n'), false, 'no allowed-tools at all');
+  assert.equal(declaresBash('# no frontmatter\n'), false);
+});
+
+test('declaresBash matches the token, not a substring of it', () => {
+  // `\bBash\b` on the inline form and a whole-item match on the block form. Without this a
+  // future `Bashful` or `NotBash` tool name silently inflates a number in SECURITY.md, which is
+  // the document whose whole job is to be checkable.
+  assert.equal(declaresBash('---\nallowed-tools: Read Bashful Grep\n---\n'), false);
+  assert.equal(declaresBash('---\nallowed-tools:\n  - Bashful\n---\n'), false);
+  assert.equal(declaresBash('---\nallowed-tools:\n  - Bash\n---\n'), true);
+});
+
+test('declaresBash reads the FRONTMATTER, not the body', () => {
+  // A skill whose procedure quotes `allowed-tools: Bash` in a code fence must not count. The
+  // body of a skills corpus is full of examples of skill frontmatter.
+  const bodyOnly = '---\nname: x\nallowed-tools: Read\n---\n\n# x\n\n```yaml\nallowed-tools: Bash\n```\n';
+  assert.equal(declaresBash(bodyOnly), false);
+});
+
+test('declaresBash fails closed on an unclosed frontmatter opener', () => {
+  // The fallback this replaces scanned the WHOLE FILE, which is the one case where "frontmatter,
+  // not body" has to hold and did not. Found by review, not by the four tests written first —
+  // all of which used well-formed input, because I wrote both the predicate and its fixtures.
+  const unclosed = '---\nname: x\nallowed-tools: Read\n\n# body\n\n```yaml\nallowed-tools: Bash\n```\n';
+  assert.equal(declaresBash(unclosed), false);
+});
+
+test('declaresBash: the known latent classes, pinned rather than left to be rediscovered', () => {
+  // None occurs in this corpus today. The function is exported and documented as THE predicate,
+  // so it travels — and each of these is a plausible future spelling.
+  //
+  // A trailing YAML comment on the inline form is a FALSE POSITIVE the word-boundary cannot see:
+  assert.equal(declaresBash('---\nallowed-tools: Read  # not Bash\n---\n'), true,
+    'known limitation: a commented mention counts. Recorded, not fixed — parsing YAML comments '
+    + 'here means parsing YAML, and the corpus has no instance.');
+  // A quoted or commented block item is a FALSE NEGATIVE for the same reason:
+  assert.equal(declaresBash('---\nallowed-tools:\n  - "Bash"\n---\n'), false,
+    'known limitation: a quoted item does not count.');
+  // And a hyphenated tool name matches, because `-` is a word boundary:
+  assert.equal(declaresBash('---\nallowed-tools: Bash-lite\n---\n'), true,
+    'known limitation: `\\bBash\\b` accepts `Bash-anything`.');
 });

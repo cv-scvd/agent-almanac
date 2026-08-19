@@ -190,7 +190,7 @@ Note: Teams are **not** auto-discovered like agents (from `.claude/agents/`). Do
 
 ## README Automation
 
-Dynamic sections in README files are auto-generated from the registries. Sections between `<!-- AUTO:START:name -->` and `<!-- AUTO:END:name -->` markers are replaced by `scripts/generate-readmes.js`. Four files (`guides/README.md`, `viz/README.md`, `teams/README.md`, `tests/README.md`) are fully generated — they carry no markers, so any hand edit to them is stale by definition. The other five are marker-based, and **deleting a marker pair is fatal** (exit 2), not stale: regenerating cannot restore a section that has nowhere to go.
+Dynamic sections in README files are auto-generated from the registries. Sections between `<!-- AUTO:START:name -->` and `<!-- AUTO:END:name -->` markers are replaced by `scripts/generate-readmes.js`. Four files (`guides/README.md`, `viz/README.md`, `teams/README.md`, `tests/README.md`) are fully generated — they carry no markers, so any hand edit to them is stale by definition. The other seven are marker-based, and **deleting a marker pair is fatal** (exit 2), not stale: regenerating cannot restore a section that has nowhere to go.
 
 `npm run check-readmes` runs on every PR touching a generated file, and on a daily schedule (`.github/workflows/validate-readmes.yml`). The schedule is not redundant — it is what catches drift when the auto-commit healer itself fails.
 
