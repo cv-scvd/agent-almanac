@@ -40,7 +40,7 @@
 
 import { readFileSync, readdirSync, existsSync, statSync } from 'fs';
 import { join } from 'path';
-import { execFileSync, spawnSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { CONTENT_TYPES } from './content-types.js';
 import { contentKey } from './content-paths.js';
 import { catFileBatch, GIT_BUFFER } from './git-batch.js';
