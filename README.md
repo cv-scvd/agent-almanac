@@ -19,7 +19,7 @@ A library of executable skills, specialist agents, and pre-built teams for [Clau
 - **370 skills** across 66 domains — structured, executable procedures
 - **75 agents** — specialized Claude Code personas covering development, review, compliance, and more
 - **22 teams** — predefined multi-agent compositions for complex workflows
-- **35 guides** — human-readable workflow, infrastructure, and reference documentation
+- **35 guides** — human-readable documentation across workflow, infrastructure, reference, design, and investigation
 - **Interactive visualization** — force-graph explorer with 370 R-generated skill icons and 9 color themes
 <!-- AUTO:END:stats -->
 
