@@ -85,6 +85,18 @@ on:
       # #619). Both were modules their author had not considered; neither would have been
       # noticed by the four hand-maintained rounds that preceded #618.
       - 'scripts/lib/git-batch.js'
+      # THIRD refusal by the derived check, and the first that reaches outside `scripts/` (#600).
+      # SECURITY.md's CLI bullet is generated from `listAdapters()` rather than hand-listed —
+      # the hand-written version named 5 of the 13 adapters and described all of them as
+      # symlinking into home directories, when four install strategies exist and several install
+      # at project scope. Deriving it puts the whole adapter tree on this job's import graph, so
+      # a new adapter, a renamed one, or a changed `strategy` now moves generated output.
+      #
+      # Which is the argument for deriving it, arriving as a red check: the reviewer who proposed
+      # `listAdapters()` predicted this gate would start guarding the adapters "without anyone
+      # remembering to", and it refused the commit that made it true.
+      - 'cli/adapters/*'
+      - 'cli/lib/*'
       # The toolchain is an input too. generate-readmes.js parses YAML with js-yaml, so a
       # Dependabot bump that changes `yaml.load` behaviour changes generated output while
       # touching no content file and no generator -- nothing here matched, so the healer never
