@@ -18,7 +18,7 @@ import { fileURLToPath } from 'url';
 import * as yaml from 'js-yaml';
 import { CONTENT_TYPES } from './lib/content-types.js';
 import { guideCategoryOrder, guideCategoryLabel, guideCategoryNames } from './lib/guide-categories.js';
-import { applySections, renderTranslationsTable, renderLocaleTable } from './lib/readme-sections.js';
+import { applySections, renderTranslationsTable, renderLocaleTable, declaresBash } from './lib/readme-sections.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -637,6 +637,59 @@ function generateTranslationsSection() {
   return renderTranslationsTable(localeRecords, sourceCounts, contentTypes);
 }
 
+/**
+ * SECURITY.md's content inventory — every count derived, and the PREDICATE stated (#600).
+ *
+ * Three claims in that file had gone stale, and two of them were hand-maintained copies of
+ * numbers a registry already owns: "~60% of skills (177 of 297) include `Bash`" against a
+ * registry recording 370, and "`scripts/`: A Node.js script for README generation from
+ * registries" against a directory of 33 files including three that mutate the working tree on
+ * purpose. Both drifted AGAIN between #600 being filed and being fixed — 369 to 370, 228 to the
+ * number below — which is the argument for generating rather than re-typing.
+ *
+ * The Bash figure is the one that needed a definition more than a refresh. `SECURITY.md` quoted
+ * a count with no stated predicate, so nobody — including its author — could check it. Two
+ * spellings exist in the corpus and a naive grep sees one:
+ *
+ *   allowed-tools: Read Write Edit Bash Grep Glob     inline, 228 files
+ *   allowed-tools:\n  - Bash\n  - Read               block, 1 file
+ *
+ * and `skills/_template/SKILL.md` declares Bash while not being a skill. Enumerating the
+ * REGISTRY rather than the directory excludes it by construction — the same reason the shipped
+ * package excludes it (#669).
+ *
+ * The CodeQL schedule is deliberately NOT generated. It lives in GitHub's server-managed default
+ * setup, so deriving it would need a network call and `check-readmes` would fail offline and in
+ * any fork without credentials. It is written as prose with the command that checks it, which is
+ * the honest form for a fact this repository does not own.
+ */
+function skillsDeclaringBash() {
+  // Enumerating the REGISTRY, not the directory: `skills/_template/SKILL.md` declares Bash and
+  // is not a skill, so a directory walk overcounts by one. The shipped package excludes it for
+  // the same reason (#669). The predicate itself is `declaresBash` in `lib/readme-sections.js`,
+  // where it can be tested.
+  const ids = Object.values(domains).flatMap((d) => (d.skills || []).map((s) => s.id));
+  const declaring = ids.filter((id) => {
+    const file = resolve(ROOT, 'skills', id, 'SKILL.md');
+    return existsSync(file) && declaresBash(readFileSync(file, 'utf8'));
+  }).length;
+  return { ids, declaring };
+}
+
+function generateSecuritySurface() {
+  const { ids, declaring } = skillsDeclaringBash();
+  const share = Math.round((declaring / ids.length) * 100);
+  const scriptFiles = readdirSync(resolve(ROOT, 'scripts'))
+    .filter((f) => f.endsWith('.js') || f.endsWith('.sh') || f.endsWith('.mjs')).length;
+  return [
+    `- **Skills, agents, teams, guides**: Markdown and YAML documentation. ${declaring} of ${ids.length} skills (~${share}%) declare \`Bash\` in their \`allowed-tools\`, meaning they instruct AI agents to execute shell commands when followed. Review any skill before letting an agent execute it.`,
+    '- **Visualization pipeline** (`viz/`): A containerized R + Node.js + Vite build system with a Dockerfile, shell scripts, and an icon rendering pipeline. The Docker entrypoint serves content via a Python HTTP server.',
+    `- **Scripts** (\`scripts/\`): ${scriptFiles} Node.js and shell tools — registry validation, README and translation generation, i18n gates, and a small number that deliberately mutate the working tree or run repository commands (\`normalize-i18n-fences.js\`, \`mutation-check.js\`, \`gate-envelope.js\`). Maintainer-invoked; \`scripts/\` is not in \`package.json\`'s \`files\` array, so none of it ships in the published package.`,
+    '- **CLI** (`cli/`): The published package surface. Installs skills, agents and teams into agent home directories by creating symlinks and writing rule files under `~/.claude/`, `~/.hermes/`, and the Cursor, Windsurf and Copilot configuration directories.',
+    '- **Claude Code configuration** (`.claude/`): Agent discovery symlinks and permission settings.',
+  ].join('\n');
+}
+
 // ── Main ─────────────────────────────────────────────────────────
 
 // Single source of truth for every file this script manages. Each entry's
@@ -681,6 +734,11 @@ const MANAGED = [
   // exits 2 — see the missingMarkers block below.
   { path: 'i18n/README.md', make: (p) => processFile(p, {
     'i18n-locales': generateI18nLocalesSection,
+  }) },
+  // #600: the content inventory only. The rest of SECURITY.md — the licence disclaimer, the
+  // reporting route, the scanning notes — is hand-written policy and stays that way.
+  { path: 'SECURITY.md', make: (p) => processFile(p, {
+    'security-surface': generateSecuritySurface,
   }) },
 ];
 

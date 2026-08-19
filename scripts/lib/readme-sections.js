@@ -205,3 +205,33 @@ export function renderTranslationsTable(locales, sourceCounts, contentTypes) {
 
   return rows.join('\n');
 }
+
+/**
+ * Does a SKILL.md's frontmatter declare `Bash` in `allowed-tools`? (#600)
+ *
+ * Pure, and here rather than in `generate-readmes.js`, because that file runs its whole pipeline
+ * at module scope — importing it to test one predicate executes a generation. This predicate is
+ * the load-bearing part of the claim `SECURITY.md` makes about the corpus, and the reason #600
+ * exists is that the previous claim quoted a count with NO stated predicate: unverifiable by
+ * anyone, including whoever wrote it.
+ *
+ * Two spellings exist in the corpus and a naive grep sees one:
+ *
+ *   allowed-tools: Read Write Edit Bash Grep Glob      inline
+ *   allowed-tools:\n  - Bash\n  - Read                block
+ *
+ * `\bBash\b` on the inline form, so `Bashful` does not match. The block form requires the item
+ * to BE `Bash` rather than to contain it, since an indented list item is a whole token.
+ *
+ * @param {string} text full SKILL.md contents
+ * @returns {boolean}
+ */
+export function declaresBash(text) {
+  if (!text.startsWith('---')) return false;
+  const end = text.indexOf('\n---', 3);
+  const frontmatter = end === -1 ? text : text.slice(3, end);
+  const inline = frontmatter.match(/^allowed-tools:[ \t]*(\S.*)$/m);
+  if (inline) return /\bBash\b/.test(inline[1]);
+  const block = frontmatter.match(/^allowed-tools:[ \t]*\n((?:[ \t]+-.*\n?)+)/m);
+  return block ? /^[ \t]+-[ \t]*Bash[ \t]*$/m.test(block[1]) : false;
+}

@@ -19,7 +19,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   replaceSection, applySections, renderTranslationsTable, renderLocaleTable,
-  FALLBACK_MARK, UNMEASURED,
+  FALLBACK_MARK, UNMEASURED, declaresBash,
 } from '../lib/readme-sections.js';
 
 const doc = (inner) => [
@@ -278,4 +278,39 @@ test('the footnote appears only when something actually fell back', () => {
     TYPES,
   );
   assert.ok(!allMeasured.includes('File count, not a measurement'));
+});
+
+// ── #600: the SECURITY.md Bash predicate ────────────────────────────────────
+
+test('declaresBash reads both spellings the corpus actually uses', () => {
+  // The claim this backs — "N of M skills declare Bash" — was previously hand-maintained with
+  // NO stated predicate, so nobody could check it, and it was wrong in both terms. Two spellings
+  // exist and a naive grep sees one.
+  const inline = '---\nname: x\nallowed-tools: Read Write Edit Bash Grep Glob\n---\n\n# x\n';
+  const block = '---\nname: x\nallowed-tools:\n  - Bash\n  - Read\nmetadata:\n  domain: general\n---\n\n# x\n';
+  assert.equal(declaresBash(inline), true, 'inline form');
+  assert.equal(declaresBash(block), true, 'block form — one real skill uses it');
+});
+
+test('declaresBash is false when Bash is absent, in either spelling', () => {
+  assert.equal(declaresBash('---\nname: x\nallowed-tools: Read Write Grep\n---\n'), false);
+  assert.equal(declaresBash('---\nname: x\nallowed-tools:\n  - Read\n  - Glob\n---\n'), false);
+  assert.equal(declaresBash('---\nname: x\n---\n'), false, 'no allowed-tools at all');
+  assert.equal(declaresBash('# no frontmatter\n'), false);
+});
+
+test('declaresBash matches the token, not a substring of it', () => {
+  // `\bBash\b` on the inline form and a whole-item match on the block form. Without this a
+  // future `Bashful` or `NotBash` tool name silently inflates a number in SECURITY.md, which is
+  // the document whose whole job is to be checkable.
+  assert.equal(declaresBash('---\nallowed-tools: Read Bashful Grep\n---\n'), false);
+  assert.equal(declaresBash('---\nallowed-tools:\n  - Bashful\n---\n'), false);
+  assert.equal(declaresBash('---\nallowed-tools:\n  - Bash\n---\n'), true);
+});
+
+test('declaresBash reads the FRONTMATTER, not the body', () => {
+  // A skill whose procedure quotes `allowed-tools: Bash` in a code fence must not count. The
+  // body of a skills corpus is full of examples of skill frontmatter.
+  const bodyOnly = '---\nname: x\nallowed-tools: Read\n---\n\n# x\n\n```yaml\nallowed-tools: Bash\n```\n';
+  assert.equal(declaresBash(bodyOnly), false);
 });
