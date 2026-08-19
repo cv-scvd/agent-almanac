@@ -23,10 +23,11 @@
  *
  * Two foldings are load-bearing, and both now come from `lib/fences.js` (`foldedTagSequence`),
  * which is the definition production enforces against. They were originally lifted from
- * `normalize-i18n-fences.js`, and that attribution is deliberately NOT kept: its `alignmentTag`
- * still folds a brace fence to `text`, as its own comment beside `mirrorsBasis` admits — "cannot
- * tell ```{r} from an untagged fence (#612)" — and #674 tracks it. Citing it as the authority for
- * the brace arm would name the module that makes the opposite judgement.
+ * `normalize-i18n-fences.js`, and that attribution is deliberately NOT kept. When #612 moved this
+ * script to the shared fold, that module still carried its own `alignmentTag` — so citing it as
+ * the authority for the brace arm would have named the module making the opposite judgement.
+ * #674 has since given it `foldedTagSequence` too, and the three copies are now one; the
+ * attribution stays with `lib/fences.js`, which is where the definition lives.
  *
  *   - An untagged fence folds to `text`. `normalize-content-style.js --mode fences` retro-tagged
  *     untagged blocks as `text` on the newer side only, so that pairing is an artifact of a

@@ -649,3 +649,98 @@ test('a template in the skills tree is not a target either', async (t) => {
   // Not a target, not merely unwritten — same distinction the flat arm asserts.
   assert.doesNotMatch(r.stdout, /_template/, 'the skills template reached the skipped list');
 });
+
+// ── #674: the splice gate's alignment fold ──────────────────────────────────
+
+/**
+ * A fixture built for `--root`, not for `cwd`.
+ *
+ * Every other fixture in this file COPIES `scripts/` into the temp repo, because the tool
+ * resolved its root from `__dirname/..` and there was no other way to point it at a corpus you
+ * constructed. #674 gave it `--root`, so this one runs the REAL script against a fixture — which
+ * is the whole reason the defect below could not be demonstrated end to end when it was filed.
+ */
+function braceFixture(t) {
+  const dir = mkdtempSync(join(tmpdir(), 'norm-brace-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+
+  git(dir, ['init', '-b', 'main']);
+  git(dir, ['config', 'user.email', 'test@example.invalid']);
+  git(dir, ['config', 'user.name', 'Fixture']);
+
+  // English carries a LOCALISABLE `text` fence at ordinal 1.
+  mkdirSync(join(dir, 'skills', 'demo-skill'), { recursive: true });
+  writeFileSync(join(dir, 'skills', 'demo-skill', 'SKILL.md'), [
+    '---', 'name: demo-skill', 'description: A demo skill.', '---', '',
+    '# Demo Skill', '', '## Procedure', '',
+    '```text', 'fill this in', '```', '',
+  ].join('\n'), 'utf8');
+  git(dir, ['add', '-A']);
+  git(dir, ['commit', '-m', 'english source']);
+
+  // The mirror carries a FROZEN brace-info fence at the same ordinal, with a body English has
+  // never held. Under the local `alignmentTag` both folded to `text`, the file passed the
+  // alignment guard, and the brace fence — gated, divergent — became eligible for a splice
+  // whose source is the localisable `text` block's prose.
+  const translated = join(dir, 'i18n', 'de', 'skills', 'demo-skill', 'SKILL.md');
+  mkdirSync(dirname(translated), { recursive: true });
+  writeFileSync(translated, [
+    '---', 'name: demo-skill', 'description: Eine Demo-Fertigkeit.',
+    'locale: de', 'source_locale: en', '---', '',
+    '# Demo-Fertigkeit', '', '## Ablauf', '',
+    '```{r}', 'x <- 1', '```', '',
+  ].join('\n'), 'utf8');
+  git(dir, ['add', '-A']);
+  git(dir, ['commit', '-m', 'de translation with a brace fence']);
+
+  return dir;
+}
+
+test('a brace fence facing a text basis is SKIPPED, not spliced (#674)', (t) => {
+  const dir = braceFixture(t);
+  const r = spawnSync(process.execPath, [join(REPO, SCRIPT), '--root', dir, '--basis', 'head'],
+    { encoding: 'utf8' });
+
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /tag sequence diverges at fence 1 \(\{ vs text\)/,
+    'reported, and reported with the FOLDED tokens — `untagged vs text` would send whoever '
+    + 'does the manual repair hunting for an untagged fence that is not in the file');
+  assert.match(r.stdout, /files to change: 0/,
+    'and nothing may be planned for that file');
+  assert.doesNotMatch(r.stdout, /would restore/,
+    'a splice into a frozen fence from a localisable block is the defect itself');
+});
+
+test('the same fixture with matching tags IS repaired — the non-vacuity control', (t) => {
+  // Without this, the assertions above are satisfied by a normalizer that refuses everything.
+  // Same shapes, same ordinal, tags agreeing: the tool must still do its job.
+  const dir = mkdtempSync(join(tmpdir(), 'norm-brace-ok-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  git(dir, ['init', '-b', 'main']);
+  git(dir, ['config', 'user.email', 'test@example.invalid']);
+  git(dir, ['config', 'user.name', 'Fixture']);
+  mkdirSync(join(dir, 'skills', 'demo-skill'), { recursive: true });
+  writeFileSync(join(dir, 'skills', 'demo-skill', 'SKILL.md'), [
+    '---', 'name: demo-skill', 'description: A demo skill.', '---', '',
+    '# Demo Skill', '', '## Procedure', '',
+    '```{r}', 'x <- 1', '```', '',
+  ].join('\n'), 'utf8');
+  git(dir, ['add', '-A']);
+  git(dir, ['commit', '-m', 'english source']);
+  const translated = join(dir, 'i18n', 'de', 'skills', 'demo-skill', 'SKILL.md');
+  mkdirSync(dirname(translated), { recursive: true });
+  writeFileSync(translated, [
+    '---', 'name: demo-skill', 'description: Eine Demo-Fertigkeit.',
+    'locale: de', 'source_locale: en', '---', '',
+    '# Demo-Fertigkeit', '', '## Ablauf', '',
+    '```{r}', 'y <- 2', '```', '',
+  ].join('\n'), 'utf8');
+  git(dir, ['add', '-A']);
+  git(dir, ['commit', '-m', 'de translation, brace fence, divergent body']);
+
+  const r = spawnSync(process.execPath, [join(REPO, SCRIPT), '--root', dir, '--basis', 'head'],
+    { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /would restore/, 'a matching-tag divergence is still repairable');
+  assert.match(r.stdout, /files to change: 1/);
+});

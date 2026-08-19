@@ -86,6 +86,7 @@
  *   node scripts/normalize-i18n-fences.js --locale de    # restrict to one locale
  *   node scripts/normalize-i18n-fences.js --tag yaml,json  # restrict to tags (#477 batches)
  *   node scripts/normalize-i18n-fences.js --tree guides,agents  # restrict to trees
+ *   node scripts/normalize-i18n-fences.js --root /tmp/fixture   # run against another tree
  */
 
 import { readFileSync, writeFileSync } from 'fs';
@@ -106,7 +107,6 @@ import { catFileBatch } from './lib/git-batch.js';
 import { collectI18nTargets, presentTrees, scannableLocales } from './lib/i18n-targets.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT = resolve(__dirname, '..');
 
 const argv = process.argv.slice(2);
 
@@ -132,7 +132,7 @@ const argv = process.argv.slice(2);
  */
 const ARG_SPEC = {
   bool: ['--write', '--dry'],
-  value: ['--basis', '--locale', '--tag', '--tree'],
+  value: ['--basis', '--locale', '--tag', '--tree', '--root'],
 };
 // The parser this file grew is now `scripts/lib/parse-args.js` (#619), because
 // `generate-translation-status.js` had a hand-rolled one that disagreed with it — a third copy
@@ -149,6 +149,35 @@ if (opts.write && opts.dry) {
 }
 const WRITE = opts.write;
 const PREVIEW = !WRITE;
+
+/**
+ * `--root` exists so the splice gate can be driven against a fixture (#674).
+ *
+ * #674 could only be demonstrated at component level for exactly this reason: there was no way
+ * to run the real normalizer over a corpus you constructed. Every other fixture in this tool's
+ * test file COPIES `scripts/` into a temp repo to work around it.
+ *
+ * ## How common the retrofit is, counted rather than asserted
+ *
+ * An earlier draft called this "the FOURTH appearance … `buildEnglishFenceHistory` (#559),
+ * `gate-envelope`, `check-i18n-fence-parity`, and this". The number survives and the membership
+ * does not, which is the failure `english-history.js` warns about in as many words: "an
+ * unqualified 'three' is a count the obvious grep refutes". Measured over the 13 scripts here
+ * that take `--root`, comparing each file's creating commit against the commit that introduced
+ * the flag:
+ *
+ *   RETROFITTED (4)  check-i18n-fence-parity.js, generate-translation-status.js,
+ *                    measure-tag-sequence-parity.js, and this file
+ *   BORN WITH IT (9) including `gate-envelope.js`, which the draft named as a retrofit
+ *
+ * So four is right by coincidence. `gate-envelope` was born with the flag — its own comment
+ * explains why, which is presumably how it got into the list. `buildEnglishFenceHistory` (#559)
+ * belongs to the lineage as the FUNCTION-level precedent, not as one of these four.
+ *
+ * The rule it keeps teaching, in `check-i18n-fence-parity.js`'s words: a module that hardcodes
+ * its own repo root cannot be tested, so it will not be.
+ */
+const ROOT = resolve(opts.root ?? resolve(__dirname, '..'));
 
 // Default applied HERE rather than seeded into the parse, because `parseArgs` initialises every
 // value flag to null and a default living inside the parser would be invisible from the call site.
@@ -348,7 +377,22 @@ function readBlobs(specs) {
 }
 
 assertNotShallow(ROOT);
-const history = buildEnglishFenceHistory();
+// `ROOT`, explicitly. `buildEnglishFenceHistory` defaults to `fences.js`'s OWN module root, so
+// the argument-less call was correct only while this tool could not be pointed anywhere else.
+// Adding `--root` (#674) turned that default into a split-brain — targets from the fixture,
+// history from the real repository — and the first fixture written against the new flag reported
+// `no English history for this id` for a file whose English source it had just committed.
+//
+// Latent before the flag existed, and the precedent is #559 — `buildEnglishFenceHistory`
+// closing over its own module root — not #634, which is a vacuous-scope guard and shares only
+// "latent until first exercised". A module-scope root is invisible until something tries to move
+// it, and the thing that tries is always the first test.
+//
+// Corroborated by timing rather than proven by it: the fixture went from 15 s to 0.35 s once the
+// walk stopped scanning the real corpus. The load-bearing evidence is functional — the run
+// reported `no English history for this id` for a file it had just committed — and a fixture
+// pins that, so the delta is colour and not a measurement to quote elsewhere.
+const history = buildEnglishFenceHistory(ROOT);
 
 // ---- gather targets ----
 //
@@ -479,7 +523,7 @@ for (const t of targets) {
   // A `text` fence facing an untagged one is NOT a divergence:
   // `normalize-content-style.js --mode fences` retro-tagged untagged blocks as
   // `text`, so that pairing is an artifact of a known repo tool acting on the
-  // newer side only. `alignmentTag` folds the two together.
+  // newer side only. `foldedTagSequence` folds the two together.
   //
   // This must NOT be expressed as `isGated(a) !== isGated(b)`. Under default-deny
   // an untagged fence is gated while `text` is not, so that formulation makes
@@ -488,13 +532,34 @@ for (const t of targets) {
   // this PR, while the comment above it still described the pre-inversion
   // behaviour. Alignment is a question about ordinal correspondence, not about
   // what the gate covers.
-  const alignmentTag = (f) => (f.lang === '' ? 'text' : f.lang);
-  const misaligned = translatedFences.findIndex(
-    (f, i) => alignmentTag(f) !== alignmentTag(basisFences[i]),
-  );
+  //
+  // `foldedTagSequence`, not a local copy (#674). The copy that stood here folded a brace-info
+  // fence to `text` exactly like an untagged one, so an English ```text facing a translated
+  // ```{r} at the same ordinal read as ALIGNED — and the brace fence is gated, so a divergent
+  // body at that position became eligible for a splice from a localisable block. The tool whose
+  // job is to restore frozen fences would have written translated prose into one.
+  //
+  // Its sibling copy in `check-placeholder-drift.js` went the same way in this commit; #612
+  // removed the third from the measurement script. The stamp guard below already used the
+  // shared fold, and the comment beside it said so — "STRICTER than the pre-splice guards" —
+  // which is how a known asymmetry sat in the file for two issues without being read as a bug.
+  //
+  // Note what `{` does NOT distinguish: every brace fence folds to the same token, so ```{r}
+  // facing ```{python} still aligns, under this fold and under the old one alike. Inherited
+  // from `foldedTagSequence` by design and shared with the gate and `mirrorsBasis`, so it is
+  // not a regression — but it is the next thing to look at if brace fences ever land in the
+  // corpus, because a splice would then place an `{r}` body under a `{python}` tag.
+  const translatedSeq = foldedTagSequence(translatedFences);
+  const basisSeq = foldedTagSequence(basisFences);
+  const misaligned = translatedSeq.findIndex((tag, i) => tag !== basisSeq[i]);
   if (misaligned >= 0) {
-    const a = translatedFences[misaligned].lang || 'untagged';
-    const b = basisFences[misaligned].lang || 'untagged';
+    // The FOLDED tokens, not `lang || 'untagged'`. That label predates #674 and was accurate
+    // while the only way to reach this branch was a genuine tag difference; the brace case this
+    // fix opens would print "(untagged vs text)" for a ```{r} fence, sending whoever does the
+    // manual repair hunting for an untagged fence that is not in the file. `{` is what the
+    // comparison actually used, so `{` is what the message owes the reader.
+    const a = translatedSeq[misaligned];
+    const b = basisSeq[misaligned];
     skipped.push({ file: t.relPath, reason: `tag sequence diverges at fence ${misaligned + 1} (${a} vs ${b})`, n: divergent.length });
     continue;
   }
@@ -540,9 +605,14 @@ for (const t of targets) {
   const repairedFences = extractFences(repairedText);
   const stillDivergent = repairedFences.filter((f) => isGated(f) && !everEnglish.has(f.body)).length;
   // `mirrorsBasis` lives in `lib/fences.js` so this writer and `backfill-fence-basis.js` cannot
-  // drift about what "verified" means. Note it is STRICTER than the pre-splice guards: it also
-  // requires the folded tag sequence to equal the basis, where the splice gate used a local
-  // `alignmentTag` fold that cannot tell ```{r} from an untagged fence (#612).
+  // drift about what "verified" means. It used to be STRICTER than the pre-splice guards,
+  // because those folded through a local `alignmentTag` that could not tell ```{r} from an
+  // untagged fence; #674 gave the splice gate the same `foldedTagSequence`, so the asymmetry is
+  // gone.
+  //
+  // Worth keeping the history: that asymmetry was WRITTEN DOWN here, accurately, and read as a
+  // design note rather than as a bug for two issues. "Stricter than the pre-splice guards" is a
+  // true sentence about a guard that writes being looser than the one that only stamps.
   //
   // The stamp needs the basis to be one the GATE can see, on both axes the gate checks:
   //
