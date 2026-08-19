@@ -146,9 +146,12 @@ export function collectSpecs(root) {
  * `scripts/measure-tag-sequence-parity.js`, and it is deliberately NOT scoped out of this table
  * for being a measurement script: `fences.js` cites it as the reproducer for the tag-sequence
  * finding set, so a change to this walk that moves its numbers moves the evidence the gate was
- * tuned against. It pools sequences inline rather than reusing `.sequences`, and folds tags with
- * a local copy rather than `foldedTagSequence` — a divergence tracked as #612. Until that closes,
- * a walk change must be re-measured through it separately; afterwards it inherits the row above.
+ * tuned against. Since #612 it folds through `foldedTagSequence`, so its sequences and the
+ * `.sequences` row above are now built from the same fold and a walk change moves both the same
+ * way. It still pools INLINE rather than calling `buildEnglishFenceHistory`, because it also
+ * needs a per-count index the pool does not carry — so a change to that builder's own logic,
+ * as opposed to this walk's, still does not reach it. Re-measure through it for the second kind
+ * of change; the first is now covered by the row above.
  *
  * There is deliberately no `trees` option. An earlier draft had one, defaulting to
  * `CONTENT_TYPES` and used by nobody — and it could not have worked, because `contentKey`
