@@ -27,6 +27,25 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 const SKILLS_DIR = resolve(ROOT, 'skills');
 
+/**
+ * The six `##` headings every SKILL.md must carry.
+ *
+ * THIS IS A PUBLIC CONTRACT, not an internal list. `validate-skills.yml` makes it merge-blocking
+ * here, and at least one consumer OUTSIDE this repository keys on it: the `memex` semantic index
+ * splits skills into chunks on these headings and labels each chunk with the canonical name.
+ *
+ * So two edits are breaking changes for someone who cannot see this file:
+ *
+ *   RENAMING a section — external chunks keep the old canonical label against new content, which
+ *   builds cleanly and points at the wrong concept. Quiet, not loud.
+ *   ADDING AN ACCEPTED SPELLING — `sectionBody` matches on prefix, so the corpus already carries
+ *   both `Validation` and `Validation Checklist` for one section. A consumer that normalises the
+ *   two it knows about will mislabel a third.
+ *
+ * Neither breaks anything here, which is the point: #672 records that a rule enforced only by
+ * repetition inside one repo has no defined boundary, and that the boundary gets found by whoever
+ * consumes it from outside. This comment is the boundary, written down.
+ */
 export const REQUIRED_SECTIONS = [
   'When to Use',
   'Inputs',
@@ -39,9 +58,20 @@ export const REQUIRED_SECTIONS = [
 /**
  * Extract the body of a `## <heading>` section, up to the next `## ` heading.
  *
- * Matches on heading PREFIX, not equality: the corpus uses "## Validation"
- * (334 occurrences), "## Validation Checklist" (38), and "## Validation Checks"
- * (1) interchangeably, and an equality check reports 39 false positives.
+ * Matches on heading PREFIX, not equality: the corpus spells one required section two ways —
+ * "## Validation" (332) and "## Validation Checklist" (38) — and an equality check reports 38
+ * false positives.
+ *
+ * Re-derived 2026-08-19 THROUGH `fenceMask`, which corrected this comment's own numbers. It
+ * previously read 334 / 38 / 1, and the third spelling does not exist: the single
+ * "## Validation Checks" is inside a ```markdown fence in
+ * `skills/formulate-quantum-problem/SKILL.md:164` — a template a user fills in, not a heading.
+ * A raw grep sees 336 / 38 / 1 and every one of the extra four is fenced.
+ *
+ * That is this function's own subject used against its documentation: the comment justifying the
+ * fence-aware matcher was written with fence-blind counts. The design is unaffected — 38 real
+ * `Validation Checklist` headings still require prefix matching — but a downstream consumer that
+ * normalised THREE spellings was normalising one that is not there.
  */
 function sectionBody(lines, heading) {
   const wanted = `## ${heading}`.toLowerCase();

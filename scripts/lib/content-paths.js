@@ -18,6 +18,13 @@ import { CONTENT_TYPES } from './content-types.js';
  * Uses the second-to-last segment for `SKILL.md` so that pre-flatten historical
  * paths (`skills/<domain>/<id>/SKILL.md`, ~42% of the blobs in history) key to
  * the same id as today's `skills/<id>/SKILL.md`.
+ *
+ * `skills/<id>/SKILL.md` IS A PUBLIC PATH SHAPE. At least one consumer outside this repository
+ * globs on it — the `memex` extractor, which also infers projects by walking parent directories.
+ * A wholesale layout change strands it loudly, which is fine; a PARTIAL one (some skills moved,
+ * others not) reads as a partial extraction rather than a broken glob, which is not. This
+ * function has already survived one such migration by keying on the second-to-last segment, and
+ * that tolerance is the reason to say so here rather than assume the next one is equally kind.
  */
 export function contentKey(relPath) {
   const parts = relPath.split('/');
