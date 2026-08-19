@@ -27,6 +27,25 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 const SKILLS_DIR = resolve(ROOT, 'skills');
 
+/**
+ * The six `##` headings every SKILL.md must carry.
+ *
+ * THIS IS A PUBLIC CONTRACT, not an internal list. `validate-skills.yml` makes it merge-blocking
+ * here, and at least one consumer OUTSIDE this repository keys on it: the `memex` semantic index
+ * splits skills into chunks on these headings and labels each chunk with the canonical name.
+ *
+ * So two edits are breaking changes for someone who cannot see this file:
+ *
+ *   RENAMING a section — external chunks keep the old canonical label against new content, which
+ *   builds cleanly and points at the wrong concept. Quiet, not loud.
+ *   ADDING AN ACCEPTED SPELLING — `sectionBody` matches on prefix, so the corpus already carries
+ *   `Validation`, `Validation Checklist` and `Validation Checks` for one section. A consumer that
+ *   normalises the three it knows about will mislabel a fourth.
+ *
+ * Neither breaks anything here, which is the point: #672 records that a rule enforced only by
+ * repetition inside one repo has no defined boundary, and that the boundary gets found by whoever
+ * consumes it from outside. This comment is the boundary, written down.
+ */
 export const REQUIRED_SECTIONS = [
   'When to Use',
   'Inputs',
