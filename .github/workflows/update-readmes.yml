@@ -59,6 +59,24 @@ on:
       # touched. Added at the commit that introduced the import (#552), which is the whole
       # lesson of the three comments above.
       - 'scripts/lib/provenance.js'
+      # Fifth, sixth and seventh entries of the same class, and the last three added by hand:
+      # `npm run check:generator-inputs` now derives this list from the job's own `run:` steps
+      # and refuses when a reachable module is unlisted, so the next omission is a red check
+      # rather than a note in a comment. It found all three below, two of which #618 named and
+      # one of which nobody had:
+      #
+      #   english-history.js   the shared English-history walk whose collectors set the
+      #                        stub/translated/unjudged verdicts the README table renders
+      #   content-paths.js     resolves the paths that walk and the status generator enumerate
+      #   guide-categories.js  decides which guide categories are rendered at all -- extracted
+      #                        three days earlier in #646, unlisted from the moment it existed
+      - 'scripts/lib/english-history.js'
+      - 'scripts/lib/content-paths.js'
+      - 'scripts/lib/guide-categories.js'
+      # Not a generator: this job also RUNS the parity validator, and a change to it changes
+      # whether the job succeeds. Listed because the derived check's rule is "everything this
+      # job runs", which a reader can apply without a second list of which steps write files.
+      - 'scripts/check-readme-translation-parity.js'
       # The toolchain is an input too. generate-readmes.js parses YAML with js-yaml, so a
       # Dependabot bump that changes `yaml.load` behaviour changes generated output while
       # touching no content file and no generator -- nothing here matched, so the healer never

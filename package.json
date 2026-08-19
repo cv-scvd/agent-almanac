@@ -58,6 +58,7 @@
     "validate:yaml-fences": "node scripts/check-yaml-fences.js",
     "check:placeholder-drift": "node scripts/check-placeholder-drift.js",
     "check:fence-propagation": "node scripts/check-fence-propagation.js",
+    "check:generator-inputs": "node scripts/check-workflow-generator-inputs.js",
     "check:diagram-nodes": "node scripts/check-workflow-diagram-nodes.js",
     "check:bare-substitutions": "node scripts/check-bare-substitutions.js",
     "normalize:i18n-fences": "node scripts/normalize-i18n-fences.js",
