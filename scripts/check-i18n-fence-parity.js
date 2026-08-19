@@ -70,7 +70,7 @@ import {
   extractFences, buildEnglishFenceHistory, isGated, foldedTagSequence, compareTagSequence,
   isRetagEscape,
 } from './lib/fences.js';
-import { collectI18nTargets, I18N_TREES } from './lib/i18n-targets.js';
+import { collectI18nTargets, validateScope, I18N_TREES } from './lib/i18n-targets.js';
 import { FENCE_BASIS_FIELD, readFrontmatterField } from './lib/provenance.js';
 import { CONTENT_TYPES } from './lib/content-types.js';
 
@@ -159,7 +159,41 @@ export const TREES = I18N_TREES;
  * `--id` stays here: it is this gate's debugging convenience, not a property of the corpus.
  */
 export function collectTargets() {
-  const { targets } = collectI18nTargets({ root: ROOT, onlyLocale: ONLY_LOCALE });
+  const { targets, localesReached, treesReached } = collectI18nTargets({ root: ROOT, onlyLocale: ONLY_LOCALE });
+
+  // #634. Without this the gate answered a mistyped id with `OK: every gated code fence matches
+  // an English source revision.` and exit 0 — technically true of the empty set, and the command
+  // CLAUDE.md tells a contributor to run on the one file they just edited. Edit a fence, mistype
+  // the id, see OK, commit.
+  //
+  // `idsReached` is built from `targets` BEFORE the filter below, so it answers what this run
+  // actually reached rather than what exists on disk. That is also what makes a `--locale`/`--id`
+  // pair which is individually valid but jointly empty refuse, with no third check: the id is not
+  // among what that locale reached.
+  //
+  // The refusal covers `--locale` too, which this gate never validated at all. That reaches
+  // `measure-tag-sequence-parity.js` as well, since it imports this function — see the header
+  // above on module-scope flag parsing — and a mistyped locale there produced the same
+  // clean-looking zero.
+  const scopeErrors = validateScope({
+    onlyLocale: ONLY_LOCALE,
+    onlyTrees: null,
+    onlyId: ONLY_ID,
+    localesReached,
+    treesReached,
+    idsReached: new Set(targets.map((t) => t.id)),
+  });
+  if (scopeErrors.length) {
+    for (const line of scopeErrors) console.error(line);
+    // 2, not 1, so a refusal is distinguishable from a finding. Same split as `usageExit`.
+    //
+    // The converse does NOT hold and must not be scripted on: `assertNotShallow` exits 1 for a
+    // refusal too, one call above this in `main()`. That is deliberate and CLAUDE.md argues for
+    // it — a warn-only caller that cannot measure at all should not warn less, it should stop.
+    // So 2 always means refusal; 1 means findings OR a shallow clone.
+    process.exit(2);
+  }
+
   return targets.filter((t) => !ONLY_ID || t.id === ONLY_ID);
 }
 
@@ -210,6 +244,12 @@ export const SCANNED_FIELDS = ['filesCompared', 'fencesCompared'];
 function main() {
   assertNotShallow(ROOT);
 
+  // Scope BEFORE the history walk (#634). `collectTargets` refuses an empty scope, and making a
+  // contributor wait out a full-corpus `git log` to be told they mistyped an id is a worse
+  // version of the same message. The walk is still corpus-wide — `--id` scopes the comparison,
+  // not the history, which is #635.
+  const targets = collectTargets();
+
   const history = buildEnglishFenceHistory(ROOT);
   const findings = [];
   let filesCompared = 0;
@@ -219,7 +259,7 @@ function main() {
   let tagSequenceDrift = 0;
   let staleBasisClaims = 0;
 
-  for (const t of collectTargets()) {
+  for (const t of targets) {
     const englishFences = history.get(`${t.tree}/${t.id}`);
     if (!englishFences) continue; // orphan: check-i18n-frontmatter-parity.js owns that
 

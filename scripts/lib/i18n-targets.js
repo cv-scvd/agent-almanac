@@ -216,18 +216,52 @@ export function collectI18nTargets({ root, onlyLocale = null, onlyTrees = null, 
 /**
  * Reject a scope flag that reached nothing, naming what WAS reachable.
  *
- * Shared so the three callers cannot disagree about when a scoped run is vacuous. Returns an
- * array of error lines; empty means the scope is good. The caller exits 2 — this module does not
- * call `process.exit`, because a library that kills the process cannot be tested.
+ * Returns an array of error lines; empty means the scope is good. The caller exits 2 — this
+ * module does not call `process.exit`, because a library that kills the process cannot be tested.
+ *
+ * ## Who actually calls this
+ *
+ * The docblock here said "shared so the three callers cannot disagree". It had one (#634). The
+ * count is now two — `backfill-fence-basis.js` and `check-i18n-fence-parity.js` — and the
+ * sentence is replaced by an inventory, because a number nobody can check is how the claim got
+ * wrong in the first place.
+ *
+ * `normalize-i18n-fences.js` has a HAND COPY of the `--tree` arm (its own `unreachable` block),
+ * and converting it would change behaviour rather than spelling — but not for the reason this
+ * paragraph first gave. It said the normalizer "validates no locale at all", which is false: it
+ * refuses an unscannable `--locale` at exit 2, with its own tests. The real delta is which
+ * accept-list each asks:
+ *
+ *   normalize-i18n-fences.js   `scannableLocales` — pre-scan, DIRECTORY-based
+ *   validateScope              `localesReached`   — post-scan, CONTENT-based
+ *
+ * An `i18n/xx/skills/` directory carrying no translated file passes the normalizer's guard today
+ * and would refuse here. That is the behaviour change, and it is the one worth testing when #677
+ * is done. The `--tree` half of the delta is smaller than it looks too: an unknown tree name is a
+ * subset of unreached, so the normalizer already exits 2 on it and only the message differs.
+ *
+ * ## `onlyId` asks REACHED, never EXISTS
+ *
+ * `idsReached` must be built from the targets the scan actually collected, AFTER any locale
+ * scoping and BEFORE the id filter. That is what makes a `--locale`/`--id` pair which is
+ * individually valid but jointly empty refuse without a third check: the id is simply not among
+ * what that locale reached.
+ *
+ * Guarding with `existsSync('skills/' + id)` instead would pass for a real skill nobody has
+ * translated and still compare nothing — the proxy-predicate mistake this function exists to
+ * avoid. There are deliberately no reachable ids in the message: the corpus carries hundreds, and
+ * a wall of them is not a diagnostic.
  *
  * @param {object} opts
  * @param {string|null} opts.onlyLocale
  * @param {Set<string>|null} opts.onlyTrees
+ * @param {string|null} [opts.onlyId]
  * @param {Set<string>} opts.localesReached
  * @param {Set<string>} opts.treesReached
+ * @param {Set<string>} [opts.idsReached] - required when `onlyId` is given
  * @returns {string[]}
  */
-export function validateScope({ onlyLocale, onlyTrees, localesReached, treesReached }) {
+export function validateScope({ onlyLocale, onlyTrees, onlyId = null, localesReached, treesReached, idsReached = null }) {
   const errors = [];
   if (onlyLocale && !localesReached.has(onlyLocale)) {
     errors.push(`ERROR: --locale '${onlyLocale}' matched no translated content.`);
@@ -248,6 +282,22 @@ export function validateScope({ onlyLocale, onlyTrees, localesReached, treesReac
       errors.push(`ERROR: --tree matched no translated content${onlyLocale ? ` in locale '${onlyLocale}'` : ''}: ${unreached.join(', ')}`);
       errors.push('Nothing would be scanned, and the run would report a clean-looking zero.');
       errors.push(`Reachable here: ${[...treesReached].sort().join(', ') || '(none)'}`);
+      return errors;
+    }
+  }
+  if (onlyId) {
+    // A caller that passes `onlyId` without `idsReached` would otherwise get a permanent refusal
+    // or a permanent pass depending on the default, and both are worse than saying so.
+    if (idsReached === null) {
+      errors.push('ERROR: validateScope was given --id with no idsReached set. This is a caller bug:');
+      errors.push('the accept-list must be what the scan reached, so it cannot be defaulted.');
+      return errors;
+    }
+    if (!idsReached.has(onlyId)) {
+      errors.push(`ERROR: --id '${onlyId}' matched no translated content${onlyLocale ? ` in locale '${onlyLocale}'` : ''}.`);
+      errors.push('Nothing would be compared, and the run would report a clean-looking zero.');
+      errors.push(`Translated content ids reachable here: ${idsReached.size}. A typo and a real but`);
+      errors.push('untranslated id land in the same place, and both mean this run examines nothing.');
     }
   }
   return errors;

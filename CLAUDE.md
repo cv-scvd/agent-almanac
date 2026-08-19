@@ -390,8 +390,17 @@ The gate accepts a body from **any** English revision, so it cannot tell you
 whether your edit reached the mirrors. Measured on `write-helm-chart` (#551):
 editing the English fence and propagating to **zero** mirrors leaves
 `--id write-helm-chart` reporting `violations: 0`, before and after the commit.
-Read `filesCompared` alongside it — the gate's `--id` has no zero-target guard,
-so a mistyped id also reports `violations: 0` over nothing (#634).
+A mistyped id no longer hides inside that: since #634 the gate refuses a scope it
+did not reach, so an unknown id, an unknown locale, a real-but-untranslated id
+and a `--locale`/`--id` pair that is individually valid but jointly empty all
+exit 2 instead of printing `OK` over zero files. The guard asks REACHED, never
+EXISTS — `existsSync('skills/' + id)` would pass for a skill nobody has
+translated and still compare nothing. What licenses dropping the old "read
+`filesCompared`" advice is that a *reached* id cannot then compare zero files
+either: `walkEnglishHistory` feeds the working tree into the pool, so every
+English file that survived the target walk has a history entry and the orphan
+path is unreachable for it. A valid `--id` now either refuses or compares at
+least one file.
 `check-translation-freshness.js` adds nothing — those mirrors were already
 `STALE`, so the edit moved no signal at all. Both gates are green either way.
 
