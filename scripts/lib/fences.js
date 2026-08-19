@@ -122,7 +122,7 @@ export { contentKey };
  * @param {string} [root] repository root
  * @returns {Map<string, Set<string>> & {current: Map<string, Fence[]>, sequences: Map<string, Set<string>>}}
  */
-export function buildEnglishFenceHistory(root = ROOT) {
+export function buildEnglishFenceHistory(root = ROOT, { paths = null } = {}) {
   const history = new Map();
   // Kept separately, keyed the same way: the deleted-fence check needs the fences English has
   // NOW, with their tags, not the flattened union of every body that ever existed.
@@ -137,7 +137,7 @@ export function buildEnglishFenceHistory(root = ROOT) {
     if (fromWorkingTree) current.set(key, fences);
     if (!sequences.has(key)) sequences.set(key, new Set());
     sequences.get(key).add(foldedTagSequence(fences).join(','));
-  });
+  }, { paths });
 
   history.current = current;
   history.sequences = sequences;

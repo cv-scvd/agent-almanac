@@ -274,7 +274,19 @@ function main() {
   // not the history, which is #635.
   const targets = collectTargets();
 
-  const history = buildEnglishFenceHistory(ROOT);
+  // #635, second half: the pathspec is THREADED from the targets just collected, never
+  // re-derived. A second answer to "which English files are in scope" is the drift this repo
+  // keeps paying for, and the reorder #634 made — scope before walk — is what makes threading
+  // possible at all.
+  //
+  // Sound because `git log -- <file>` lists every commit touching that file, so the pool for a
+  // scoped key is complete rather than merely recent. The failure this could have introduced is
+  // the opposite of a missed finding: a truncated pool turns a legitimately STALE mirror into a
+  // violation, since staleness immunity is "matches SOME English revision". That is what the
+  // fixture in `scripts/test/fence-parity-scope-guard.test.js` pins, on a stale-but-valid mirror
+  // rather than a clean one — a clean file passes under a broken pool too.
+  const historyPaths = ONLY_ID ? [...new Set(targets.map((t) => t.englishRel))] : null;
+  const history = buildEnglishFenceHistory(ROOT, { paths: historyPaths });
   const findings = [];
   let filesCompared = 0;
   let fencesCompared = 0;

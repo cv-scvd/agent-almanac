@@ -177,3 +177,86 @@ test('a reachable id produces no errors — the arm can stay silent', () => {
     idsReached: new Set(['alpha', 'beta']),
   }), []);
 });
+
+// ── #635: the scoped run must consult the same POOL, not just the same files ─
+
+test('a STALE but valid mirror stays clean under a scoped history walk', () => {
+  // THE ONE FAILURE SCOPING CAN INTRODUCE, and the reason a clean-file equivalence check proves
+  // nothing. Staleness immunity is "the body matches SOME English revision", so a pool truncated
+  // to HEAD turns a legitimately stale mirror into a violation — a false accusation against a
+  // translation nobody touched, which is the confound this gate was built to avoid.
+  //
+  // English here has two revisions; the mirror carries the OLDER body. Under the corpus-wide
+  // walk that is clean. It must stay clean when `--id` narrows the `git log` pathspec, and it
+  // would not if the narrowed walk fed only the working tree.
+  const dir = mkdtempSync(join(tmpdir(), 'aa-stale-'));
+  try {
+    const git = (...args) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' });
+    git('init', '-q', '-b', 'main');
+    git('config', 'user.email', 'test@example.com');
+    git('config', 'user.name', 'test');
+
+    mkdirSync(join(dir, 'skills', 'alpha'), { recursive: true });
+    const withBody = (body) => `# alpha\n\n\`\`\`yaml\n${body}\n\`\`\`\n`;
+
+    writeFileSync(join(dir, 'skills', 'alpha', 'SKILL.md'), withBody('a: 1'));
+    git('add', '-A'); git('commit', '-qm', 'english v1');
+
+    writeFileSync(join(dir, 'skills', 'alpha', 'SKILL.md'), withBody('a: 2'));
+    git('add', '-A'); git('commit', '-qm', 'english v2');
+
+    // The mirror is on v1 — stale, and legitimately so.
+    mkdirSync(join(dir, 'i18n', 'de', 'skills', 'alpha'), { recursive: true });
+    writeFileSync(join(dir, 'i18n', 'de', 'skills', 'alpha', 'SKILL.md'), withBody('a: 1'));
+
+    const scoped = run(dir, '--id', 'alpha', '--json');
+    assert.equal(scoped.status, 0, scoped.stdout + scoped.stderr);
+    const report = JSON.parse(scoped.stdout);
+    assert.equal(report.filesCompared, 1, 'the fixture must actually have been compared');
+    assert.equal(report.violations, 0, 'a body from an OLDER revision is a legal basis');
+
+    // Non-vacuity: the same fixture with a body English never carried IS a violation, so the
+    // assertion above is not passing because the gate has stopped looking.
+    writeFileSync(join(dir, 'i18n', 'de', 'skills', 'alpha', 'SKILL.md'), withBody('a: 99'));
+    const invented = JSON.parse(run(dir, '--id', 'alpha', '--json').stdout);
+    assert.equal(invented.violations, 1, 'an invented body must still be caught');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the scoped and unscoped runs agree on the same id', () => {
+  // Equivalence at the report level, on a fixture carrying a real finding in a file the scoped
+  // run must NOT look at — so an over-wide scope is caught as well as an over-narrow one.
+  const dir = mkdtempSync(join(tmpdir(), 'aa-equiv-'));
+  try {
+    const git = (...args) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' });
+    git('init', '-q', '-b', 'main');
+    git('config', 'user.email', 'test@example.com');
+    git('config', 'user.name', 'test');
+
+    for (const id of ['alpha', 'beta']) {
+      mkdirSync(join(dir, 'skills', id), { recursive: true });
+      writeFileSync(join(dir, 'skills', id, 'SKILL.md'), doc(id));
+    }
+    git('add', '-A'); git('commit', '-qm', 'english');
+
+    // Both mirrors invent a body, so the unscoped run finds two violations.
+    for (const id of ['alpha', 'beta']) {
+      mkdirSync(join(dir, 'i18n', 'de', 'skills', id), { recursive: true });
+      writeFileSync(join(dir, 'i18n', 'de', 'skills', id, 'SKILL.md'),
+        doc(id).replace('a: 1', 'a: 999'));
+    }
+
+    const all = JSON.parse(run(dir, '--json').stdout);
+    assert.equal(all.violations, 2, 'the fixture carries a finding in each');
+
+    const one = JSON.parse(run(dir, '--id', 'alpha', '--json').stdout);
+    assert.equal(one.filesCompared, 1, 'exactly the scoped file');
+    assert.equal(one.violations, 1, 'and exactly its finding');
+    assert.deepEqual(one.findings, all.findings.filter((f) => /\/alpha\//.test(f.file)),
+      'the scoped findings must be the unscoped ones for that id, unchanged');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

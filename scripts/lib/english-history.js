@@ -66,12 +66,23 @@ import { catFileBatch, GIT_BUFFER } from './git-batch.js';
  * every test stays green, because a deleted file's earlier revisions still arrive by their own
  * specs.
  *
+ * `paths`, when given, replaces the tree-level pathspec with an explicit file list (#635). It is
+ * threaded from the caller's already-collected targets rather than re-derived here, because a
+ * second derivation of "which files are in scope" is the drift this module keeps closing.
+ *
+ * A narrowed pathspec is sound for the keys it covers and says nothing about any other: `git log
+ * -- <file>` lists every commit touching that file, so its pool is complete. Renames are the one
+ * case worth stating — without `--follow` the pre-rename revisions are absent, and they are
+ * absent from the unscoped walk's pool for this key too, since they were keyed to the OLD path.
+ * Equivalent, not merely close.
+ *
  * @param {string} root repository root
+ * @param {string[]|null} [paths] explicit English paths; null walks all four content trees
  * @returns {string[]} specs in `git log` order, newest commit first
  */
-export function collectSpecs(root) {
+export function collectSpecs(root, paths = null) {
   const log = execFileSync(
-    'git', ['log', '--format=%x00%H', '--name-only', '--', ...CONTENT_TYPES],
+    'git', ['log', '--format=%x00%H', '--name-only', '--', ...(paths ?? CONTENT_TYPES)],
     { cwd: root, encoding: 'utf8', maxBuffer: GIT_BUFFER },
   );
 
@@ -166,9 +177,11 @@ export function collectSpecs(root) {
  *
  * @param {string} root repository root
  * @param {(key: string, text: string, meta: {fromWorkingTree: boolean, path: string}) => void} onBlob
+ * @param {object} [opts]
+ * @param {string[]|null} [opts.paths] explicit English paths to walk; null walks all four trees
  */
-export function walkEnglishHistory(root, onBlob) {
-  const specs = collectSpecs(root);
+export function walkEnglishHistory(root, onBlob, { paths = null } = {}) {
+  const specs = collectSpecs(root, paths);
 
   // The parse moved to `scripts/lib/git-batch.js` (#587), because a third copy of it lived in
   // `normalize-i18n-fences.js` with a different buffer and a different failure policy — the
@@ -180,6 +193,21 @@ export function walkEnglishHistory(root, onBlob) {
     const key = contentKey(path);
     if (key !== null) onBlob(key, text, { fromWorkingTree: false, path });
   });
+
+  // The working-tree feed must be narrowed by the SAME set as the pathspec, or the pool is
+  // split-brained: HEAD's body for every file, history for a few. `current` in
+  // `buildEnglishFenceHistory` is built from this feed, so a wider feed here would let a
+  // scoped run consult a deleted-fence baseline for files it never compared.
+  if (paths !== null) {
+    for (const rel of paths) {
+      const key = contentKey(rel);
+      if (key === null) continue;
+      const path = join(root, rel);
+      if (!existsSync(path) || !statSync(path).isFile()) continue;
+      onBlob(key, readFileSync(path, 'utf8'), { fromWorkingTree: true, path: rel });
+    }
+    return;
+  }
 
   for (const tree of CONTENT_TYPES) {
     const base = join(root, tree);
