@@ -76,6 +76,7 @@ import {
   SOURCE_COMMIT_FIELD, FENCE_BASIS_FIELD,
   readFrontmatterField, stampFrontmatterField,
 } from './lib/provenance.js';
+import { parseArgs as sharedParseArgs, usageExit } from './lib/parse-args.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const GIT_BUFFER = 512 * 1024 * 1024;
@@ -86,35 +87,21 @@ const GIT_BUFFER = 512 * 1024 * 1024;
 // "anything not starting with --" would also swallow a typo like `wirte`, which is the
 // silent-misparse class `generate-translation-status.js` records paying for.
 
-const BOOL_FLAGS = new Set(['--write', '--json', '--verify']);
-const VALUE_FLAGS = new Set(['--locale', '--tree', '--root', '--base', '--head']);
+const ARG_SPEC = {
+  bool: ['--write', '--json', '--verify'],
+  value: ['--locale', '--tree', '--root', '--base', '--head'],
+};
 
+// Shared parser (#619). The local one matched whole tokens only, so `--locale=de` exited 2 as
+// `unknown argument: --locale=de` while `Known flags:` listed `--locale` on the next line --
+// the same shape #619 fixed in generate-translation-status.js, surviving here because the
+// inventory that was supposed to name the stragglers had missed this file.
 function parseArgs(argv) {
-  const opts = {
-    write: false, json: false, verify: false,
-    locale: null, trees: null, root: null, base: null, head: null,
-  };
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (BOOL_FLAGS.has(arg)) {
-      opts[arg.slice(2)] = true;
-      continue;
-    }
-    if (VALUE_FLAGS.has(arg)) {
-      const value = argv[i + 1];
-      if (value === undefined || value.startsWith('--')) {
-        console.error(`ERROR: ${arg} requires a value`);
-        process.exit(2);
-      }
-      if (arg === '--tree') opts.trees = new Set(value.split(',').map((s) => s.trim()).filter(Boolean));
-      else opts[arg.slice(2)] = value;
-      i++;
-      continue;
-    }
-    console.error(`ERROR: unknown argument: ${arg}`);
-    console.error(`Known flags: ${[...BOOL_FLAGS, ...VALUE_FLAGS].sort().join(', ')}`);
-    process.exit(2);
-  }
+  const parsed = sharedParseArgs(argv, ARG_SPEC, usageExit(ARG_SPEC));
+  // `--tree` is a comma list here, unlike the plain string it is elsewhere, so the split stays
+  // at the call site rather than becoming a special case inside a parser shared by six scripts.
+  const opts = { ...parsed, trees: parsed.tree === null ? null : new Set(parsed.tree.split(',').map((s) => s.trim()).filter(Boolean)) };
+  delete opts.tree;
   if (opts.trees !== null && opts.trees.size === 0) {
     console.error('ERROR: --tree requires at least one tree name');
     process.exit(2);

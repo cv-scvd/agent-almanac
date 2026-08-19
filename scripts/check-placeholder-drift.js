@@ -105,39 +105,24 @@ import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { spawnSync } from 'child_process';
 import { extractFences, toLines, isGated } from './lib/fences.js';
+import { parseArgs, usageExit } from './lib/parse-args.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GIT_BUFFER = 512 * 1024 * 1024;
 
-// ---- arguments: default-deny, same shape as normalize-i18n-fences.js ----
-const BOOL_FLAGS = new Set(['--json', '--compare']);
-const VALUE_FLAGS = new Set(['--base', '--head']);
-
-function usageError(message) {
-  console.error(`ERROR: ${message}`);
-  console.error(`Usage: ${[...BOOL_FLAGS, ...VALUE_FLAGS].join(' ')}`);
-  process.exit(2);
-}
-
-const opts = { json: false, compare: false, base: 'HEAD~1', head: 'HEAD' };
-const argv = process.argv.slice(2);
-for (let i = 0; i < argv.length; i++) {
-  const arg = argv[i];
-  const eq = arg.indexOf('=');
-  const name = eq >= 0 ? arg.slice(0, eq) : arg;
-  if (BOOL_FLAGS.has(name)) {
-    if (eq >= 0) usageError(`${name} takes no value (got '${arg}')`);
-    opts[name.slice(2)] = true;
-  } else if (VALUE_FLAGS.has(name)) {
-    const value = eq >= 0 ? arg.slice(eq + 1) : argv[++i];
-    if (value === undefined || value === '' || (eq < 0 && value.startsWith('--'))) {
-      usageError(`${name} requires a value`);
-    }
-    opts[name.slice(2)] = value;
-  } else {
-    usageError(`unknown argument '${arg}'`);
-  }
-}
+// ---- arguments: default-deny, shared parser (#619) ----
+//
+// This was a line-identical COPY of the loop in normalize-i18n-fences.js, which is the third
+// copy the extraction exists to prevent. Its defaults were seeded inside the opts literal --
+// the pattern the shared parser cannot carry, since a default living in a parser used by six
+// scripts is invisible from the call site -- so they are applied here with `??`.
+const ARG_SPEC = { bool: ['--json', '--compare'], value: ['--base', '--head'] };
+const parsed = parseArgs(process.argv.slice(2), ARG_SPEC, usageExit(ARG_SPEC));
+const opts = {
+  ...parsed,
+  base: parsed.base ?? 'HEAD~1',
+  head: parsed.head ?? 'HEAD',
+};
 
 function git(args) {
   const r = spawnSync('git', args, { cwd: ROOT, encoding: 'utf8', maxBuffer: GIT_BUFFER });
