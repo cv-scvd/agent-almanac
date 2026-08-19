@@ -39,8 +39,8 @@ const SKILLS_DIR = resolve(ROOT, 'skills');
  *   RENAMING a section — external chunks keep the old canonical label against new content, which
  *   builds cleanly and points at the wrong concept. Quiet, not loud.
  *   ADDING AN ACCEPTED SPELLING — `sectionBody` matches on prefix, so the corpus already carries
- *   `Validation`, `Validation Checklist` and `Validation Checks` for one section. A consumer that
- *   normalises the three it knows about will mislabel a fourth.
+ *   both `Validation` and `Validation Checklist` for one section. A consumer that normalises the
+ *   two it knows about will mislabel a third.
  *
  * Neither breaks anything here, which is the point: #672 records that a rule enforced only by
  * repetition inside one repo has no defined boundary, and that the boundary gets found by whoever
@@ -58,9 +58,20 @@ export const REQUIRED_SECTIONS = [
 /**
  * Extract the body of a `## <heading>` section, up to the next `## ` heading.
  *
- * Matches on heading PREFIX, not equality: the corpus uses "## Validation"
- * (334 occurrences), "## Validation Checklist" (38), and "## Validation Checks"
- * (1) interchangeably, and an equality check reports 39 false positives.
+ * Matches on heading PREFIX, not equality: the corpus spells one required section two ways —
+ * "## Validation" (332) and "## Validation Checklist" (38) — and an equality check reports 38
+ * false positives.
+ *
+ * Re-derived 2026-08-19 THROUGH `fenceMask`, which corrected this comment's own numbers. It
+ * previously read 334 / 38 / 1, and the third spelling does not exist: the single
+ * "## Validation Checks" is inside a ```markdown fence in
+ * `skills/formulate-quantum-problem/SKILL.md:164` — a template a user fills in, not a heading.
+ * A raw grep sees 336 / 38 / 1 and every one of the extra four is fenced.
+ *
+ * That is this function's own subject used against its documentation: the comment justifying the
+ * fence-aware matcher was written with fence-blind counts. The design is unaffected — 38 real
+ * `Validation Checklist` headings still require prefix matching — but a downstream consumer that
+ * normalised THREE spellings was normalising one that is not there.
  */
 function sectionBody(lines, heading) {
   const wanted = `## ${heading}`.toLowerCase();
