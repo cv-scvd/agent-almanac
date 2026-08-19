@@ -77,9 +77,12 @@ import {
   readFrontmatterField, stampFrontmatterField,
 } from './lib/provenance.js';
 import { parseArgs as sharedParseArgs, usageExit } from './lib/parse-args.js';
+import { catFileBatch, GIT_BUFFER } from './lib/git-batch.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const GIT_BUFFER = 512 * 1024 * 1024;
+// GIT_BUFFER comes from `./lib/git-batch.js` (#587). It is used here for a plain `git` call
+// rather than the batch parse, but two ceilings under one name in one repo is the state #559
+// set out to end and did not reach.
 
 // ---- flags ----------------------------------------------------------------
 //
@@ -261,37 +264,23 @@ const specs = [...new Set(
   targets.filter((t) => t.sourceCommit).map((t) => `${t.sourceCommit}:${t.englishRel}`),
 )];
 
+/**
+ * Batch-resolve the basis blobs.
+ *
+ * The parse moved to `scripts/lib/git-batch.js` (#587). This was the FOURTH copy — #559 unified
+ * two and declared the buffer shared, then a third turned up in the normalizer and this one
+ * behind it, still at the older 512 MiB.
+ *
+ * The one behavioural difference from the normalizer's caller is kept here rather than pushed
+ * into the library: an absent object is DROPPED, not recorded. Downstream reads treat a missing
+ * key as "no basis available" and withhold the stamp, so recording a null would have to be
+ * unlearned at every read site.
+ */
 function readBlobs(list) {
   const out = new Map();
-  if (!list.length) return out;
-  const batch = spawnSync('git', ['cat-file', '--batch'], {
-    cwd: ROOT, input: Buffer.from(`${list.join('\n')}\n`, 'utf8'), maxBuffer: GIT_BUFFER,
+  catFileBatch(ROOT, list, (spec, text) => {
+    if (text !== null) out.set(spec, text);
   });
-  if (batch.error) {
-    throw new Error(`git cat-file --batch did not complete (${batch.error.code ?? batch.error.message}). `
-      + `If this is ENOBUFS, GIT_BUFFER (${GIT_BUFFER}) is too small for this corpus.`);
-  }
-  if (batch.status !== 0) {
-    throw new Error(`git cat-file --batch failed: ${batch.stderr?.toString().slice(0, 500)}`);
-  }
-  const buf = batch.stdout;
-  let offset = 0;
-  let index = 0;
-  while (offset < buf.length && index < list.length) {
-    const newline = buf.indexOf(0x0a, offset);
-    if (newline < 0) break;
-    const header = buf.slice(offset, newline).toString('utf8');
-    offset = newline + 1;
-    // A missing or ambiguous object emits a header and NO body. Failing to advance the index
-    // past it shifts every later blob onto the wrong spec — a silent, total corruption of the
-    // basis set, and the exact line whose deletion the fences copy of this loop could not detect.
-    if (/ (missing|ambiguous)$/.test(header)) { index += 1; continue; }
-    const size = Number.parseInt(header.split(' ')[2], 10);
-    if (!Number.isFinite(size)) break;
-    out.set(list[index], buf.toString('utf8', offset, offset + size));
-    offset += size + 1;
-    index += 1;
-  }
   return out;
 }
 
