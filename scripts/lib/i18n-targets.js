@@ -59,19 +59,28 @@ export const I18N_TREES = CONTENT_TYPES.map((dir) => {
 });
 
 /**
- * Every translated file, richly described.
+ * The locale directories under `i18n/`, and the ONLY definition of that set.
  *
- * @param {object} opts
- * @param {string} opts.root repository root
- * @param {string|null} [opts.onlyLocale] restrict to one locale
- * @param {Set<string>|null} [opts.onlyTrees] restrict to these content trees
- * @param {boolean} [opts.withText] read each file (the callers that classify always do)
- * @returns {{
- *   targets: Array<{locale: string, tree: string, id: string, key: string, absPath: string,
- *                   english: string, englishRel: string, relPath: string, text?: string}>,
- *   localesReached: Set<string>, treesReached: Set<string>, localesPresent: string[],
- * }}
+ * `_config.yml`, `README.md` and `glossaries/` are not locales. Directory-ness is the test, plus
+ * the underscore convention the rest of the repo already uses.
+ *
+ * Extracted because the pre-scan guards below and the walk had DIFFERENT answers (#623 review):
+ * `scannableLocales` listed `i18n/` raw while the walk filtered `_`-prefixed entries and
+ * `glossaries`. That is the guard-proxy shape — validating a flag against something adjacent to
+ * the consumer's accept-list rather than against the list itself — and it is the specific defect
+ * `--locale wenyan --tree guides` was fixed for. With an `i18n/_wip/skills/` present,
+ * `--locale _wip` would have passed the guard, scanned nothing, and reported
+ * `files to change: 0` at exit 0, on a tool that writes.
  */
+export function localeDirs(root) {
+  const i18nDir = resolve(root, 'i18n');
+  if (!existsSync(i18nDir)) return [];
+  return readdirSync(i18nDir).filter((entry) => {
+    if (entry.startsWith('_') || entry === 'glossaries') return false;
+    return statSync(join(i18nDir, entry)).isDirectory();
+  });
+}
+
 /**
  * Does `<i18n>/<locale>/<tree>` exist as a directory?
  *
@@ -92,9 +101,7 @@ export function hasTree(root, locale, tree) {
  * dirty-check pathspec and the write scope need a tree list BEFORE the scan runs.
  */
 export function presentTrees(root) {
-  const i18nDir = resolve(root, 'i18n');
-  if (!existsSync(i18nDir)) return [];
-  const locales = readdirSync(i18nDir);
+  const locales = localeDirs(root);
   return I18N_TREES.map(({ dir }) => dir).filter((tree) => locales.some((l) => hasTree(root, l, tree)));
 }
 
@@ -107,26 +114,32 @@ export function presentTrees(root) {
  * pre-scan one.
  */
 export function scannableLocales(root) {
-  const i18nDir = resolve(root, 'i18n');
-  if (!existsSync(i18nDir)) return [];
   const trees = presentTrees(root);
-  return readdirSync(i18nDir).filter((entry) => trees.some((tree) => hasTree(root, entry, tree)));
+  return localeDirs(root).filter((entry) => trees.some((tree) => hasTree(root, entry, tree)));
 }
 
+/**
+ * Every translated file, richly described.
+ *
+ * @param {object} opts
+ * @param {string} opts.root repository root
+ * @param {string|null} [opts.onlyLocale] restrict to one locale
+ * @param {Set<string>|null} [opts.onlyTrees] restrict to these content trees
+ * @param {boolean} [opts.withText] read each file (the callers that classify always do)
+ * @returns {{
+ *   targets: Array<{locale: string, tree: string, id: string, key: string, absPath: string,
+ *                   english: string, englishRel: string, relPath: string, text?: string}>,
+ *   localesReached: Set<string>, treesReached: Set<string>, localesPresent: string[],
+ * }}
+ */
 export function collectI18nTargets({ root, onlyLocale = null, onlyTrees = null, withText = false }) {
   const i18nDir = resolve(root, 'i18n');
   const targets = [];
   const localesReached = new Set();
   const treesReached = new Set();
 
-  const localesPresent = existsSync(i18nDir)
-    ? readdirSync(i18nDir).filter((entry) => {
-      // `_config.yml`, `README.md`, `glossaries/` are not locales. Directory-ness is the test,
-      // plus the underscore convention the rest of the repo already uses.
-      if (entry.startsWith('_') || entry === 'glossaries') return false;
-      return statSync(join(i18nDir, entry)).isDirectory();
-    })
-    : [];
+  // One definition, shared with the pre-scan guards above — see `localeDirs`.
+  const localesPresent = localeDirs(root);
 
   for (const locale of localesPresent) {
     for (const { dir: tree, nested } of I18N_TREES) {

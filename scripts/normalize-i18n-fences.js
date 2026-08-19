@@ -89,7 +89,7 @@
  */
 
 import { readFileSync, writeFileSync } from 'fs';
-import { resolve, dirname, join } from 'path';
+import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { spawnSync } from 'child_process';
 import {
@@ -107,7 +107,6 @@ import { collectI18nTargets, presentTrees, scannableLocales } from './lib/i18n-t
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
-const I18N_DIR = resolve(ROOT, 'i18n');
 
 const argv = process.argv.slice(2);
 
@@ -232,6 +231,16 @@ if (ONLY_TREES !== null && ONLY_TREES.size === 0) {
 
 const SCANNABLE_LOCALES = scannableLocales(ROOT);
 
+// A missing `i18n/` used to crash here on `readdirSync`. The lib returns `[]` instead — correct
+// for a library, and a silent `files to change: 0` at exit 0 for a tool that writes. Refused
+// explicitly, because "there is nothing to repair" and "I am not looking at the corpus" must not
+// print the same thing.
+if (SCANNABLE_LOCALES.length === 0) {
+  console.error('ERROR: no translated locales found under i18n/.');
+  console.error('Nothing would be scanned, and the run would report a clean-looking zero.');
+  process.exit(2);
+}
+
 if (ONLY_LOCALE && !SCANNABLE_LOCALES.includes(ONLY_LOCALE)) {
   console.error(`ERROR: --locale '${ONLY_LOCALE}' is not a translated locale under i18n/.`);
   console.error('Nothing would be scanned, and the run would report a clean-looking zero.');
@@ -352,10 +361,14 @@ const history = buildEnglishFenceHistory();
 // auditable, which made the count 2 → 2 rather than 2 → 3.
 //
 // `SCANNABLE_LOCALES` and `PRESENT_TREES` stay: the `--locale` guard above fires BEFORE the scan
-// and needs them, and `gitStatus(...PRESENT_TREES)` and `WRITE_SCOPE` read them too. They select
-// the same targets the lib's own enumeration does — both only record a locale or tree once an
-// entry has passed every existence check — so this is a narrowing of what the walk decides, not
-// of what it returns.
+// and needs them, and `gitStatus(...PRESENT_TREES)` and `WRITE_SCOPE` read them too.
+//
+// They are NOT the same predicate as the walk's, and the first version of this comment claimed
+// they were. They are directory-based and answer "could this locale be scanned at all"; the walk's
+// `localesReached` is content-based and answers "did anything survive every check". A locale whose
+// `skills/` is empty is in the first and never in the second. Both now enumerate `i18n/` through
+// the lib's single `localeDirs`, so they cannot disagree about what a locale IS — which is the part
+// that was a live divergence, not a documentation nicety.
 const collected = collectI18nTargets({
   root: ROOT,
   onlyLocale: ONLY_LOCALE,
