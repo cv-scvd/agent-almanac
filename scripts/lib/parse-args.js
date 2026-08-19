@@ -27,10 +27,24 @@
  *
  * ## Still on their own parsers
  *
- * `gate-envelope.js`, `check-i18n-fence-parity.js` and `check-workflow-generator-inputs.js` read
- * flags by hand and accept the space form only. They are not silent — each rejects or refuses
- * loudly — so this is a consistency gap rather than a live hazard, and it is named here rather
- * than left for someone to rediscover per file.
+ * An adversarial review found this inventory incomplete on its first writing, which is the exact
+ * failure mode the inventory exists to prevent — so it now names every one, and says what each
+ * gets wrong rather than only that it differs.
+ *
+ *   check-yaml-fences.js                  accepts both spellings, but its `startsWith('--')`
+ *                                         guard applies to BOTH, so `--root=--foo` errors there
+ *                                         and is taken at face value here. A real disagreement,
+ *                                         on an input nobody types.
+ *   gate-envelope.js                      space form only; rejects loudly.
+ *   check-i18n-fence-parity.js            space form only; rejects loudly.
+ *   check-workflow-generator-inputs.js    space form only; rejects loudly, exit 2 on a missing
+ *                                         value.
+ *
+ * None is silent, so these are consistency gaps rather than live hazards. Adopted already:
+ * `normalize-i18n-fences.js` (the source), `generate-translation-status.js` (#619's symptom),
+ * `backfill-fence-basis.js` and `check-placeholder-drift.js` — the last two found by that review,
+ * the first of them carrying #619's own bug and the second a line-identical copy of the parser
+ * being extracted.
  */
 
 /**
