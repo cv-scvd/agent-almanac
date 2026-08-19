@@ -90,13 +90,39 @@ function pushPaths(workflowText) {
   return entries;
 }
 
-/** Read the shell command of every `run:` step in the file. */
+/**
+ * Every shell command in every `run:` step, block scalars expanded.
+ *
+ * `run: |` is the common form across this repo's workflows — five of them use it — and a reader
+ * that treated the `|` as the command would throw "could not be resolved" on a perfectly ordinary
+ * step. Worse, it would do so at the moment someone added a multi-line step to a healer, which
+ * reads as the check being broken rather than as the step being unlisted.
+ *
+ * Each line of an expanded block is returned as its own command, since a block routinely holds
+ * several: `npm ci` followed by `node scripts/x.js` must resolve to one non-entry and one entry.
+ */
 function runSteps(workflowText) {
-  return workflowText
-    .split(/\r?\n/)
-    .map((line) => line.match(/^\s*-?\s*run:\s*(.+?)\s*$/))
-    .filter(Boolean)
-    .map((match) => match[1]);
+  const lines = workflowText.split(/\r?\n/);
+  const commands = [];
+  for (let i = 0; i < lines.length; i++) {
+    const block = lines[i].match(/^(\s*)-?\s*run:\s*[|>][-+]?\s*$/);
+    if (block) {
+      const keyIndent = block[1].length;
+      for (let j = i + 1; j < lines.length; j++) {
+        const body = lines[j];
+        if (body.trim() === '') continue;
+        const indent = body.length - body.trimStart().length;
+        if (indent <= keyIndent) { i = j - 1; break; }
+        const command = body.trim();
+        if (!command.startsWith('#')) commands.push(command);
+        if (j === lines.length - 1) i = j;
+      }
+      continue;
+    }
+    const inline = lines[i].match(/^\s*-?\s*run:\s*(.+?)\s*$/);
+    if (inline) commands.push(inline[1]);
+  }
+  return commands;
 }
 
 /**
@@ -111,22 +137,41 @@ function runSteps(workflowText) {
 const NON_ENTRY_COMMANDS = [/^npm ci\b/, /^npm install\b/, /^npm run build\b/];
 
 /**
+ * Commands that could launch repo code, and therefore must resolve or be declared.
+ *
+ * The complement is not "safe" — it is "not a launcher". Expanding a `run: |` block yields the
+ * shell's own control flow line by line (`failed=0`, `for dir in skills/*\/; do`, `fi`), and
+ * `validate-skills.yml` alone produces 67 such lines. Treating each as an unresolvable entry
+ * point would bury the one real finding under sixty errors, which is how a check gets disabled.
+ *
+ * The list is what makes the refusal meaningful rather than noisy: `bash scripts/x.sh` IS on it,
+ * because a shell script can run node, and skipping it is the silent-shrink hole this check
+ * exists to close.
+ */
+const INVOKER_COMMANDS = [/^node\b/, /^npm\b/, /^npx\b/, /^bash\b/, /^sh\b/, /^Rscript\b/, /^\.\//];
+
+/**
  * Resolve one shell command to the script it runs.
  *
  * Returns the script path, or `null` for a command on the non-entry list. Throws for anything
  * else — including an `npm run` naming a package script that is not a `node <file>` invocation,
  * which is precisely how the graph would silently lose an entry point.
  */
-function entryScript(command, packageScripts) {
+function entryScript(command, packageScripts, viaNpmRun = false) {
   const npmRun = command.match(/^npm run ([A-Za-z0-9:_-]+)/);
   if (npmRun) {
     const script = packageScripts[npmRun[1]];
     if (!script) throw new Error(`run step names an undefined package script: npm run ${npmRun[1]}`);
-    return entryScript(script, packageScripts);
+    return entryScript(script, packageScripts, true);
   }
   const nodeRun = command.match(/^node\s+(?:--[^\s]+\s+)*([^\s]+\.js)/);
   if (nodeRun) return nodeRun[1];
   if (NON_ENTRY_COMMANDS.some((pattern) => pattern.test(command))) return null;
+  // The "not a launcher" pass applies to the WORKFLOW's own lines only. A step that explicitly
+  // says `npm run <name>` has declared an intent to run that package script, so the script must
+  // resolve or be on the non-entry list — `echo skipped` there is the silent-shrink case, not a
+  // shell fragment. Measured: without this flag, case 4 of the envelope stopped being killed.
+  if (!viaNpmRun && !INVOKER_COMMANDS.some((pattern) => pattern.test(command))) return null;
   throw new Error(`run step could not be resolved to a script or recognised as a non-entry: ${command}`);
 }
 
