@@ -150,8 +150,10 @@ export function collectSpecs(root) {
  * `.sequences` row above are now built from the same fold and a walk change moves both the same
  * way. It still pools INLINE rather than calling `buildEnglishFenceHistory`, because it also
  * needs a per-count index the pool does not carry — so a change to that builder's own logic,
- * as opposed to this walk's, still does not reach it. Re-measure through it for the second kind
- * of change; the first is now covered by the row above.
+ * as opposed to this walk's, still does not reach it — and re-running this script ALONE cannot
+ * detect such a change, since by that same sentence it measures the unchanged pipeline. For the
+ * second kind, run the gate and this script and diff their finding sets: the agreement is what is
+ * being re-measured. The first kind is covered by the row above.
  *
  * There is deliberately no `trees` option. An earlier draft had one, defaulting to
  * `CONTENT_TYPES` and used by nobody — and it could not have worked, because `contentKey`

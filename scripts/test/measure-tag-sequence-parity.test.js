@@ -9,10 +9,11 @@
  * cannot be swapped for a localisable ```text with neither the sequence check nor the body check
  * seeing it — so the reproducer reintroduced the escape it was written to reproduce.
  *
- * It was latent: 0 of 3,644 translated files carry a brace-info fence, the two folds agreed on
- * every one of them, and the finding set is byte-identical before and after the repair. A corpus
- * run therefore proves nothing here — which is the whole reason this fixture exists. Plant the
- * one shape the corpus does not contain and the two folds disagree immediately.
+ * It was latent: 0 of the 3,648 translated files walked, and no English source either, carries a
+ * TOP-LEVEL brace-info fence — nested ones inside ````markdown wrappers are body text, not fences
+ * — and the finding set is byte-identical before and after the repair. A corpus run therefore
+ * proves nothing here, which is the whole reason this fixture exists. Plant the one shape the
+ * corpus does not contain and the two folds disagree immediately.
  *
  * MUST-GO-RED, measured rather than asserted: restoring the local fold — importing
  * `extractFences` and re-deriving `foldedTagSequence` as `f.lang === '' ? 'text' : f.lang` —

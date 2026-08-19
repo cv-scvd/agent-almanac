@@ -21,8 +21,12 @@
  * applies here: a translation is clean when its folded tag sequence equals that of SOME revision
  * of its English source.
  *
- * Two foldings are load-bearing, both lifted from `normalize-i18n-fences.js`, which already
- * makes this exact judgement to decide whether ordinal mapping is sound:
+ * Two foldings are load-bearing, and both now come from `lib/fences.js` (`foldedTagSequence`),
+ * which is the definition production enforces against. They were originally lifted from
+ * `normalize-i18n-fences.js`, and that attribution is deliberately NOT kept: its `alignmentTag`
+ * still folds a brace fence to `text`, as its own comment beside `mirrorsBasis` admits — "cannot
+ * tell ```{r} from an untagged fence (#612)" — and #674 tracks it. Citing it as the authority for
+ * the brace arm would name the module that makes the opposite judgement.
  *
  *   - An untagged fence folds to `text`. `normalize-content-style.js --mode fences` retro-tagged
  *     untagged blocks as `text` on the newer side only, so that pairing is an artifact of a
@@ -61,10 +65,15 @@ import { fileURLToPath } from 'url';
 // empty, `info` non-empty) to `text` where production folds it to `{`. That placeholder exists
 // precisely so an English ```{r} cannot be swapped for a localisable ```text with neither the
 // sequence check nor the body check seeing it, so the reproducer had reintroduced the escape it
-// was written to reproduce. Latent — 0 of 3,644 translated files carry such a fence, which is why
-// the two folds agreed on the whole corpus and nothing caught it. What makes it worth fixing is
-// that this script is the instrument used to judge the gate's finding set, and it disagreed with
-// the thing it measures.
+// was written to reproduce. Latent: measured with this repair, 0 of the 3,648 translated files
+// walked, and no English source either, carries a TOP-LEVEL brace-info fence. Top-level is the
+// qualifier that matters — the corpus carries plenty NESTED inside ````markdown wrappers, where
+// they are body text rather than fences. Both sides are stated because the fold applies to the
+// English pool as well, so zero carriers on the translation side alone would not have implied the
+// two folds agree. The evidence that they did is the finding set being byte-identical across this
+// change; the counts are why that was expected. What makes it worth fixing anyway is that this
+// script is the instrument used to judge the gate's finding set, and it disagreed with the thing
+// it measures.
 import { foldedTagSequence } from './lib/fences.js';
 import { walkEnglishHistory } from './lib/english-history.js';
 import { collectTargets } from './check-i18n-fence-parity.js';
