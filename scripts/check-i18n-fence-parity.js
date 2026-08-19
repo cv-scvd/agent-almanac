@@ -185,8 +185,12 @@ export function collectTargets() {
   });
   if (scopeErrors.length) {
     for (const line of scopeErrors) console.error(line);
-    // 2, not 1. This module exits 1 for "the thing I check is wrong", and a caller scripting
-    // around it must not have to guess which happened. Same split as `usageExit`.
+    // 2, not 1, so a refusal is distinguishable from a finding. Same split as `usageExit`.
+    //
+    // The converse does NOT hold and must not be scripted on: `assertNotShallow` exits 1 for a
+    // refusal too, one call above this in `main()`. That is deliberate and CLAUDE.md argues for
+    // it — a warn-only caller that cannot measure at all should not warn less, it should stop.
+    // So 2 always means refusal; 1 means findings OR a shallow clone.
     process.exit(2);
   }
 

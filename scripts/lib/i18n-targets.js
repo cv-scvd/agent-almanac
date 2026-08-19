@@ -227,9 +227,18 @@ export function collectI18nTargets({ root, onlyLocale = null, onlyTrees = null, 
  * wrong in the first place.
  *
  * `normalize-i18n-fences.js` has a HAND COPY of the `--tree` arm (its own `unreachable` block),
- * and it is not a copy that merely duplicates: it omits the unknown-tree-name check above and
- * validates no locale at all. Converting it therefore changes its behaviour rather than only its
- * spelling, which is why it is filed rather than folded in here.
+ * and converting it would change behaviour rather than spelling — but not for the reason this
+ * paragraph first gave. It said the normalizer "validates no locale at all", which is false: it
+ * refuses an unscannable `--locale` at exit 2, with its own tests. The real delta is which
+ * accept-list each asks:
+ *
+ *   normalize-i18n-fences.js   `scannableLocales` — pre-scan, DIRECTORY-based
+ *   validateScope              `localesReached`   — post-scan, CONTENT-based
+ *
+ * An `i18n/xx/skills/` directory carrying no translated file passes the normalizer's guard today
+ * and would refuse here. That is the behaviour change, and it is the one worth testing when #677
+ * is done. The `--tree` half of the delta is smaller than it looks too: an unknown tree name is a
+ * subset of unreached, so the normalizer already exits 2 on it and only the message differs.
  *
  * ## `onlyId` asks REACHED, never EXISTS
  *

@@ -37,6 +37,8 @@ import { join, resolve, dirname } from 'path';
 import { execFileSync, spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
+import { validateScope } from '../lib/i18n-targets.js';
+
 const CHECKER = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'check-i18n-fence-parity.js');
 
 const doc = (title) => `# ${title}\n\n\`\`\`yaml\na: 1\n\`\`\`\n`;
@@ -135,4 +137,43 @@ test('a scope that DOES reach something still runs — the non-vacuity control',
     assert.equal(report.filesCompared, 1, 'the scoped file must actually have been compared');
     assert.equal(report.violations, 0);
   });
+});
+
+// ── the arm itself, not through a subprocess ────────────────────────────────
+
+test('validateScope refuses a caller that passes --id with no accept-list', () => {
+  // Dead from both CLIs today — the gate always passes `idsReached`, the backfill never passes
+  // `onlyId` — and an adversarial review pointed out that a mutation deleting this branch
+  // survives the whole suite. That is the shape the branch exists to prevent, so it gets the
+  // test rather than the benefit of the doubt.
+  //
+  // The default matters more than the branch. `idsReached = null` defaulting to an empty Set
+  // refuses every id forever; defaulting to "assume reached" passes every id forever. Both are
+  // silent. Saying "this is a caller bug" is the only answer that is neither.
+  const errors = validateScope({
+    onlyLocale: null, onlyTrees: null, onlyId: 'anything',
+    localesReached: new Set(['de']), treesReached: new Set(['skills']),
+  });
+  assert.equal(errors.length, 2);
+  assert.match(errors[0], /caller bug/);
+});
+
+test('validateScope reports the OUTERMOST failing scope, not every one', () => {
+  // A run with a mistyped locale AND a mistyped id should say the locale, because the id's
+  // accept-list is derived from the locale scoping and would be empty for a reason the reader
+  // has not been told yet. Cascading both reads as two independent faults.
+  const errors = validateScope({
+    onlyLocale: 'ed', onlyTrees: null, onlyId: 'alhpa',
+    localesReached: new Set(['de']), treesReached: new Set(['skills']), idsReached: new Set(),
+  });
+  assert.match(errors[0], /--locale 'ed'/);
+  assert.ok(!errors.some((line) => /--id/.test(line)), errors.join('\n'));
+});
+
+test('a reachable id produces no errors — the arm can stay silent', () => {
+  assert.deepEqual(validateScope({
+    onlyLocale: 'de', onlyTrees: null, onlyId: 'alpha',
+    localesReached: new Set(['de']), treesReached: new Set(['skills']),
+    idsReached: new Set(['alpha', 'beta']),
+  }), []);
 });
