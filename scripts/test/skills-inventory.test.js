@@ -319,7 +319,7 @@ test('LIVE: the real tree still contains the exception the claim was false about
     + 'generator must say so rather than the sentence quietly reverting to the flat assertion');
   // An independent ruler for the exclusion — a second regex, not the module's own list.
   for (const path of found) assert.ok(!/\.(md|ya?ml)$/.test(path), `documentation leaked in: ${path}`);
-  assert.ok(executableFiles(found).length > 0,
+  assert.ok(executableFiles(found, REPO_ROOT).length > 0,
     'and at least one of them is executable, which is the whole point of the sentence');
 });
 
@@ -370,10 +370,62 @@ test('LIVE: SECURITY.md names exactly the directories the guard covers', () => {
   // silently drops guards AND shortens the sentence. Comparing the COMMITTED document
   // against the list is what makes such a change go red rather than regenerate quietly.
   const security = readFileSync(join(REPO_ROOT, 'SECURITY.md'), 'utf8');
-  const sentence = security.match(/Everything else described below \(([^)]*)\)/);
+  // Scoped to the AUTO block. Matching the whole file takes the FIRST occurrence, so a future
+  // hand-written quotation of this sentence above the block would become the compared
+  // instance — a stale decoy failing against a correct generated one, and three spurious
+  // failures in a row is how an equality assertion gets weakened into an `includes`.
+  const block = security.match(/<!-- AUTO:START:security-surface -->([\s\S]*?)<!-- AUTO:END/);
+  assert.ok(block, 'the security-surface AUTO block must be present');
+  const sentence = block[1].match(/Everything else described below \(([^)]*)\)/);
 
   assert.ok(sentence, 'the repository-only sentence must be present in SECURITY.md');
   const named = sentence[1].split(',').map((n) => n.replace(/[`\/\s]/g, '')).filter(Boolean);
   assert.deepEqual(named, [...REPO_ONLY],
     'the published sentence and the guarded list must be the same list');
+});
+
+test('an unanchored negation is refused — measured against npm, not reasoned about', (t) => {
+  // `npm pack --dry-run` with files ["agents/","!_template.md"] packs ZERO of
+  // agents/_template.md, against a control (["agents/"]) that packs it. So npm matches a
+  // slash-free pattern at any depth while this module compares exact paths and matches
+  // nothing — silent, and in the under-counting direction.
+  const dir = mkdtempSync(join(tmpdir(), 'skills-inventory-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ files: ['agents/', '!_template.md'] }), 'utf8');
+
+  assert.throws(() => shippedEntries(dir), /unanchored negation/);
+});
+
+test('extglob metacharacters are refused too, not only the plain glob ones', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'skills-inventory-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  for (const entry of ['skills/+(a|b)/', 'skills/@(x)/', 'skills/foo|bar/']) {
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ files: [entry] }), 'utf8');
+    assert.throws(() => shippedEntries(dir), /glob or extglob/, `${entry} must be refused`);
+  }
+  // And a leading `!` is not itself an extglob character — the negation form must still pass.
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ files: ['skills/', '!skills/_template/'] }), 'utf8');
+  assert.doesNotThrow(() => shippedEntries(dir));
+});
+
+test('`prepare` counts as an install hook, because a git install runs it', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'skills-inventory-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(join(dir, 'package.json'),
+    JSON.stringify({ files: ['skills/'], scripts: { prepare: 'node build.js' } }), 'utf8');
+
+  assert.throws(() => assertInventoryClaims(dir), /declares "prepare"/);
+});
+
+test('an unreadable candidate throws rather than reading as "not executable"', (t) => {
+  // The bare catch this replaces made the same tolerant choice `skillsDeclaringBash` rejects
+  // ten lines up in the same file, and in the same under-reporting direction.
+  const dir = mkdtempSync(join(tmpdir(), 'skills-inventory-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  mkdirSync(join(dir, 'skills'), { recursive: true });
+
+  assert.throws(
+    () => executableFiles(['skills/does-not-exist'], dir),
+    /could not read skills\/does-not-exist to test for a shebang/,
+  );
 });

@@ -34,8 +34,15 @@ const CLI_PREFIX = 'cli/';
  */
 export const REPO_ONLY = Object.freeze(['viz', 'scripts', 'workflows', '.claude']);
 
-/** npm lifecycle scripts that execute in a CONSUMER's tree at install time. */
-export const INSTALL_HOOKS = Object.freeze(['preinstall', 'install', 'postinstall']);
+/**
+ * npm lifecycle scripts that execute in a CONSUMER's tree at install time.
+ *
+ * `prepare` is on the list even though a registry install does not run it: npm DOES run it
+ * consumer-side for a git install (`npm install pjt222/agent-almanac`), which is a documented
+ * install path for this package. Excluding it would leave the sentence green while a script
+ * ran in someone else's tree.
+ */
+export const INSTALL_HOOKS = Object.freeze(['preinstall', 'install', 'postinstall', 'prepare']);
 
 /**
  * Throw if anything the inventory calls repository-only actually ships, or if the package
@@ -49,7 +56,7 @@ export function assertInventoryClaims(root) {
   const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
   const files = pkg.files ?? [];
   for (const repoOnly of REPO_ONLY) {
-    if (files.some((entry) => entry.replace(/^!/, '').startsWith(repoOnly))) {
+    if (files.some((entry) => entry.replace(/^!/, '').startsWith(`${repoOnly}/`))) {
       throw new Error(
         `SECURITY.md says ${repoOnly}/ exists only in the repository, but package.json ` +
         '`files` ships it. Give it an inventory bullet and remove it from that sentence.',
@@ -188,8 +195,13 @@ export function executableFiles(paths, root = null) {
       readSync(handle, buffer, 0, 2, 0);
       closeSync(handle);
       return buffer.toString('latin1') === '#!';
-    } catch {
-      return false;
+    } catch (error) {
+      // NOT swallowed. `skillsDeclaringBash` above argues, in this same file, that counting a
+      // missing skill as non-declaring under-reports in a security document and must be loud.
+      // A bare catch here makes the opposite choice in the same direction: EACCES, ELOOP and
+      // EISDIR would all render as "not executable", silently. No error is expected when
+      // reading two bytes of a tracked regular file, so an error means something worth seeing.
+      throw new Error(`could not read ${path} to test for a shebang: ${error.message}`);
     }
   });
 }
@@ -268,23 +280,47 @@ export function contentTrees(root) {
  * Refuse a `files` array this module cannot faithfully interpret.
  *
  * `isExcludedFromPackage` models npm's negations as "trailing slash means prefix, otherwise
- * exact path". That matches the real array and diverges on four shapes it does not yet
- * contain — a glob (`!skills/*\/fixtures/`), a directory negation missing its slash
- * (`!skills/_template`, which npm excludes and this matcher can never match, because `walk`
- * appends the slash before testing), an unanchored no-slash pattern, and last-match-wins
- * ordering. Every one of those fails SILENTLY and in the direction that under-counts.
+ * exact path". Where that diverges from npm is MEASURED, not reasoned about — each row below
+ * is `npm pack --dry-run` on this tree with the stated `files`, counted against a positive
+ * control that proves the probe is not vacuous:
  *
- * So the matcher refuses rather than guessing, which is the same contract `mutation-check`
- * holds itself to. A `files` array grows one entry at a time; this turns the next one into
- * a red gate instead of a quietly wrong number in a security document.
+ *   files: ["skills/","!skills/_template"]        npm packs 0 of skills/_template/.
+ *       A directory negation WITHOUT its trailing slash still excludes the directory. This
+ *       matcher can never match it, because `walk` appends the slash before testing — so one
+ *       deleted character silently turns the exclusion off HERE while npm keeps honouring it.
+ *   files: ["agents/","!_template.md"]            npm packs 0 of agents/_template.md.
+ *       An unanchored, slash-free pattern matches at depth. This matcher compares exact paths
+ *       and would match nothing.
+ *   files: ["skills/","!skills/*\/references/"]   npm packs 2 where the literal reading packs
+ *       all of them. npm expands the glob; this matcher does not.
+ *   control: files: ["agents/"]                   npm packs agents/_template.md.
+ *       So the three zeros above are exclusions, not an empty probe.
+ *
+ * All three under-count silently, so all three are refused rather than guessed at — the same
+ * contract `mutation-check` holds itself to.
+ *
+ * A FOURTH class was proposed and is REFUTED by the same instrument. The real `files` array
+ * places `!agents/_template.md`, `!teams/_template.md` and `!guides/_template.md` BEFORE the
+ * `agents/`, `teams/`, `guides/` entries they carve from, which under a last-match-wins
+ * reading would make them dead. `npm pack --dry-run` packs 78 files under `agents/` and zero
+ * templates: negations are honoured regardless of position. No reorder is needed, and a
+ * refusal keyed on ordering would have refused a correct array.
  */
 function assertInterpretable(files, root) {
   for (const entry of files) {
-    if (/[*?[\]{}]/.test(entry)) {
+    if (/[*?[\]{}()|+@!]/.test(entry.slice(entry.startsWith('!') ? 1 : 0))) {
       throw new Error(
-        `package.json \`files\` entry "${entry}" contains a glob. npm expands it; this ` +
-        'module compares literally, so the two would silently disagree. Teach ' +
-        'scripts/lib/skills-inventory.js the pattern, or avoid the glob.',
+        `package.json \`files\` entry "${entry}" contains a glob or extglob metacharacter. ` +
+        'Measured: npm expands it and this module compares literally, so the two disagree in ' +
+        'silence. Teach scripts/lib/skills-inventory.js the pattern, or avoid the glob.',
+      );
+    }
+    if (entry.startsWith('!') && !entry.slice(1).includes('/')) {
+      throw new Error(
+        `package.json \`files\` entry "${entry}" is an unanchored negation. Measured: npm ` +
+        'matches such a pattern at any depth, while this module compares exact paths and ' +
+        'would match nothing — so the published file count would silently include files that ' +
+        `do not ship. Anchor it: "!<dir>/${entry.slice(1)}".`,
       );
     }
     if (entry.startsWith('!') && !entry.endsWith('/')
@@ -293,9 +329,8 @@ function assertInterpretable(files, root) {
         .some((e) => e.name === basename(entry.slice(1)) && e.isFile())) {
       throw new Error(
         `package.json \`files\` entry "${entry}" negates a DIRECTORY without a trailing ` +
-        'slash. npm excludes it and its contents; this module would never match it, and the ' +
-        'published file count would silently include files that do not ship. Write ' +
-        `"${entry}/".`,
+        'slash. Measured: npm excludes it and its contents; this module would never match it, ' +
+        'because the walk appends the slash before testing. Write ' + `"${entry}/".`,
       );
     }
   }
