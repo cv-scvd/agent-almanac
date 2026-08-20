@@ -169,19 +169,73 @@ test('shippedEntries keeps FILES, not only directories — cli/index.js is the e
   assert.deepEqual(negations, ['skills/_template/']);
 });
 
-test('contentTrees is derived, so it cannot drift from what ships', (t) => {
-  // A hardcoded ['skills','agents','teams','guides'] beside shippedEntries is a drift PAIR
-  // inside one module: add a tree to `files` and the preamble says it ships while the file
-  // count never scans it — the published count silently excluding a tree the same
-  // paragraph says ships.
+test('contentTrees is the CONTENT_TYPES intersection, not "everything that is not cli/"', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'skills-inventory-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   writeFileSync(join(dir, 'package.json'), JSON.stringify({
-    files: ['cli/lib/', 'cli/index.js', 'skills/', 'agents/', 'dreams/', 'LICENSE'],
+    files: ['cli/lib/', 'cli/index.js', 'skills/', 'agents/', 'LICENSE'],
   }), 'utf8');
 
-  assert.deepEqual(contentTrees(dir), ['skills', 'agents', 'dreams'],
-    'cli/ subpaths are not content trees; a newly shipped tree is picked up automatically');
+  assert.deepEqual(contentTrees(dir), ['skills', 'agents']);
+});
+
+test('a shipped directory that no bullet describes THROWS, rather than being scanned', (t) => {
+  // The version this replaces filtered on `!startsWith('cli/')` — a coincidence promoted to
+  // a rule — and the test beside it shipped `dreams/` and ASSERTED it was accepted as a
+  // content tree. So the test pinned the defect, for the second time in this PR.
+  //
+  // Ship `dreams/` for real and the first bullet's COUNT would include its files while the
+  // bullet's LABEL still read "Skills, agents, teams, guides": the same drift pair one level
+  // up, between a count and the label describing it. What makes a tree a content tree is
+  // CONTENT_TYPES, not its not-being-cli.
+  const dir = mkdtempSync(join(tmpdir(), 'skills-inventory-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({
+    files: ['cli/lib/', 'skills/', 'dreams/'],
+  }), 'utf8');
+
+  assert.throws(() => contentTrees(dir), /neither the CLI nor a content type/);
+});
+
+test('a files entry this matcher cannot faithfully interpret is REFUSED, not guessed at', (t) => {
+  // The negation model is "trailing slash means prefix, otherwise exact path". It matches
+  // the real array and diverges on shapes it does not yet contain — every one of which
+  // fails SILENTLY and in the under-counting direction.
+  const dir = mkdtempSync(join(tmpdir(), 'skills-inventory-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  mkdirSync(join(dir, 'skills', '_template'), { recursive: true });
+
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({
+    files: ['skills/', '!skills/*/fixtures/'],
+  }), 'utf8');
+  assert.throws(() => shippedEntries(dir), /contains a glob/,
+    'npm expands globs; this module compares literally, so the two would disagree in silence');
+
+  // One deleted character. npm excludes the directory and its contents; this matcher can
+  // never match it, because `walk` appends the slash before testing — and on a tree whose
+  // `_template` holds only a `.md`, even the count would not move. The quietest failure.
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({
+    files: ['skills/', '!skills/_template'],
+  }), 'utf8');
+  assert.throws(() => shippedEntries(dir), /negates a DIRECTORY without a trailing/);
+
+  // And the interpretable form is accepted, so the tripwire is not simply "refuse".
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({
+    files: ['skills/', '!skills/_template/', '!agents/_template.md'],
+  }), 'utf8');
+  assert.deepEqual(shippedEntries(dir).negations, ['skills/_template/', 'agents/_template.md']);
+});
+
+test('the EXACT-match negation arm is live — a negated non-doc FILE is excluded', (t) => {
+  // Found as a surviving mutant: replacing the `relPath === pattern` arm with `false` passed
+  // the whole suite, because every file negation in the real array names a `.md`, which the
+  // extension filter drops anyway. Observationally dead — the shape of the hand-rolled rule
+  // this PR already deleted once.
+  const dir = makeTree(t, { alpha: BASH_SKILL }, ['skills/', '!skills/alpha/data.py']);
+  writeFileSync(join(dir, 'skills', 'alpha', 'data.py'), 'x = 1\n', 'utf8');
+  writeFileSync(join(dir, 'skills', 'alpha', 'kept.py'), 'y = 2\n', 'utf8');
+
+  assert.deepEqual(nonDocumentationFiles(dir, ['skills']), ['skills/alpha/kept.py']);
 });
 
 test('a package.json with no files array yields nothing, rather than throwing', (t) => {
@@ -193,6 +247,21 @@ test('a package.json with no files array yields nothing, rather than throwing', 
   assert.deepEqual(contentTrees(dir), []);
 });
 
+test('a shebanged EXTENSIONLESS file counts as executable', (t) => {
+  // The extension allowlist under-claims in the quiet direction, and this module's own
+  // sibling JSDoc bans allowlists for the neighbouring question. Such a file is doubly
+  // invisible: the regex misses it AND extensionOf returns null, so it is counted while no
+  // extension names it — "17 files (.bib, .py, .webp)" enumerating sixteen.
+  const dir = makeTree(t, { alpha: BASH_SKILL });
+  mkdirSync(join(dir, 'skills', 'alpha', 'scripts'), { recursive: true });
+  writeFileSync(join(dir, 'skills', 'alpha', 'scripts', 'run'), '#!/bin/sh\necho hi\n', 'utf8');
+  writeFileSync(join(dir, 'skills', 'alpha', 'scripts', 'data'), 'not a script\n', 'utf8');
+
+  const nonDoc = nonDocumentationFiles(dir, ['skills']);
+  assert.deepEqual(nonDoc, ['skills/alpha/scripts/data', 'skills/alpha/scripts/run']);
+  assert.deepEqual(executableFiles(nonDoc, dir), ['skills/alpha/scripts/run']);
+});
+
 test('the executable exemplar is DERIVED, so deleting the file cannot leave it named', () => {
   // The generated sentence used to interpolate `verify_runtime.py` as a string literal —
   // static prose inside a derived claim, which is the exact defect the same function
@@ -200,8 +269,11 @@ test('the executable exemplar is DERIVED, so deleting the file cannot leave it n
   // nothing throws) would have had the healer regenerate and AUTO-COMMIT "15 files …
   // including verify_runtime.py": a false claim in a security document, every gate green.
   assert.deepEqual(
-    executableFiles(['skills/a/refs/x.bib', 'skills/b/scripts/run.py', 'skills/c/e/i.webp']),
-    ['skills/b/scripts/run.py'],
+    executableFiles([
+      'skills/a/refs/x.bib', 'skills/b/scripts/run.py', 'skills/c/e/i.webp',
+      'skills/d/scripts/go.sh', 'skills/e/analysis.R',
+    ]),
+    ['skills/b/scripts/run.py', 'skills/d/scripts/go.sh', 'skills/e/analysis.R'],
   );
   assert.deepEqual(executableFiles(['skills/a/refs/x.bib']), [],
     'with no executable present the sentence must be able to omit the clause entirely');

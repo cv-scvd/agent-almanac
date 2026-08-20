@@ -13,9 +13,10 @@
  * `ERR_MODULE_NOT_FOUND`, and `node:fs` resolves fine — the header's claim is broader
  * than its test. Worth knowing before trusting the claim.)
  */
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { readFileSync, readdirSync, existsSync, openSync, readSync, closeSync } from 'node:fs';
+import { resolve, join, dirname, basename } from 'node:path';
 import { declaresBash } from './readme-sections.js';
+import { CONTENT_TYPES } from './content-types.js';
 
 /** Extensions the inventory is entitled to call "documentation". */
 const DOCUMENTATION_EXTENSIONS = ['.md', '.yml', '.yaml'];
@@ -130,8 +131,24 @@ export function nonDocumentationFiles(root, trees = null) {
  * auto-commit "15 files … including verify_runtime.py", a false claim in a security
  * document, with every gate green.
  */
-export function executableFiles(paths) {
-  return paths.filter((path) => /\.(py|sh|bash|zsh|ps1|rb|pl|mjs|cjs|js)$/.test(path));
+export function executableFiles(paths, root = null) {
+  return paths.filter((path) => {
+    if (/\.(py|sh|bash|zsh|ps1|rb|pl|lua|awk|bat|cmd|mjs|cjs|js|[Rr])$/.test(path)) return true;
+    // An extension allowlist alone under-claims in the quiet direction, and this module's
+    // sibling JSDoc bans allowlists for exactly that reason. A shebanged EXTENSIONLESS file
+    // is doubly invisible: the regex misses it and `extensionOf` returns null, so it is
+    // counted but named by no extension. Sniff the first two bytes — 16 reads, offline.
+    if (!root || extensionOf(path) !== null) return false;
+    try {
+      const handle = openSync(resolve(root, path), 'r');
+      const buffer = Buffer.alloc(2);
+      readSync(handle, buffer, 0, 2, 0);
+      closeSync(handle);
+      return buffer.toString('latin1') === '#!';
+    } catch {
+      return false;
+    }
+  });
 }
 
 /**
@@ -163,6 +180,7 @@ export function extensionOf(path) {
  */
 export function shippedEntries(root) {
   const files = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).files ?? [];
+  assertInterpretable(files, root);
   return {
     included: files.filter((entry) => !entry.startsWith('!')),
     negations: files.filter((entry) => entry.startsWith('!')).map((entry) => entry.slice(1)),
@@ -178,7 +196,64 @@ export function shippedEntries(root) {
  * silently excluding a tree the same paragraph says ships.
  */
 export function contentTrees(root) {
-  return shippedEntries(root).included
-    .filter((entry) => entry.endsWith('/') && !entry.startsWith(CLI_PREFIX))
+  const shippedDirs = shippedEntries(root).included
+    .filter((entry) => entry.endsWith('/'))
     .map((entry) => entry.replace(/\/$/, ''));
+
+  const unaccounted = shippedDirs
+    .filter((dir) => !`${dir}/`.startsWith(CLI_PREFIX) && !CONTENT_TYPES.includes(dir));
+  if (unaccounted.length) {
+    // `!startsWith('cli/')` alone was a COINCIDENCE promoted to a rule, and the test written
+    // beside it pinned the coincidence: it shipped `dreams/` and asserted it was accepted as
+    // a content tree. Ship `dreams/` for real and the first bullet's COUNT would include its
+    // files while the bullet's LABEL still read "Skills, agents, teams, guides" — the same
+    // drift pair one level up, between a count and the label describing it.
+    //
+    // Throwing is the honest response: a shipped directory that no inventory bullet
+    // describes is #691 finding 4 recurring, and the generator is the one place that can
+    // notice. Repair is to add a bullet for it, not to widen this filter.
+    throw new Error(
+      `package.json ships ${unaccounted.map((d) => `${d}/`).join(', ')}, which is neither the ` +
+      'CLI nor a content type, so no bullet in SECURITY.md describes it. Add an inventory ' +
+      'bullet for it before shipping it (#691 finding 4).',
+    );
+  }
+  return shippedDirs.filter((dir) => CONTENT_TYPES.includes(dir));
+}
+
+/**
+ * Refuse a `files` array this module cannot faithfully interpret.
+ *
+ * `isExcludedFromPackage` models npm's negations as "trailing slash means prefix, otherwise
+ * exact path". That matches the real array and diverges on four shapes it does not yet
+ * contain — a glob (`!skills/*\/fixtures/`), a directory negation missing its slash
+ * (`!skills/_template`, which npm excludes and this matcher can never match, because `walk`
+ * appends the slash before testing), an unanchored no-slash pattern, and last-match-wins
+ * ordering. Every one of those fails SILENTLY and in the direction that under-counts.
+ *
+ * So the matcher refuses rather than guessing, which is the same contract `mutation-check`
+ * holds itself to. A `files` array grows one entry at a time; this turns the next one into
+ * a red gate instead of a quietly wrong number in a security document.
+ */
+function assertInterpretable(files, root) {
+  for (const entry of files) {
+    if (/[*?[\]{}]/.test(entry)) {
+      throw new Error(
+        `package.json \`files\` entry "${entry}" contains a glob. npm expands it; this ` +
+        'module compares literally, so the two would silently disagree. Teach ' +
+        'scripts/lib/skills-inventory.js the pattern, or avoid the glob.',
+      );
+    }
+    if (entry.startsWith('!') && !entry.endsWith('/')
+      && existsSync(resolve(root, entry.slice(1)))
+      && !readdirSync(resolve(root, dirname(entry.slice(1))), { withFileTypes: true })
+        .some((e) => e.name === basename(entry.slice(1)) && e.isFile())) {
+      throw new Error(
+        `package.json \`files\` entry "${entry}" negates a DIRECTORY without a trailing ` +
+        'slash. npm excludes it and its contents; this module would never match it, and the ' +
+        'published file count would silently include files that do not ship. Write ' +
+        `"${entry}/".`,
+      );
+    }
+  }
 }
