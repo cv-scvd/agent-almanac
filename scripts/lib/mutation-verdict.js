@@ -50,7 +50,37 @@ export const CRASH_SIGNATURES = [
 // turn up in a future test NAME or fixture — and node:test prints every test name, passing or
 // failing, so one such name poisons every later run against that suite.
 
-/** Pull `fail N` out of node:test output; null if the format is not recognised. */
+/**
+ * Pull `fail N` out of node:test output; null if the format is not recognised.
+ *
+ * ## Both reporters, MEASURED (#666)
+ *
+ * `package.json` permits `node >= 22.12.0` while CI runs 24, and the piped default reporter
+ * differs across that range: Node 22 emits **TAP** (`# fail 1`), Node 23+ emits **spec**
+ * (`ℹ fail 1`). These patterns were designed against spec alone, so whether a Node-22 user
+ * silently got one of the two SUSPECT signals instead of both was an open question — a
+ * parse failure disables the share signal by design, correctly, but without telling anyone.
+ *
+ * Measured on Node 22.16.0 and 25.9.0, and the answer is that both parse: `\S*` matches `#`
+ * exactly as it matches `ℹ`. Pinned by `scripts/test/mutation-verdict.test.js` against
+ * literal transcripts of both, so the patterns cannot be tightened without noticing.
+ *
+ * The crash signal was measured end to end on 22 as well, rather than reasoned about from
+ * its format-independence: an undeclared-binding mutant reported `SUSPECT KILL — 18 failing
+ * test(s), but the mutant looks BROKEN rather than caught`, and a behavioural mutant on the
+ * same file reported `MUTANT KILLED by 1` with no SUSPECT.
+ *
+ * Be exact about what that second run did and did not exercise, because the obvious summary
+ * ("both signals work on both reporters") claims more than it showed. 18 failures against a
+ * 628 baseline is 2.9%, far below `BROAD_KILL_SHARE` — so the SHARE signal did not fire, and
+ * the SUSPECT verdict came from the crash signature alone. Arranging an end-to-end share trip
+ * on Node 22 would need a mutant killing ~157 tests, which is not a shape worth manufacturing.
+ *
+ * What that leaves is honest and sufficient: the share signal's ONLY format dependency is the
+ * two parsers above, and those are measured on TAP directly. Everything downstream of them is
+ * arithmetic. So the reporter question is settled for both signals; only one of the two was
+ * settled by an end-to-end run, and this is which.
+ */
 export function parseFailCount(output) {
   const match = String(output ?? '').match(/^\s*\S*\s*fail\s+(\d+)\s*$/m);
   return match ? Number(match[1]) : null;
