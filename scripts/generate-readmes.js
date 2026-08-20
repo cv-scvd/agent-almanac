@@ -19,7 +19,9 @@ import * as yaml from 'js-yaml';
 import { CONTENT_TYPES } from './lib/content-types.js';
 import { listAdapters } from '../cli/adapters/index.js';
 import { guideCategoryOrder, guideCategoryLabel, guideCategoryNames } from './lib/guide-categories.js';
-import { applySections, renderTranslationsTable, renderLocaleTable, declaresBash } from './lib/readme-sections.js';
+import { applySections, renderTranslationsTable, renderLocaleTable } from './lib/readme-sections.js';
+import { skillsDeclaringBash, nonDocumentationFiles, contentTrees, shippedEntries, extensionOf, executableFiles, assertInventoryClaims, REPO_ONLY } from './lib/skills-inventory.js';
+
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -672,21 +674,12 @@ function generateTranslationsSection() {
  * any fork without credentials. It is written as prose with the command that checks it, which is
  * the honest form for a fact this repository does not own.
  */
-function skillsDeclaringBash() {
-  // Enumerating the REGISTRY, not the directory: `skills/_template/SKILL.md` declares Bash and
-  // is not a skill, so a directory walk overcounts by one. The shipped package excludes it for
-  // the same reason (#669). The predicate itself is `declaresBash` in `lib/readme-sections.js`,
-  // where it can be tested.
-  const ids = Object.values(domains).flatMap((d) => (d.skills || []).map((s) => s.id));
-  const declaring = ids.filter((id) => {
-    const file = resolve(ROOT, 'skills', id, 'SKILL.md');
-    return existsSync(file) && declaresBash(readFileSync(file, 'utf8'));
-  }).length;
-  return { ids, declaring };
-}
-
 function generateSecuritySurface() {
-  const { ids, declaring } = skillsDeclaringBash();
+  // Extracted to `lib/skills-inventory.js` (#691 finding 3) so the registry-not-directory
+  // property can be tested: this file executes its whole pipeline on import, so nothing
+  // living here can be. A registry id with no SKILL.md now THROWS rather than counting as
+  // non-declaring — see that module's header, and #700 for the upstream registry gap.
+  const { ids, declaring } = skillsDeclaringBash(ROOT, domains);
   const share = Math.round((declaring / ids.length) * 100);
   const scriptFiles = readdirSync(resolve(ROOT, 'scripts'))
     .filter((f) => f.endsWith('.js') || f.endsWith('.sh') || f.endsWith('.mjs')).length;
@@ -716,7 +709,8 @@ function generateSecuritySurface() {
   const workflowFiles = readdirSync(resolve(ROOT, 'workflows'))
     .filter((f) => f.endsWith('.mjs') && !f.startsWith('_')).length;
 
-  const shipped = JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8')).files || [];
+  const pkg = JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8'));
+  const shipped = pkg.files || [];
   if (shipped.some((f) => f.replace(/^!/, '').startsWith('scripts'))) {
     throw new Error('SECURITY.md claims scripts/ does not ship, but package.json `files` says otherwise');
   }
@@ -725,16 +719,60 @@ function generateSecuritySurface() {
   if (shipped.some((f) => f.replace(/^!/, '').startsWith('workflows'))) {
     throw new Error('SECURITY.md claims workflows/ does not ship, but package.json `files` says otherwise');
   }
+  // The sentence and its guard read from ONE list, in `lib/skills-inventory.js`, where a
+  // test can reach the guard. They were two lists for one revision, and the guard covered
+  // two of the four names the sentence made — mixed authority, where a reader seeing two
+  // throws infers the whole sentence is machine-checked.
+  assertInventoryClaims(ROOT);
   for (const tool of ['normalize-i18n-fences.js', 'mutation-check.js', 'gate-envelope.js']) {
     if (!existsSync(resolve(ROOT, 'scripts', tool))) {
       throw new Error(`SECURITY.md names scripts/${tool}, which does not exist`);
     }
   }
+  // WHICH ARTIFACT (#696). Every bullet below is computed from the checked-out tree, while
+  // what `npm install` serves can lag arbitrarily — measured at the time of writing: the
+  // registry's `latest` was 1.3.0 against a `package.json` of 1.9.0, six minors and 24
+  // `cli/` commits apart. A researcher reading this, installing from npm, and reporting what
+  // they found would have been reporting against months-old code with no way to tell from
+  // either the document or the package which one they were looking at.
+  //
+  // Derived, not hand-written, and derived WITHOUT git or the network: `check-readmes` runs
+  // offline and in forks without credentials, and a shallow clone makes `git tag` lie. The
+  // version comes from `package.json` and the shipped set from its own `files` array, so the
+  // sentence stays true whether 1.9.0 is eventually recovered, superseded or abandoned —
+  // none of which is decided here.
+  //
+  // It scopes the WHOLE inventory rather than the CLI bullet alone. `files` ships four
+  // content trees beside `cli/`, so "228 of 370 skills declare Bash" carries the identical
+  // staleness risk as the adapter list; a per-bullet caveat would have to be repeated on
+  // every shipped bullet, which is the multi-site drift class this repository keeps paying
+  // for elsewhere.
+  //
+  // It enumerates FILES as well as directories. An earlier version filtered `files` to
+  // entries ending in `/`, which silently dropped `cli/index.js` — the file
+  // `npx agent-almanac` executes — so the sentence told a researcher that a vulnerability
+  // in the entry point was "against the repository only". #600's failure mode, in the
+  // prose written to prevent it.
+  const shippedList = shippedEntries(ROOT).included;
+  const treeNames = contentTrees(ROOT);
+  const treeLabel = treeNames.map((t) => t[0].toUpperCase() + t.slice(1)).join(', ');
+  const nonDoc = nonDocumentationFiles(ROOT);
+  const nonDocExtensions = [...new Set(nonDoc.map(extensionOf).filter(Boolean))].sort();
+  // DERIVED, not named. A hardcoded `verify_runtime.py` inside a generated sentence is the
+  // exact defect this function polices ten lines up, where three `scripts/` tools get
+  // `existsSync` throws for being static prose among generated numbers. Deleting that one
+  // file — registry and SKILL.md untouched, so nothing throws and every gate stays green —
+  // would have had the HEALER regenerate and auto-commit "15 files … including
+  // verify_runtime.py": a false claim in a security document, produced by the machinery.
+  const executable = executableFiles(nonDoc, ROOT);
+
   return [
-    `- **Skills, agents, teams, guides**: Markdown and YAML documentation. ${declaring} of ${ids.length} skills (~${share}%) declare \`Bash\` in their \`allowed-tools\`, meaning they instruct AI agents to execute shell commands when followed. Review any skill before letting an agent execute it.`,
+    `**Which artifact this describes.** Everything below is derived from **the repository at this revision**, whose \`package.json\` declares version \`${pkg.version ?? '(unset)'}\`. That is not necessarily what \`npm install ${pkg.name ?? '(unnamed)'}\` installs — the published version can lag this tree, and has. Check with \`npm view ${pkg.name ?? '(unnamed)'} version\`. What ships, from \`package.json\`'s own \`files\`: ${shippedList.map((t) => `\`${t}\``).join(', ')}. \`package.json\` ships too — npm always includes it — and it declares no \`preinstall\`/\`install\`/\`postinstall\` hooks, so nothing here executes on install. Everything else described below (${REPO_ONLY.map((d) => `\`${d}/\``).join(', ')}) exists only in the repository. A vulnerability report against an npm-installed copy is in scope for the shipped list, and may be against older code than this document describes.`,
+    '',
+    `- **${treeLabel}**: ${nonDoc.length === 0 ? 'Markdown and YAML only' : `mostly Markdown and YAML, plus **${nonDoc.length} files that are not** (${nonDocExtensions.join(', ')})${executable.length ? ` — ${executable.length === 1 ? 'one of them an executable script, ' : `${executable.length} of them executable scripts: `}${executable.map((f) => `\`${f}\``).join(', ')}` : ''}`}. All of it ships. ${declaring} of ${ids.length} skills (~${share}%) declare \`Bash\` in their \`allowed-tools\`, meaning they instruct AI agents to execute shell commands when followed. Review any skill before letting an agent execute it.`,
     '- **Visualization pipeline** (`viz/`): A containerized R + Node.js + Vite build system with a Dockerfile, shell scripts, and an icon rendering pipeline. The Docker entrypoint serves content via a Python HTTP server.',
     `- **Scripts** (\`scripts/\`): ${scriptFiles} top-level Node.js and shell tools — registry validation, README and translation generation, i18n gates, and a small number that deliberately mutate the working tree or run repository commands (\`normalize-i18n-fences.js\`, \`mutation-check.js\`, \`gate-envelope.js\`). Maintainer-invoked; \`scripts/\` is not in \`package.json\`'s \`files\` array, so none of it ships in the published package.`,
-    `- **CLI** (\`cli/\`): The published package surface, and the only component that writes outside this repository. ${adapters.length} adapters install content into other tools' configuration directories, at global (home) or PROJECT scope depending on the adapter and the \`--scope\` flag, using ${strategyPhrase}. Adapters: ${adapters.map((a) => a.id).sort().join(', ')}.`,
+    `- **CLI** (\`cli/\`): The entry point \`npx\` executes (\`bin\` -> \`cli/index.js\`), and the only component that writes outside this repository. ${adapters.length} adapters install content into other tools' configuration directories, at global (home) or PROJECT scope depending on the adapter and the \`--scope\` flag, using ${strategyPhrase}. Adapters: ${adapters.map((a) => a.id).sort().join(', ')}.`,
     `- **Workflows** (\`workflows/\`): ${workflowFiles} executable orchestration scripts. They are not auto-installed and do not ship in the published package; the documented way to use one is to COPY its \`.mjs\` into \`.claude/workflows/\` by hand, after which Claude Code's Workflow tool runs it and it may spawn subagents with whatever tools those agents carry. Read one before copying it — that instruction is the whole security boundary.`,
     '- **Claude Code configuration** (`.claude/`): Agent discovery symlinks and permission settings.',
   ].join('\n');
