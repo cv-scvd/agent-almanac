@@ -352,15 +352,29 @@ a15_reg=$(printf '%s\n' "$a15_reg_all" | sed '/^$/d' | sort -u || true)
 # Directories carrying a SKILL.md, which is what the generator and the CLI both consume. A bare
 # directory with no SKILL.md is not a skill and must not count as one on either side.
 a15_disk=$(find skills -mindepth 2 -maxdepth 2 -name 'SKILL.md' -not -path 'skills/_template/*'   -printf '%h\n' 2>/dev/null | sed 's|^skills/||' | sort || true) # abort-ok: see A4
+a15_declared=$(grep 'total_skills:' skills/_registry.yml | tr -d '\r' | awk '{print $2}' || true)
+a15_extracted=$(printf '%s\n' "$a15_reg" | sed '/^$/d' | wc -l || true)
 if [ -z "$a15_reg" ]; then
   echo "FAIL: extracted 0 '- id:' values from skills/_registry.yml under 'domains:' -- pattern drift, not a clean tree"
+  failed=1; a15_fail=1
+elif [ "$a15_extracted" != "$a15_declared" ]; then
+  # The zero-guard only fires on a TOTAL extraction failure. A PARTIAL one -- one id at a
+  # different indent, say -- sails past it, shrinks the registry set, and then reports every
+  # unextracted skill as "only on disk (no registry entry)": loud, but a false positive, in a
+  # REQUIRED context, with a message pointing at the wrong cause.
+  #
+  # `total_skills:` is an independent statement of the same number, so comparing against it
+  # turns that storm into one accurate line. It is not a substitute for the count check in
+  # validate-skills.yml, which compares the declared number against DISK; this compares it
+  # against what the EXTRACTION found, and the two catch different things.
+  echo "FAIL: extracted $a15_extracted '- id:' values from skills/_registry.yml but total_skills says $a15_declared"
+  echo "      -- pattern drift in the extraction, not a registry/disk mismatch. Check indentation."
   failed=1; a15_fail=1
 else
   compare_id_sets skills/_registry.yml skills "$a15_reg" "$a15_disk" "skills/<id>/SKILL.md" \
     || { failed=1; a15_fail=1; }
 fi
-a15_count=$(printf '%s\n' "$a15_reg" | sed '/^$/d' | wc -l || true)
-[ "$a15_fail" -eq 0 ] && echo "OK: $a15_count skills in the registry match the directories on disk"
+[ "$a15_fail" -eq 0 ] && echo "OK: $a15_extracted skills in the registry match the directories on disk"
 
 # A6: Agent intent contract (#285)
 echo "--- A6: Agent intent contract ---"
