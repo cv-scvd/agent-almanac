@@ -44,6 +44,11 @@ on:
       # file_pattern and the negations, never generator-input triggers.
       - 'scripts/lib/readme-sections.js'
       - 'scripts/lib/content-types.js'
+      # `scripts/*` above is a SINGLE star matching the generator's non-recursive readdirSync
+      # scope, so it does not reach `scripts/lib/`. Every module under it is therefore listed
+      # by hand — which is why `check:generator-inputs` exists, and why it caught this one on
+      # the PR that added it (#691).
+      - 'scripts/lib/skills-inventory.js'
       # The middle of the chain, and it was skipped while BOTH endpoints were listed:
       #   generate-translation-status.js -> lib/translation-status.js -> lib/fences.js
       # fences.js is not a passive re-exporter — extractFences, isGated, contentKey,
