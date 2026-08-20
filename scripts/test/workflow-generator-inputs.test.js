@@ -31,6 +31,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 ${steps.map((s) => `      - run: ${s}`).join('\n')}
+      # The real update-readmes.yml commits its output, and the declared-skip path in
+      # assertHealersDeclared is only load-bearing because of it. A fixture without this
+      # line lets that guard be deleted with every test still green (found by mutation).
+      - uses: stefanzweifel/git-auto-commit-action@v6
 `;
 
 /** Build a throwaway tree and run the check over it. */
@@ -511,13 +515,18 @@ jobs:
 });
 
 test('the DECLARED healer is skipped, or the check would accuse itself', () => {
-  // `update-readmes.yml` contains the very string signal 1 hunts. If the declared-skip path
-  // broke, every run of this check would fail on the one workflow it exists to serve.
+  // `update-readmes.yml` commits, so it carries the very signal this detector hunts. If the
+  // declared-skip path broke, every run would fail on the one workflow the check exists to
+  // serve — which makes this the load-bearing test of the pair.
+  //
+  // The first version passed `update-readmes.yml` through `extraWorkflows`, where the harness
+  // promptly OVERWROTE it with the standard fixture — a fixture that committed nothing, so
+  // the skip was never exercised and deleting it left the suite green. Found by mutation; the
+  // repair is in the fixture, which now commits like the real file does.
   const { status, output } = run({
     paths: ['skills/**', 'scripts/generate-readmes.js'],
     steps: ['node scripts/generate-readmes.js'],
     files: { 'scripts/generate-readmes.js': 'export const x = 1;\n' },
-    extraWorkflows: { 'update-readmes.yml': ACTION_COMMITTER },
   });
 
   assert.equal(status, 0, output);
