@@ -265,3 +265,22 @@ test('the crash signature is reporter-independent, on both transcript shapes', (
   assert.deepEqual(crashSuspicion(TAP_TAIL, 1, 600), [], 'a clean TAP transcript is not suspect');
   assert.deepEqual(crashSuspicion(SPEC_TAIL, 1, 600), [], 'a clean spec transcript is not suspect');
 });
+
+test('the share signal is reporter-independent because its inputs are — shown, not asserted', () => {
+  // The end-to-end Node 22 run did NOT exercise this: 18 failures against a 628 baseline is
+  // 2.9%, far below BROAD_KILL_SHARE, so that SUSPECT verdict came from the crash signature
+  // alone. Rather than manufacture a ~157-failure mutant to trip it, this drives the signal
+  // from counts parsed out of each reporter's own transcript — which is the only place the
+  // format can matter. Everything after the parse is arithmetic.
+  const broad = (tail) => {
+    const fail = parseFailCount(tail);
+    const pass = parsePassCount(tail);
+    return crashSuspicion(tail, fail * 100, pass * 100);
+  };
+  for (const [label, tail] of [['TAP', TAP_TAIL], ['spec', SPEC_TAIL]]) {
+    // 100 failures against a 200 baseline is 50%, over the threshold, from parsed counts.
+    const reasons = broad(tail);
+    assert.equal(reasons.length, 1, `share signal under ${label}: ${JSON.stringify(reasons)}`);
+    assert.match(reasons[0], /which is broad for one line/);
+  }
+});
