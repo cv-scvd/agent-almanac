@@ -122,6 +122,20 @@ test('a NESTED _template ships, and must be counted — npm negations are root-a
   assert.deepEqual(nonDocumentationFiles(dir, ['skills']), ['skills/alpha/_template/helper.py']);
 });
 
+test('the negation is ANCHORED, not a substring — a mid-path match must not exclude', (t) => {
+  // Found by a surviving mutant: swapping `startsWith` for `includes` passed the whole
+  // suite, because no fixture distinguished them. `skills/alpha/_template/` does not
+  // CONTAIN `skills/_template/`, so the nested-template test above passes either way.
+  // This one does distinguish: under `includes`, the negation `alpha/_template/` would
+  // wrongly exclude a path npm ships, and the published count would silently drop.
+  const dir = makeTree(t, { alpha: BASH_SKILL }, ['skills/', '!alpha/_template/']);
+  mkdirSync(join(dir, 'skills', 'alpha', '_template'), { recursive: true });
+  writeFileSync(join(dir, 'skills', 'alpha', '_template', 'helper.py'), 'pass\n', 'utf8');
+
+  assert.deepEqual(nonDocumentationFiles(dir, ['skills']), ['skills/alpha/_template/helper.py'],
+    'the pattern does not match from the ROOT, so it excludes nothing');
+});
+
 test('a non-negation exclusion rule is NOT invented — the files array is the only source', (t) => {
   // With no negation, `_template` ships and is counted. The exclusion must come from the
   // package's own list, never from a name this module recognises.
