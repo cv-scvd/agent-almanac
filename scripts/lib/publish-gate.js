@@ -49,6 +49,7 @@
  */
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /** Scripts whose value names a path under this directory are "naming the CLI suite". */
 export const CLI_TEST_DIR = 'cli/test';
@@ -73,7 +74,7 @@ export const ASSERT_SCRIPT = 'scripts/assert-publish-gate.js';
  * Test files a `node --test` invocation would pick up. Kept in one place so the
  * discovered set and the named set are compared under the same definition of "a test".
  */
-const TEST_FILE_SUFFIX = '.test.js';
+const TEST_FILE_SUFFIXES = ['.test.js', '.test.mjs', '.test.cjs'];
 
 /**
  * Pull the file arguments out of an npm script command line.
@@ -94,14 +95,78 @@ export function namedTestFiles(command) {
     .map((token) => token.replace(/^['"]|['"]$/g, ''));
 }
 
-/** Every `*.test.js` actually sitting in the CLI test directory. */
-export function discoverTestFiles(repoRoot) {
-  const dir = resolve(repoRoot, CLI_TEST_DIR);
+/**
+ * Shell segments of a command line: the pieces that could each start a command.
+ *
+ * Crude on purpose, and deliberately BROADER than the shell in the loud
+ * direction only. Splitting on the operators that begin a new command is what
+ * lets the matchers below ask "does a segment START with this invocation"
+ * rather than "does this string contain it" — the difference between rejecting
+ * `echo skipping npm run test:cli` and accepting it.
+ */
+function segments(command) {
+  return String(command).split(/&&|\|\||[;|\n]/).map((s) => s.trim()).filter(Boolean);
+}
+
+/**
+ * Does `command` actually run `npm run <scriptName>`?
+ *
+ * A substring test does not answer this, and the way it fails is silent, which
+ * is the one direction this module must not fail in. Two real inputs it lets
+ * through, both one-token edits rather than adversarial ones:
+ *
+ *   "npm run pretest:cli"              — `.includes('test:cli')` is TRUE, because
+ *                                        `test:cli` is a substring of `pretest:cli`.
+ *                                        A publish then runs the ASSERT and zero
+ *                                        CLI tests, with every gate green.
+ *   "echo skipping npm run test:cli"   — the disable-by-echo-prefix, which passes
+ *                                        any containment check.
+ *
+ * So the token sequence must appear at the START of some segment. That rejects
+ * both. It also rejects `env FOO=1 npm run test:cli`, which is a false positive
+ * — but a LOUD one: the gate reports a problem rather than silently approving
+ * something that does not run the suite. Loud-and-wrong is recoverable; the
+ * whole point of #697 is that quiet-and-wrong is not.
+ */
+export function invokesScript(command, scriptName) {
+  if (!command) return false;
+  return segments(command).some((segment) => {
+    const [bin, sub, target] = segment.split(/\s+/);
+    return bin === 'npm' && (sub === 'run' || sub === 'run-script') && target === scriptName;
+  });
+}
+
+/** Does `command` actually run `node <scriptPath>`? Same reasoning as above. */
+export function invokesNodeScript(command, scriptPath) {
+  if (!command) return false;
+  return segments(command).some((segment) => {
+    const tokens = segment.split(/\s+/);
+    return tokens[0] === 'node'
+      && tokens.slice(1).some((token) => token.replace(/^['"]|['"]$/g, '') === scriptPath);
+  });
+}
+
+/**
+ * Every test file actually sitting under the CLI test directory.
+ *
+ * Recursive, and matching every extension node treats as an ES/CJS module,
+ * because the set this is compared against must be at least as wide as node's
+ * own discovery. Listing one level of `*.test.js` looked equivalent while
+ * `cli/test/` held one flat file, and would have silently missed exactly the
+ * case the comparison exists for: `cli/test/adapters/foo.test.js`, or a
+ * `util.test.mjs`, is neither run by the named invocation NOR reported here.
+ * That is #486's silence reproduced inside the check written to close it.
+ */
+export function discoverTestFiles(repoRoot, subdir = CLI_TEST_DIR) {
+  const dir = resolve(repoRoot, subdir);
   if (!existsSync(dir)) return null;
-  return readdirSync(dir)
-    .filter((name) => name.endsWith(TEST_FILE_SUFFIX))
-    .sort()
-    .map((name) => `${CLI_TEST_DIR}/${name}`);
+  const found = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const rel = `${subdir}/${entry.name}`;
+    if (entry.isDirectory()) found.push(...(discoverTestFiles(repoRoot, rel) ?? []));
+    else if (TEST_FILE_SUFFIXES.some((suffix) => entry.name.endsWith(suffix))) found.push(rel);
+  }
+  return found.sort();
 }
 
 /**
@@ -156,7 +221,7 @@ export function inspectPublishGate(repoRoot, scripts = null) {
       `"${PUBLISH_HOOK}" spells a suite path itself ("${hook}"). It must delegate — ` +
       `\`npm run ${CANONICAL_SCRIPT}\` — so the two cannot drift apart (#697).`,
     );
-  } else if (!hook.includes(CANONICAL_SCRIPT)) {
+  } else if (!invokesScript(hook, CANONICAL_SCRIPT)) {
     problems.push(
       `"${PUBLISH_HOOK}" ("${hook}") does not reach "${CANONICAL_SCRIPT}". The last gate ` +
       `before an npm publish PUT would not run the CLI suite.`,
@@ -166,7 +231,7 @@ export function inspectPublishGate(repoRoot, scripts = null) {
   // 3. `npm test`, the release gate, still runs the CLI suite too. The redundancy is
   //    the point: this is the other half of the pair #680 established.
   const aggregate = pkgScripts.test;
-  if (!aggregate || !aggregate.includes(CANONICAL_SCRIPT)) {
+  if (!invokesScript(aggregate, CANONICAL_SCRIPT)) {
     problems.push(
       `"test" ("${aggregate ?? '<missing>'}") does not run "${CANONICAL_SCRIPT}". ` +
       `\`npm test\` is the release gate; #680 is what happens when it skips a suite.`,
@@ -185,7 +250,7 @@ export function inspectPublishGate(repoRoot, scripts = null) {
       `before an npm publish PUT — \`${PUBLISH_HOOK}\` delegates to "${CANONICAL_SCRIPT}", ` +
       `and npm fires the pre-hook there. Without it the gate exists only in CI.`,
     );
-  } else if (!preHook.includes(ASSERT_SCRIPT)) {
+  } else if (!invokesNodeScript(preHook, ASSERT_SCRIPT)) {
     problems.push(
       `"${PRE_HOOK}" ("${preHook}") does not run ${ASSERT_SCRIPT}, so nothing checks the ` +
       `publish gate at publish time.`,
@@ -220,8 +285,8 @@ export function inspectPublishGate(repoRoot, scripts = null) {
     }
     if (discovered.length === 0) {
       problems.push(
-        `${CLI_TEST_DIR}/ holds no ${TEST_FILE_SUFFIX} files. The publish gate would run ` +
-        `nothing.`,
+        `${CLI_TEST_DIR}/ holds no ${TEST_FILE_SUFFIXES.join('/')} files. The publish gate would ` +
+        `run nothing.`,
       );
     }
   }
@@ -229,13 +294,32 @@ export function inspectPublishGate(repoRoot, scripts = null) {
   return { problems, naming, hook, named, discovered };
 }
 
-/** Locate the repository root from this file, without shelling out to git. */
+/**
+ * Locate the repository root from this file, without shelling out to git.
+ *
+ * `fileURLToPath`, not `new URL(metaUrl).pathname`: the latter yields `/C:/…` on
+ * native Windows and leaves `%20` in place for a clone path containing a space.
+ * The sibling test file already used `fileURLToPath`, which is the tell — one
+ * module in this pair was right and the other was not.
+ *
+ * `existsSync(join(cur, '.git'))` deliberately accepts `.git` as a FILE, which
+ * is what a git worktree has. Subagents in this repo review from worktrees, so
+ * a directory-only test would fail exactly where it is most used.
+ *
+ * There is no fallback. An earlier version returned `resolve(here, '..', '..')`,
+ * which was wrong for its only real caller (one level deep, not two) and
+ * unreachable whenever the walk works — a dead branch that stated a false
+ * assumption about its own depth. Failing loudly is the honest behaviour: a
+ * checker that cannot find the repository must not go on to check one.
+ */
 export function repoRootFromHere(metaUrl) {
-  const here = dirname(new URL(metaUrl).pathname);
-  let cur = here;
+  let cur = dirname(fileURLToPath(metaUrl));
   while (cur !== dirname(cur)) {
     if (existsSync(join(cur, 'package.json')) && existsSync(join(cur, '.git'))) return cur;
     cur = dirname(cur);
   }
-  return resolve(here, '..', '..');
+  throw new Error(
+    `could not locate a repository root above ${fileURLToPath(metaUrl)} ` +
+    '(looked for a directory holding both package.json and .git).',
+  );
 }

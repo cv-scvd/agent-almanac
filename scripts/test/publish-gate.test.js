@@ -28,19 +28,27 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { resolve, dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { spawnSync } from 'node:child_process';
 import {
   inspectPublishGate,
   namedTestFiles,
   discoverTestFiles,
+  invokesScript,
+  invokesNodeScript,
+  repoRootFromHere,
   CANONICAL_SCRIPT,
   PUBLISH_HOOK,
   PRE_HOOK,
   CLI_TEST_DIR,
+  ASSERT_SCRIPT,
 } from '../lib/publish-gate.js';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const ASSERT_PATH = resolve(REPO_ROOT, ASSERT_SCRIPT);
 
 /** A script map matching the repository's intended arrangement. */
 function healthyScripts() {
@@ -154,21 +162,6 @@ test('a named suite file that does not exist is rejected', () => {
   );
 });
 
-test('a test file nobody names is rejected — the silence naming buys (#486)', () => {
-  // Simulate the discovered set gaining a file by naming a strict subset of it: the
-  // real directory is the discovered set, and the fixture names only part of it.
-  const discovered = discoverTestFiles(REPO_ROOT);
-  assert.ok(discovered.length >= 1, 'this test needs at least one real CLI test file');
-
-  const scripts = healthyScripts();
-  scripts[CANONICAL_SCRIPT] = 'node --test';   // names none of them
-  const { problems } = inspectPublishGate(REPO_ROOT, scripts);
-  assert.ok(
-    problems.some((p) => p.includes('but no script names it')),
-    `expected an unrun-file problem, got:\n${problems.join('\n')}`,
-  );
-});
-
 test('namedTestFiles reads paths out of a command line, quotes and all', () => {
   assert.deepEqual(namedTestFiles('node --test cli/test/cli.test.js'), ['cli/test/cli.test.js']);
   assert.deepEqual(namedTestFiles('node --test "cli/test/cli.test.js"'), ['cli/test/cli.test.js']);
@@ -188,4 +181,133 @@ test(`discoverTestFiles reports every *.test.js under ${CLI_TEST_DIR}/`, () => {
     assert.ok(file.startsWith(`${CLI_TEST_DIR}/`), `unexpected path shape: ${file}`);
     assert.ok(file.endsWith('.test.js'), `unexpected suffix: ${file}`);
   }
+});
+
+// ── the holes an adversarial review found in the check itself ────────────────
+//
+// Everything above this line tests the RULE. These test the three ways the rule
+// was found to be satisfiable without the behaviour it claims — each a one-token
+// edit, none of them adversarial, and each caught by a reviewer rather than by
+// the two mutants originally quoted. That asymmetry is the lesson: mutating the
+// lines you thought about proves nothing about the lines you did not.
+
+test('a substring is not an invocation: "npm run pretest:cli" runs zero CLI tests', () => {
+  // `'npm run pretest:cli'.includes('test:cli')` is TRUE — `test:cli` is a
+  // substring of `pretest:cli`. Under the original containment check this
+  // passed, and a publish would have run the assert script and no tests at all.
+  const scripts = healthyScripts();
+  scripts[PUBLISH_HOOK] = 'npm run pretest:cli';
+  const { problems } = inspectPublishGate(REPO_ROOT, scripts);
+  assert.ok(
+    problems.some((p) => p.includes('does not reach')),
+    `"npm run pretest:cli" must not satisfy "reaches test:cli"; got:\n${problems.join('\n')}`,
+  );
+});
+
+test('an echo-prefixed command does not count as running anything', () => {
+  // The disable-by-echo-prefix. It passes any containment check.
+  for (const [script, value] of [
+    [PUBLISH_HOOK, 'echo skipping npm run test:cli'],
+    ['test', 'echo npm run test:cli'],
+    [PRE_HOOK, 'echo skip scripts/assert-publish-gate.js'],
+  ]) {
+    const scripts = healthyScripts();
+    scripts[script] = value;
+    const { problems } = inspectPublishGate(REPO_ROOT, scripts);
+    assert.ok(problems.length > 0, `"${value}" must not satisfy the check for ${script}`);
+  }
+});
+
+test('a real chained command still counts — the matcher is not merely stricter', () => {
+  // Rejecting everything would pass every test above and be useless. This is the
+  // accept side: the invocation may sit anywhere a shell would start a command.
+  const scripts = healthyScripts();
+  scripts[PUBLISH_HOOK] = 'npm run validate:integrity && npm run test:cli';
+  scripts.test = 'npm run test:scripts && npm run test:cli';
+  scripts[PRE_HOOK] = 'node scripts/assert-publish-gate.js --quiet';
+  const { problems } = inspectPublishGate(REPO_ROOT, scripts);
+  assert.deepEqual(problems, [], problems.join('\n'));
+});
+
+test('invokesScript / invokesNodeScript, at the token boundary', () => {
+  assert.equal(invokesScript('npm run test:cli', 'test:cli'), true);
+  assert.equal(invokesScript('npm run-script test:cli', 'test:cli'), true);
+  assert.equal(invokesScript('a && npm run test:cli', 'test:cli'), true);
+  assert.equal(invokesScript('npm run pretest:cli', 'test:cli'), false);
+  assert.equal(invokesScript('npm run test:cli:watch', 'test:cli'), false);
+  assert.equal(invokesScript('echo npm run test:cli', 'test:cli'), false);
+  assert.equal(invokesScript('', 'test:cli'), false);
+  assert.equal(invokesNodeScript('node scripts/assert-publish-gate.js', 'scripts/assert-publish-gate.js'), true);
+  assert.equal(invokesNodeScript('echo node scripts/assert-publish-gate.js', 'scripts/assert-publish-gate.js'), false);
+});
+
+test('a test file added BESIDE a named one is reported — the real #486 shape', (t) => {
+  // The earlier version of this test set `test:cli` to `node --test`, naming
+  // NOTHING, which also tripped the "no script names the suite" check. So it
+  // passed for the wrong reason, and a mutant guarding the unrun-file loop
+  // behind `named.length === 0` would have survived it. A hermetic tree with
+  // TWO files, one of them named, is the case that actually distinguishes.
+  const dir = mkdtempSync(join(tmpdir(), 'publish-gate-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  mkdirSync(join(dir, CLI_TEST_DIR), { recursive: true });
+  writeFileSync(join(dir, CLI_TEST_DIR, 'cli.test.js'), '// named\n', 'utf8');
+  writeFileSync(join(dir, CLI_TEST_DIR, 'adapters.test.js'), '// added later, unnamed\n', 'utf8');
+
+  const { problems } = inspectPublishGate(dir, healthyScripts());
+
+  assert.equal(problems.length, 1, `expected exactly the unrun-file problem, got:\n${problems.join('\n')}`);
+  assert.match(problems[0], /adapters\.test\.js/);
+  assert.match(problems[0], /but no script names it/);
+});
+
+test('discovery is recursive and not .js-only, or the comparison has a blind spot', (t) => {
+  // `cli/test/adapters/foo.test.js` and `cli/test/util.test.mjs` are neither run
+  // by the named invocation nor seen by a flat `.test.js` listing — silently
+  // unrun AND undetected, which is #486's silence inside the check for #486.
+  const dir = mkdtempSync(join(tmpdir(), 'publish-gate-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  mkdirSync(join(dir, CLI_TEST_DIR, 'adapters'), { recursive: true });
+  writeFileSync(join(dir, CLI_TEST_DIR, 'cli.test.js'), '// named\n', 'utf8');
+  writeFileSync(join(dir, CLI_TEST_DIR, 'util.test.mjs'), '// esm\n', 'utf8');
+  writeFileSync(join(dir, CLI_TEST_DIR, 'adapters', 'hermes.test.js'), '// nested\n', 'utf8');
+
+  assert.deepEqual(discoverTestFiles(dir), [
+    `${CLI_TEST_DIR}/adapters/hermes.test.js`,
+    `${CLI_TEST_DIR}/cli.test.js`,
+    `${CLI_TEST_DIR}/util.test.mjs`,
+  ]);
+
+  const { problems } = inspectPublishGate(dir, healthyScripts());
+  assert.equal(problems.length, 2, problems.join('\n'));
+});
+
+test('THE RED PATH: assert-publish-gate.js exits 1 on a broken gate', (t) => {
+  // Without this the failure branch of the operator-side checker is unreachable
+  // by every test, every `npm test`, and all of CI — a gate whose red has never
+  // once been observed. Deleting its `process.exit(1)` would survive the suite.
+  const dir = mkdtempSync(join(tmpdir(), 'publish-gate-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  mkdirSync(join(dir, CLI_TEST_DIR), { recursive: true });
+  writeFileSync(join(dir, CLI_TEST_DIR, 'cli.test.js'), '// suite\n', 'utf8');
+  const broken = { ...healthyScripts(), [PUBLISH_HOOK]: 'node --test cli/test/cli.test.js' };
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ scripts: broken }, null, 2), 'utf8');
+
+  const red = spawnSync(process.execPath, [ASSERT_PATH, `--root=${dir}`], { encoding: 'utf8' });
+
+  assert.equal(red.status, 1, `expected exit 1, got ${red.status}\n${red.stdout}${red.stderr}`);
+  assert.match(red.stderr, /not wired safely/);
+  assert.match(red.stderr, /#697/);
+
+  // And the green path, so the red above is not simply "this script always fails".
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ scripts: healthyScripts() }, null, 2), 'utf8');
+  const green = spawnSync(process.execPath, [ASSERT_PATH, `--root=${dir}`], { encoding: 'utf8' });
+
+  assert.equal(green.status, 0, `${green.stdout}${green.stderr}`);
+  assert.match(green.stdout, /prepublishOnly delegates/);
+});
+
+test('repoRootFromHere resolves this module, spaces and worktrees included', () => {
+  // `new URL(metaUrl).pathname` leaves %20 in place and yields /C:/… on Windows.
+  assert.equal(repoRootFromHere(import.meta.url), REPO_ROOT);
+  assert.throws(() => repoRootFromHere(pathToFileURL(tmpdir()).href), /could not locate a repository root/);
 });
