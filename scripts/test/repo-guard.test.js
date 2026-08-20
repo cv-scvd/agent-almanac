@@ -573,3 +573,264 @@ test('the snapshot lives outside the working tree, so it cannot dirty it', async
   assert.equal(r.status, 0, r.stderr);
   assert.ok(existsSync(snapshotPath(dir)), 'verify keeps the snapshot by default');
 });
+
+// ── rebaseline: the exit for a legitimate mover (#688) ──────────────────────
+//
+// The gap these cover: `verify` and `release` both treat a moved HEAD as
+// unexplained, which is right for a stray agent commit and wrong for the
+// commonest event in any long run — the arming session merging its own branch.
+// The only way through was `guard:snapshot -- --force`, a flag whose own text
+// warns against itself, and which leaves a transcript indistinguishable from a
+// careless rebaseline over an agent's commit.
+//
+// The tests that matter most here are the REFUSALS. A re-arming command that
+// accepts too much is worse than no command at all, because it launders the
+// exact write (#493) the guard was built to catch — so each of the four things
+// it must refuse gets its own test.
+
+/** Move HEAD the way an operator legitimately does: merge your own branch. */
+function mergeOwnBranch(dir) {
+  git(dir, ['checkout', '-q', '-b', 'feat']);
+  writeFileSync(join(dir, 'src', 'b.txt'), 'mine\n', 'utf8');
+  git(dir, ['add', '--', 'src/b.txt']);
+  git(dir, ['commit', '-m', 'my own work']);
+  git(dir, ['checkout', '-q', 'main']);
+  git(dir, ['merge', '--no-ff', '-m', 'merge my own branch', 'feat']);
+  return git(dir, ['rev-parse', 'HEAD']);
+}
+
+test('rebaseline re-arms after the arming session merges its own branch', async (t) => {
+  const dir = makeRepo(t);
+  guard(dir, ['snapshot']);
+  const head = mergeOwnBranch(dir);
+
+  const r = guard(dir, ['rebaseline', `--accept=${head}`, '--reason=merged my own PR']);
+
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /re-baselined/);
+  // And the guard is live again from the new baseline, rather than disarmed.
+  assert.equal(guard(dir, ['verify']).status, 0, 'verify should pass against the new baseline');
+});
+
+test('rebaseline RECORDS what it accepted — the thing --force cannot do', async (t) => {
+  // Finding 1: `--force` exists but is indistinguishable in the transcript from
+  // a careless rebaseline over an agent's stray commit. Provenance is the whole
+  // difference between the two, so it is asserted rather than assumed.
+  const dir = makeRepo(t);
+  guard(dir, ['snapshot']);
+  const before = git(dir, ['rev-parse', 'HEAD']);
+  const head = mergeOwnBranch(dir);
+
+  guard(dir, ['rebaseline', `--accept=${head}`, '--reason=merged my own PR']);
+  const snap = JSON.parse(readFileSync(snapshotPath(dir), 'utf8'));
+
+  assert.equal(snap.head, head, 'the new baseline is the new HEAD');
+  assert.equal(snap.rebaselinedFrom.head, before, 'it records where it came from');
+  assert.equal(snap.rebaselinedFrom.reason, 'merged my own PR');
+  assert.equal(snap.rebaselinedFrom.fastForward, true);
+  assert.equal(snap.rebaselinedFrom.acceptedCommits.length, 2,
+    'both the merge and the commit it brought in are named');
+  assert.ok(snap.rebaselinedFrom.acceptedCommits.every((line) => line.includes('Fixture')),
+    'the author of each accepted commit is recorded, since that is the discriminator');
+  assert.equal(snap.rebaselineHistory.length, 1);
+});
+
+test('a second rebaseline appends to the history rather than erasing the first', async (t) => {
+  const dir = makeRepo(t);
+  guard(dir, ['snapshot']);
+  guard(dir, ['rebaseline', `--accept=${mergeOwnBranch(dir)}`, '--reason=first']);
+
+  git(dir, ['checkout', '-q', '-b', 'feat2']);
+  writeFileSync(join(dir, 'src', 'c.txt'), 'more\n', 'utf8');
+  git(dir, ['add', '--', 'src/c.txt']);
+  git(dir, ['commit', '-m', 'more of my own work']);
+  git(dir, ['checkout', '-q', 'main']);
+  git(dir, ['merge', '--no-ff', '-m', 'merge again', 'feat2']);
+  guard(dir, ['rebaseline', `--accept=${git(dir, ['rev-parse', 'HEAD'])}`, '--reason=second']);
+
+  const snap = JSON.parse(readFileSync(snapshotPath(dir), 'utf8'));
+  assert.deepEqual(snap.rebaselineHistory.map((h) => h.reason), ['first', 'second'],
+    'a chain of re-armings stays visible; each one must not overwrite the last');
+});
+
+// ── the four refusals ───────────────────────────────────────────────────────
+
+test('REFUSES without --accept: the delta must be read before it is accepted', async (t) => {
+  const dir = makeRepo(t);
+  guard(dir, ['snapshot']);
+  const head = mergeOwnBranch(dir);
+
+  const r = guard(dir, ['rebaseline']);
+
+  assert.equal(r.status, 2, 'no acknowledgement means the question is unanswered, not answered no');
+  assert.match(r.stderr, /Nothing has been accepted yet/);
+  assert.match(r.stderr, /commits added:/, 'it must print what it is asking about');
+  assert.ok(r.stderr.includes(head), 'and the exact sha to paste back');
+  assert.ok(existsSync(snapshotPath(dir)), 'the original baseline survives a refusal');
+});
+
+test('REFUSES a sha that is not the current HEAD', async (t) => {
+  const dir = makeRepo(t);
+  guard(dir, ['snapshot']);
+  const before = git(dir, ['rev-parse', 'HEAD']);
+  mergeOwnBranch(dir);
+
+  // Accepting the OLD head is the plausible mistake: it is the sha printed first.
+  const r = guard(dir, ['rebaseline', `--accept=${before}`]);
+
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /but HEAD is/);
+  const snap = JSON.parse(readFileSync(snapshotPath(dir), 'utf8'));
+  assert.equal(snap.head, before, 'the baseline is untouched by a refused acceptance');
+});
+
+test('REFUSES a sha too short to be an acknowledgement of anything', async (t) => {
+  const dir = makeRepo(t);
+  guard(dir, ['snapshot']);
+  const head = mergeOwnBranch(dir);
+
+  // A 6-character prefix of the REAL head: correct as far as it goes, and still
+  // refused. Otherwise `--accept=a` would pass on roughly one repo in sixteen.
+  const r = guard(dir, ['rebaseline', `--accept=${head.slice(0, 6)}`]);
+
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /not specific enough/);
+});
+
+test('REFUSES when the WORKING TREE moved, not just HEAD', async (t) => {
+  // The load-bearing refusal. "I moved HEAD deliberately" is a claim about
+  // history and says nothing about file contents; accepting a content change
+  // under it would rebaseline a stray write (#493) as the new normal.
+  const dir = makeRepo(t);
+  guard(dir, ['snapshot']);
+  const head = mergeOwnBranch(dir);
+  writeFileSync(join(dir, 'src', 'a.txt'), 'someone else wrote this\n', 'utf8');
+
+  const r = guard(dir, ['rebaseline', `--accept=${head}`]);
+
+  assert.equal(r.status, 1, 'this is the case the guard exists for — it must go red');
+  assert.match(r.stderr, /WORKING TREE moved/);
+  const snap = JSON.parse(readFileSync(snapshotPath(dir), 'utf8'));
+  assert.notEqual(snap.head, head, 'the baseline must NOT have been moved');
+});
+
+test('rebaseline with no snapshot is not a synonym for snapshot', async (t) => {
+  // Silently arming here would make `guard:rebaseline` a second spelling of
+  // `guard:snapshot` that no longer means "I accepted a move".
+  const dir = makeRepo(t);
+
+  const r = guard(dir, ['rebaseline', `--accept=${git(dir, ['rev-parse', 'HEAD'])}`]);
+
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /nothing to re-baseline FROM/);
+  assert.ok(!existsSync(snapshotPath(dir)), 'it must not have armed one');
+});
+
+test('rebaseline on an unmoved repository changes nothing', async (t) => {
+  const dir = makeRepo(t);
+  guard(dir, ['snapshot']);
+  const armed = readFileSync(snapshotPath(dir), 'utf8');
+
+  const r = guard(dir, ['rebaseline']);
+
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /nothing moved/);
+  assert.equal(readFileSync(snapshotPath(dir), 'utf8'), armed,
+    'a no-op rebaseline must not rewrite takenAt or add empty provenance');
+});
+
+// ── the guard still guards (#688 AC3) ───────────────────────────────────────
+
+test('AC3: an agent commit the operator did not make still goes RED', async (t) => {
+  // Everything above adds an exit. This asserts the exit did not become a hole:
+  // the case the whole tool exists for must still be caught, and `verify` must
+  // still name the recovery for a commit that is not yours.
+  const dir = makeRepo(t);
+  guard(dir, ['snapshot']);
+  const before = git(dir, ['rev-parse', 'HEAD']);
+
+  writeFileSync(join(dir, 'src', 'stray-fixture.sh'), '#!/bin/sh\necho oops\n', 'utf8');
+  git(dir, ['add', '--', 'src/stray-fixture.sh']);
+  git(dir, ['-c', 'user.name=Subagent', '-c', 'user.email=agent@example.invalid',
+    'commit', '-m', 'add fixture']);
+
+  assert.equal(git(dir, ['status', '--porcelain']), '',
+    'precondition: git status reads CLEAN, which is why this needs a guard at all');
+
+  const r = guard(dir, ['verify']);
+
+  assert.equal(r.status, 1, 'a committed stray write must still be caught');
+  assert.match(r.stderr, /HEAD moved/);
+  assert.match(r.stderr, /Subagent/, 'the author is printed — it is the discriminator');
+  assert.ok(r.stderr.includes(`git reset --mixed ${before.slice(0, 8)}`),
+    'the recovery for a commit that is NOT yours must still be named');
+  assert.ok(existsSync(snapshotPath(dir)), 'and the baseline is kept for a re-verify');
+});
+
+test('AC3: --release still refuses to drop the baseline over an agent commit', async (t) => {
+  const dir = makeRepo(t);
+  guard(dir, ['snapshot']);
+  writeFileSync(join(dir, 'src', 'stray.txt'), 'oops\n', 'utf8');
+  git(dir, ['add', '--', 'src/stray.txt']);
+  git(dir, ['commit', '-m', 'stray']);
+
+  const r = guard(dir, ['verify', '--release']);
+
+  assert.equal(r.status, 1);
+  assert.ok(existsSync(snapshotPath(dir)), 'release must not consume a dirty baseline');
+});
+
+test('verify names BOTH exits when HEAD moves, and prefers neither', async (t) => {
+  // Finding 2: the old message offered `git reset --mixed <snapshot>` alone,
+  // which would undo a merge the operator intended — wrong advice delivered at
+  // the moment they are deciding what to trust.
+  const dir = makeRepo(t);
+  guard(dir, ['snapshot']);
+  const head = mergeOwnBranch(dir);
+
+  const r = guard(dir, ['verify']);
+
+  assert.equal(r.status, 1, 'a moved HEAD is still a change; naming the exit is not accepting it');
+  assert.match(r.stderr, /If a commit is NOT yours/);
+  assert.match(r.stderr, /If every commit IS yours/);
+  assert.ok(r.stderr.includes(`--accept=${head}`), 'the rebaseline exit is copy-pasteable');
+  assert.match(r.stderr, /IS an ancestor of the new HEAD/,
+    'ancestry is reported as evidence for the reader to weigh');
+});
+
+test('a replaced history is reported as NOT an ancestor', async (t) => {
+  // The reset advice is actively destructive here, so the message says so.
+  const dir = makeRepo(t);
+  guard(dir, ['snapshot']);
+  git(dir, ['checkout', '-q', '--orphan', 'other']);
+  writeFileSync(join(dir, 'src', 'a.txt'), 'unrelated\n', 'utf8');
+  git(dir, ['add', '--', 'src/a.txt']);
+  git(dir, ['commit', '-m', 'unrelated root']);
+
+  const r = guard(dir, ['verify']);
+
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /NOT an ancestor of the new HEAD/);
+  assert.match(r.stderr, /move you onto different history/);
+});
+
+test('--accept given without a value says so, rather than "unknown argument"', async (t) => {
+  const dir = makeRepo(t);
+  guard(dir, ['snapshot']);
+
+  const r = guard(dir, ['rebaseline', '--accept']);
+
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /needs a value/);
+});
+
+test('rebaseline rejects flags that belong to another subcommand', async (t) => {
+  const dir = makeRepo(t);
+  guard(dir, ['snapshot']);
+
+  for (const bad of ['--release', '--force', '--acccept=abcdefg']) {
+    const r = guard(dir, ['rebaseline', bad]);
+    assert.equal(r.status, 2, `${bad} should be refused`);
+    assert.match(r.stderr, /unknown argument/);
+  }
+});

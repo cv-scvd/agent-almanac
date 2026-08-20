@@ -75,6 +75,7 @@
     "guard:snapshot": "node scripts/repo-guard.js snapshot",
     "guard:verify": "node scripts/repo-guard.js verify",
     "guard:release": "node scripts/repo-guard.js verify --release",
+    "guard:rebaseline": "node scripts/repo-guard.js rebaseline",
     "coverage:evals": "node scripts/eval-coverage.js",
     "mutation-check": "node scripts/mutation-check.js",
     "gate-envelope": "node scripts/gate-envelope.js",
