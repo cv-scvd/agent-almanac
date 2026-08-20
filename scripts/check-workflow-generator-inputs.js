@@ -88,17 +88,26 @@ const LIST = process.argv.includes('--list');
 const HEALER_WORKFLOWS = ['.github/workflows/update-readmes.yml'];
 
 /**
- * Actions and commands that write back to the repository.
+ * Actions that write back to the repository, matched anywhere in the (comment-stripped) file.
  *
  * Enumerated rather than pattern-matched, and scoped the way the rest of this file is scoped:
- * an unrecognised way of committing is a human decision, not an absence. Adding a fourth
- * mechanism means adding it here, which is a smaller thing to remember than a whole workflow.
+ * an unrecognised way of committing is a human decision, not an absence. The complement of
+ * "ways to commit" is unenumerable — `gh api` PUT to `/contents`, `actions/github-script` with
+ * `createOrUpdateFileContents`, a fork of any action below, a reusable workflow that commits —
+ * so the honest claim is NOT that an undeclared healer cannot exist. It is that these forms
+ * cannot be missed, and the highest-prior future failure here is someone copying
+ * `update-readmes.yml`'s own pattern, which is the first entry.
  */
-const COMMIT_SIGNALS = [
+const COMMIT_ACTIONS = [
   { pattern: /stefanzweifel\/git-auto-commit-action/, name: 'git-auto-commit-action' },
   { pattern: /peter-evans\/create-pull-request/, name: 'create-pull-request' },
   { pattern: /EndBug\/add-and-commit/, name: 'add-and-commit' },
-  { pattern: /^\s*(?:-\s*)?run:.*\bgit\s+push\b/m, name: 'a bare `git push`' },
+  { pattern: /ad-m\/github-push-action/, name: 'github-push-action' },
+];
+
+/** Shell commands that write back, tested against EXPANDED run steps rather than raw lines. */
+const COMMIT_COMMANDS = [
+  { pattern: /\bgit\s+push\b/, name: 'a bare `git push`' },
 ];
 
 /**
@@ -112,15 +121,27 @@ function assertHealersDeclared(workflowDir, declared) {
   const undeclared = [];
   for (const name of readdirSync(workflowDir).sort()) {
     if (!/\.ya?ml$/.test(name)) continue;
-    const relative = `.github/workflows/${name}`;
-    if (declared.includes(relative)) continue;
+    const workflowPath = `.github/workflows/${name}`;
+    if (declared.includes(workflowPath)) continue;
     const text = readFileSync(join(workflowDir, name), 'utf8');
     // Comments are not commits. `validate-line-endings.yml` echoes `git add --renormalize`
     // as ADVICE, and a repo-wide grep for commit verbs finds it — which is why the signals
     // are anchored at `run:`/`uses:` rather than matched anywhere in the file.
     const stripped = text.split(/\r?\n/).filter((line) => !/^\s*#/.test(line)).join('\n');
-    const hit = COMMIT_SIGNALS.find(({ pattern }) => pattern.test(stripped));
-    if (hit) undeclared.push({ relative, signal: hit.name });
+    // Shell commands go through `runSteps`, which EXPANDS block scalars. Matching them against
+    // raw lines instead made the `git push` signal dead for the form workflows actually use:
+    //
+    //     - run: |
+    //         git add -A && git commit -m update
+    //         git push
+    //
+    // The `run:` line carries no `git push`, the `git push` line carries no `run:`, and a
+    // same-line pattern sees neither. A signal that cannot fire on its own named case is worse
+    // than an absent one, because the next reader assumes it works — which is this file's own
+    // argument about unreachable exemptions, one list further down.
+    const hit = COMMIT_ACTIONS.find(({ pattern }) => pattern.test(stripped))
+      ?? COMMIT_COMMANDS.find(({ pattern }) => runSteps(text).some((cmd) => pattern.test(cmd)));
+    if (hit) undeclared.push({ workflowPath, signal: hit.name });
   }
   return undeclared;
 }
@@ -328,13 +349,17 @@ function covered(file, entries) {
 }
 
 let findings = 0;
+// Counted separately so the trailer, which describes UNLISTED MODULES, is not printed for a
+// run whose only findings are undeclared healers — a different class entirely.
+let undeclaredHealers = 0;
 // Structural refusals: the check could not measure at all. Counted separately because
 // `--warn` must not swallow them -- see the exit logic at the bottom.
 let refusals = 0;
 
-for (const { relative, signal } of assertHealersDeclared(join(ROOT, '.github', 'workflows'), HEALER_WORKFLOWS)) {
-  console.error(`FAIL: ${relative} uses ${signal} but is not in HEALER_WORKFLOWS.`);
+for (const { workflowPath, signal } of assertHealersDeclared(join(ROOT, '.github', 'workflows'), HEALER_WORKFLOWS)) {
+  console.error(`${WARN_ONLY ? 'WARN' : 'FAIL'}: ${workflowPath} uses ${signal} but is not in HEALER_WORKFLOWS.`);
   console.error('      Add it, or state why its committed output has no generator inputs.');
+  undeclaredHealers++;
   findings++;
 }
 
@@ -408,10 +433,15 @@ for (const workflow of HEALER_WORKFLOWS) {
   }
 }
 
-if (findings > 0 && !WARN_ONLY) {
+if (findings - undeclaredHealers > 0 && !WARN_ONLY) {
   console.log('');
   console.log('A change to an unlisted module moves generated output without triggering the');
   console.log('healer, so the drift lands at some later unrelated commit instead.');
+}
+if (undeclaredHealers > 0 && !WARN_ONLY) {
+  console.log('');
+  console.log('An undeclared healer commits regenerated output that no trigger-coverage check');
+  console.log('is watching, so its inputs can move without anything noticing.');
 }
 
 // `--warn` downgrades FINDINGS -- an unlisted module -- and never a REFUSAL. A refusal means the

@@ -209,8 +209,10 @@ test('a small baseline does not let one honest failure look broad', () => {
 // without ever being told which.
 //
 // Measured on 22.16.0 and 25.9.0: both parse, because `\S*` matches `#` as readily as `ℹ`.
-// These fixtures are literal transcript tails from those runs, so tightening either pattern
-// against one reporter fails loudly on the other.
+// These are transcript tails from those runs with ONE harmonisation — the `duration_ms` value
+// is shared, which two different binaries would never produce. Said plainly rather than
+// called "literal", on a PR whose thesis is measured-not-inferred; the harmonisation is also
+// the point, since it leaves the prefix glyph as the only difference between them.
 
 const TAP_TAIL = [
   '# tests 3',

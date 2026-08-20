@@ -34,10 +34,13 @@ ${steps.map((s) => `      - run: ${s}`).join('\n')}
 `;
 
 /** Build a throwaway tree and run the check over it. */
-function run({ paths, steps, files, scripts = {}, warn = false }) {
+function run({ paths, steps, files, scripts = {}, warn = false, extraWorkflows = {} }) {
   const dir = mkdtempSync(join(tmpdir(), 'gen-inputs-'));
   try {
     mkdirSync(join(dir, '.github/workflows'), { recursive: true });
+    for (const [name, body] of Object.entries(extraWorkflows)) {
+      writeFileSync(join(dir, '.github/workflows', name), body);
+    }
     mkdirSync(join(dir, 'scripts/lib'), { recursive: true });
     writeFileSync(join(dir, '.github/workflows/update-readmes.yml'), WORKFLOW(paths, steps));
     writeFileSync(join(dir, 'package.json'), JSON.stringify({ scripts }, null, 2));
@@ -416,4 +419,107 @@ test('a bare `--root` with no value exits 2 rather than crashing', () => {
   }
   assert.equal(status, 2);
   assert.match(output, /--root needs a value/);
+});
+
+// ── the healer DECLARATION is itself checked (#663) ─────────────────────────
+//
+// Without these, `assertHealersDeclared` shipped with an envelope run by hand and nothing
+// re-proving it afterwards. This repo has a name for that: a manual break-and-check proves
+// the feature, not the coverage — #458 verified an exit code end to end by hand, wrote it
+// into the commit, and deleting the fix line still left all 101 tests green.
+
+/** A workflow that commits, in the form workflows actually use. */
+const BLOCK_SCALAR_COMMITTER = `name: Commits Things
+on:
+  push:
+    branches: [main]
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: |
+          git config user.name bot
+          git add -A && git commit -m update
+          git push
+`;
+
+const ACTION_COMMITTER = `name: Commits Things
+on:
+  push:
+    branches: [main]
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: stefanzweifel/git-auto-commit-action@v6
+`;
+
+test('an undeclared healer using a BLOCK-SCALAR git push is refused', () => {
+  // The form that matters, and the one the first version of this signal could not see: the
+  // `run:` line carries no `git push` and the `git push` line carries no `run:`, so a
+  // same-line pattern matched neither. Routed through `runSteps`, which expands block scalars.
+  const { status, output } = run({
+    paths: ['skills/**', 'scripts/generate-readmes.js'],
+    steps: ['node scripts/generate-readmes.js'],
+    files: { 'scripts/generate-readmes.js': 'export const x = 1;\n' },
+    extraWorkflows: { 'commits.yml': BLOCK_SCALAR_COMMITTER },
+  });
+
+  assert.equal(status, 1, output);
+  assert.match(output, /commits\.yml uses a bare `git push` but is not in HEALER_WORKFLOWS/);
+});
+
+test('an undeclared healer using a commit ACTION is refused', () => {
+  const { status, output } = run({
+    paths: ['skills/**', 'scripts/generate-readmes.js'],
+    steps: ['node scripts/generate-readmes.js'],
+    files: { 'scripts/generate-readmes.js': 'export const x = 1;\n' },
+    extraWorkflows: { 'commits.yml': ACTION_COMMITTER },
+  });
+
+  assert.equal(status, 1, output);
+  assert.match(output, /commits\.yml uses git-auto-commit-action but is not in HEALER_WORKFLOWS/);
+});
+
+test('a workflow that commits nothing is not accused', () => {
+  // The accept side. Without it, "refuse everything" would satisfy both tests above — and
+  // this fixture carries the exact shape that would false-positive a naive scan: a full-line
+  // comment naming the action, which is how `update-readmes.yml` records its SHA pin.
+  const innocent = `name: Just Checks
+on:
+  pull_request:
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      # SHA-pinned: https://github.com/stefanzweifel/git-auto-commit-action/releases
+      - run: |
+          echo "Repair locally, then commit:"
+          echo "    git add --renormalize ."
+          npm test
+`;
+  const { status, output } = run({
+    paths: ['skills/**', 'scripts/generate-readmes.js'],
+    steps: ['node scripts/generate-readmes.js'],
+    files: { 'scripts/generate-readmes.js': 'export const x = 1;\n' },
+    extraWorkflows: { 'innocent.yml': innocent },
+  });
+
+  assert.equal(status, 0, output);
+  assert.ok(!/HEALER_WORKFLOWS/.test(output), output);
+});
+
+test('the DECLARED healer is skipped, or the check would accuse itself', () => {
+  // `update-readmes.yml` contains the very string signal 1 hunts. If the declared-skip path
+  // broke, every run of this check would fail on the one workflow it exists to serve.
+  const { status, output } = run({
+    paths: ['skills/**', 'scripts/generate-readmes.js'],
+    steps: ['node scripts/generate-readmes.js'],
+    files: { 'scripts/generate-readmes.js': 'export const x = 1;\n' },
+    extraWorkflows: { 'update-readmes.yml': ACTION_COMMITTER },
+  });
+
+  assert.equal(status, 0, output);
+  assert.ok(!/HEALER_WORKFLOWS/.test(output), output);
 });
