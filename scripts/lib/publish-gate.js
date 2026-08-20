@@ -60,6 +60,16 @@ export const CANONICAL_SCRIPT = 'test:cli';
 export const PUBLISH_HOOK = 'prepublishOnly';
 
 /**
+ * npm's pre-hook for the canonical script. Because `prepublishOnly` delegates to
+ * `npm run test:cli`, wiring the check here puts it inside the publish path — no
+ * separate `prepublishOnly` clause needed, and therefore no second spelling.
+ */
+export const PRE_HOOK = `pre${CANONICAL_SCRIPT}`;
+
+/** The checker the pre-hook must invoke. */
+export const ASSERT_SCRIPT = 'scripts/assert-publish-gate.js';
+
+/**
  * Test files a `node --test` invocation would pick up. Kept in one place so the
  * discovered set and the named set are compared under the same definition of "a test".
  */
@@ -163,7 +173,26 @@ export function inspectPublishGate(repoRoot, scripts = null) {
     );
   }
 
-  // 4. Named set versus discovered set, both directions.
+  // 4. The operator-side hook is still wired. Without this the check has the same
+  //    disarm shape as the defect it guards: delete one line from package.json and the
+  //    pre-publish check vanishes on the machine that publishes, while every test here
+  //    keeps passing — they exercise the rule module, which is still perfectly intact.
+  //    Found by mutating this file's own gate rather than by reading it.
+  const preHook = pkgScripts[PRE_HOOK];
+  if (!preHook) {
+    problems.push(
+      `"${PRE_HOOK}" is missing. It is what runs this check on the operator's machine ` +
+      `before an npm publish PUT — \`${PUBLISH_HOOK}\` delegates to "${CANONICAL_SCRIPT}", ` +
+      `and npm fires the pre-hook there. Without it the gate exists only in CI.`,
+    );
+  } else if (!preHook.includes(ASSERT_SCRIPT)) {
+    problems.push(
+      `"${PRE_HOOK}" ("${preHook}") does not run ${ASSERT_SCRIPT}, so nothing checks the ` +
+      `publish gate at publish time.`,
+    );
+  }
+
+  // 5. Named set versus discovered set, both directions.
   const named = namedTestFiles(pkgScripts[CANONICAL_SCRIPT] ?? '');
   const discovered = discoverTestFiles(repoRoot);
 

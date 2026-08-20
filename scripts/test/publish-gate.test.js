@@ -36,6 +36,7 @@ import {
   discoverTestFiles,
   CANONICAL_SCRIPT,
   PUBLISH_HOOK,
+  PRE_HOOK,
   CLI_TEST_DIR,
 } from '../lib/publish-gate.js';
 
@@ -117,6 +118,29 @@ test('npm test dropping the CLI suite is rejected — that was #680 itself', () 
   assert.ok(
     problems.some((p) => p.includes('is the release gate')),
     `expected the release-gate problem, got:\n${problems.join('\n')}`,
+  );
+});
+
+test('deleting the pretest:cli hook is rejected — the gate must not be silently disarmable', () => {
+  // This branch exists because mutating package.json found it: with the rule module
+  // intact, dropping one line from package.json removed the publish-time check and
+  // every test still passed. Same disarm shape as the defect #697 describes.
+  const scripts = healthyScripts();
+  delete scripts[PRE_HOOK];
+  const { problems } = inspectPublishGate(REPO_ROOT, scripts);
+  assert.ok(
+    problems.some((p) => p.includes('exists only in CI')),
+    `expected the disarmed-hook problem, got:\n${problems.join('\n')}`,
+  );
+});
+
+test('a pretest:cli that runs something else is rejected', () => {
+  const scripts = healthyScripts();
+  scripts[PRE_HOOK] = 'echo "checked, honest"';
+  const { problems } = inspectPublishGate(REPO_ROOT, scripts);
+  assert.ok(
+    problems.some((p) => p.includes('at publish time')),
+    `expected a wrong-checker problem, got:\n${problems.join('\n')}`,
   );
 });
 
