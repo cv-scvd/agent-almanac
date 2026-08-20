@@ -71,6 +71,31 @@ export const PRE_HOOK = `pre${CANONICAL_SCRIPT}`;
 export const ASSERT_SCRIPT = 'scripts/assert-publish-gate.js';
 
 /**
+ * The exact, only legitimate values of the two single-purpose hooks.
+ *
+ * Equality, not matching — and the reason is that the property being protected is not
+ * "does this reach the suite" but "does a failing suite ABORT THE PUBLISH". That lives in
+ * the exit status, which no segment matcher can see. Every one of these reaches the suite
+ * by any reasonable matcher and none of them gates:
+ *
+ *     npm run test:cli || true      suite runs, failure swallowed, publish proceeds
+ *     npm run test:cli; echo done   `;` takes the LAST command's exit status
+ *     npm run test:cli | tee log    the pipeline exits with tee's 0
+ *     npm run test:cli &            backgrounded; the shell exits 0 immediately
+ *     true || npm run test:cli      short-circuits — the suite never runs at all
+ *     cd elsewhere && npm run …     runs a DIFFERENT package's script
+ *
+ * A hook with exactly one legitimate value should be checked against that value. This is
+ * #697's own thesis — the path is named exactly once — carried to its endpoint. Anything
+ * else is refused LOUDLY, which is the recoverable direction.
+ *
+ * `test` is deliberately NOT held to this: it legitimately chains, and a pure `&&` chain
+ * propagates a failure in either position, so `invokesScript` is the right instrument there.
+ */
+export const CANONICAL_INVOCATION = `npm run ${CANONICAL_SCRIPT}`;
+export const ASSERT_INVOCATION = `node ${ASSERT_SCRIPT}`;
+
+/**
  * Test files a `node --test` invocation would pick up. Kept in one place so the
  * discovered set and the named set are compared under the same definition of "a test".
  */
@@ -221,10 +246,14 @@ export function inspectPublishGate(repoRoot, scripts = null) {
       `"${PUBLISH_HOOK}" spells a suite path itself ("${hook}"). It must delegate — ` +
       `\`npm run ${CANONICAL_SCRIPT}\` — so the two cannot drift apart (#697).`,
     );
-  } else if (!invokesScript(hook, CANONICAL_SCRIPT)) {
+  } else if (hook !== CANONICAL_INVOCATION) {
     problems.push(
-      `"${PUBLISH_HOOK}" ("${hook}") does not reach "${CANONICAL_SCRIPT}". The last gate ` +
-      `before an npm publish PUT would not run the CLI suite.`,
+      `"${PUBLISH_HOOK}" must be exactly \`${CANONICAL_INVOCATION}\`, not "${hook}". ` +
+      `Reaching the suite is not the property — ABORTING THE PUBLISH WHEN IT FAILS is, and ` +
+      `that lives in the exit status, which no amount of matching can see. ` +
+      `\`npm run test:cli || true\` runs the suite and swallows the failure; ` +
+      `\`npm run test:cli &\` backgrounds it; \`true || npm run test:cli\` never runs it. ` +
+      `All three "reach" it. This hook has exactly one legitimate value (#697).`,
     );
   }
 
@@ -250,10 +279,12 @@ export function inspectPublishGate(repoRoot, scripts = null) {
       `before an npm publish PUT — \`${PUBLISH_HOOK}\` delegates to "${CANONICAL_SCRIPT}", ` +
       `and npm fires the pre-hook there. Without it the gate exists only in CI.`,
     );
-  } else if (!invokesNodeScript(preHook, ASSERT_SCRIPT)) {
+  } else if (preHook !== ASSERT_INVOCATION) {
     problems.push(
-      `"${PRE_HOOK}" ("${preHook}") does not run ${ASSERT_SCRIPT}, so nothing checks the ` +
-      `publish gate at publish time.`,
+      `"${PRE_HOOK}" must be exactly \`${ASSERT_INVOCATION}\`, not "${preHook}". ` +
+      `Extra arguments are not cosmetic here: \`--root=<somewhere clean>\` points the ` +
+      `publish-time check at a tree that is not this repository, and \`|| true\` swallows ` +
+      `its verdict. Both leave every gate green.`,
     );
   }
 

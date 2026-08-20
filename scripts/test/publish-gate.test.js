@@ -114,8 +114,8 @@ test('a prepublishOnly that reaches nothing is rejected', () => {
   scripts[PUBLISH_HOOK] = 'echo "trust me"';
   const { problems } = inspectPublishGate(REPO_ROOT, scripts);
   assert.ok(
-    problems.some((p) => p.includes('does not reach')),
-    `expected a "does not reach" problem, got:\n${problems.join('\n')}`,
+    problems.some((p) => p.includes('must be exactly')),
+    `expected an exact-value problem, got:\n${problems.join('\n')}`,
   );
 });
 
@@ -147,7 +147,7 @@ test('a pretest:cli that runs something else is rejected', () => {
   scripts[PRE_HOOK] = 'echo "checked, honest"';
   const { problems } = inspectPublishGate(REPO_ROOT, scripts);
   assert.ok(
-    problems.some((p) => p.includes('at publish time')),
+    problems.some((p) => p.includes('must be exactly')),
     `expected a wrong-checker problem, got:\n${problems.join('\n')}`,
   );
 });
@@ -199,8 +199,8 @@ test('a substring is not an invocation: "npm run pretest:cli" runs zero CLI test
   scripts[PUBLISH_HOOK] = 'npm run pretest:cli';
   const { problems } = inspectPublishGate(REPO_ROOT, scripts);
   assert.ok(
-    problems.some((p) => p.includes('does not reach')),
-    `"npm run pretest:cli" must not satisfy "reaches test:cli"; got:\n${problems.join('\n')}`,
+    problems.some((p) => p.includes('must be exactly')),
+    `"npm run pretest:cli" must not satisfy the publish hook; got:\n${problems.join('\n')}`,
   );
 });
 
@@ -218,15 +218,54 @@ test('an echo-prefixed command does not count as running anything', () => {
   }
 });
 
-test('a real chained command still counts — the matcher is not merely stricter', () => {
-  // Rejecting everything would pass every test above and be useless. This is the
-  // accept side: the invocation may sit anywhere a shell would start a command.
+test('the AGGREGATE may chain — rejecting everything would be useless, not strict', () => {
+  // `test` legitimately chains, and a pure `&&` chain propagates a failure in either
+  // position, so `invokesScript` is the right instrument there. This is the accept side:
+  // without it, "reject everything" would pass every rejection test above.
   const scripts = healthyScripts();
-  scripts[PUBLISH_HOOK] = 'npm run validate:integrity && npm run test:cli';
-  scripts.test = 'npm run test:scripts && npm run test:cli';
-  scripts[PRE_HOOK] = 'node scripts/assert-publish-gate.js --quiet';
+  scripts.test = 'npm run validate:integrity && npm run test:scripts && npm run test:cli';
   const { problems } = inspectPublishGate(REPO_ROOT, scripts);
   assert.deepEqual(problems, [], problems.join('\n'));
+});
+
+test('REACHING the suite is not GATING on it — the exit status is the property', () => {
+  // Every one of these reaches `test:cli` by any reasonable matcher, and not one makes a
+  // failing suite abort the publish. The first three run it and discard the verdict; the
+  // fourth backgrounds it; the fifth never runs it at all; the sixth runs a DIFFERENT
+  // package's script. `prepublishOnly` has exactly one legitimate value, so it is checked
+  // against that value rather than matched — #697's own thesis at its endpoint.
+  for (const hook of [
+    'npm run test:cli || true',       // failure swallowed
+    'npm run test:cli; echo done',    // `;` takes the LAST exit status
+    'npm run test:cli | tee log',     // the pipeline exits with tee's 0
+    'npm run test:cli &',             // backgrounded; the shell exits 0 immediately
+    'true || npm run test:cli',       // short-circuits — the suite never runs
+    'cd /tmp && npm run test:cli',    // a different package entirely
+  ]) {
+    const { problems } = inspectPublishGate(REPO_ROOT, { ...healthyScripts(), [PUBLISH_HOOK]: hook });
+    assert.ok(
+      problems.some((p) => p.includes('must be exactly')),
+      `"${hook}" reaches the suite without gating on it, and must be refused`,
+    );
+  }
+});
+
+test('the pre-hook cannot be pointed elsewhere, or have its verdict swallowed', () => {
+  // `--root` exists so the assert script's RED path is reachable by a test. In the
+  // PRODUCTION hook it is an escape: it points the publish-time check at a tree that is
+  // not this repository, and every gate stays green — the disarm surface, one notch
+  // narrower, that this PR's second commit exists to close.
+  for (const preHook of [
+    'node scripts/assert-publish-gate.js --root=/tmp/somewhere-clean',
+    'node scripts/assert-publish-gate.js || true',
+    'node scripts/assert-publish-gate.js --quiet',
+  ]) {
+    const { problems } = inspectPublishGate(REPO_ROOT, { ...healthyScripts(), [PRE_HOOK]: preHook });
+    assert.ok(
+      problems.some((p) => p.includes('must be exactly')),
+      `"${preHook}" must be refused — the hook has one legitimate value`,
+    );
+  }
 });
 
 test('invokesScript / invokesNodeScript, at the token boundary', () => {
