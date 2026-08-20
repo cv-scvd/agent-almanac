@@ -75,7 +75,7 @@ import { fileURLToPath } from 'url';
 // change; the counts are why that was expected. What makes it worth fixing anyway is that this
 // script is the instrument used to judge the gate's finding set, and it disagreed with the thing
 // it measures.
-import { foldedTagSequence } from './lib/fences.js';
+import { foldedTagSequence, compareTagSequence, isRetagEscape } from './lib/fences.js';
 import { walkEnglishHistory } from './lib/english-history.js';
 import { collectTargets } from './check-i18n-fence-parity.js';
 
@@ -103,16 +103,21 @@ const LIST_RETAGS = process.argv.includes('--list-retags');
 const ONLY_LOCALE = flagValue('--locale', null);
 
 // Pool every folded tag sequence each English source has ever carried, keyed by `<tree>/<id>`.
-// Sequences are stored joined; the per-count index lets a mismatch be classified as unalignable
-// (no revision of that length) rather than as a retag.
+//
+// The per-count index this used to build alongside is GONE (#676). It existed to classify a
+// mismatch as unalignable rather than a retag — which is exactly what `compareTagSequence`
+// already decides, and did decide, forty lines below in a hand copy of the same triage:
+// same clean/unalignable/retag split, same fewest-differing-positions choice of nearest basis,
+// same `{index, english, translated}` position shape.
+//
+// #612 gave this script production's FOLD and left its CLASSIFICATION a copy. That is half a
+// fix: `fences.js` cites this file as the reproducer for the tag-sequence finding set, and
+// `debt-ratchet.yml` ratchets that set, so an instrument agreeing with production on how tags
+// fold and disagreeing on what a fold means is the same defect one layer up.
 const english = new Map();
 walkEnglishHistory(ROOT, (key, text) => {
-  if (!english.has(key)) english.set(key, { sequences: new Set(), byCount: new Map() });
-  const entry = english.get(key);
-  const seq = foldedTagSequence(text);
-  entry.sequences.add(seq.join(','));
-  if (!entry.byCount.has(seq.length)) entry.byCount.set(seq.length, new Set());
-  entry.byCount.get(seq.length).add(seq.join(','));
+  if (!english.has(key)) english.set(key, new Set());
+  english.get(key).add(foldedTagSequence(text).join(','));
 });
 
 const totals = { clean: 0, unalignable: 0, retag: 0, orphan: 0 };
@@ -124,30 +129,24 @@ for (const target of collectTargets()) {
   const entry = english.get(`${target.tree}/${target.id}`);
   if (!entry) { totals.orphan += 1; continue; }
 
+  // The gate's own predicate, not a copy of it. `null` is clean, `{unalignable: true}` is
+  // unjudged, `{positions}` is the finding — and `positions` already carries the nearest-basis
+  // choice and the 1-based index this report prints.
   const seq = foldedTagSequence(readFileSync(target.absPath, 'utf8'));
-  const joined = seq.join(',');
+  const verdict = compareTagSequence(seq, entry);
   let bucket;
-  if (entry.sequences.has(joined)) {
+  if (verdict === null) {
     bucket = 'clean';
-  } else if (!entry.byCount.has(seq.length)) {
+  } else if (verdict.unalignable) {
     bucket = 'unalignable';
   } else {
     bucket = 'retag';
-    // Report against the count-matched revision that differs in the FEWEST positions — the
-    // nearest legal basis. Reporting against an arbitrary one would inflate the diff and make a
-    // single retag look like wholesale divergence.
-    let best = null;
-    for (const candidate of entry.byCount.get(seq.length)) {
-      const other = candidate.split(',');
-      const positions = seq.map((t, i) => [i, t, other[i]]).filter(([, a, b]) => a !== b);
-      if (!best || positions.length < best.positions.length) best = { positions, other };
-    }
     retags.push({
       file: target.relPath,
       locale: target.locale,
       tree: target.tree,
       id: target.id,
-      positions: best.positions.map(([i, a, b]) => ({ index: i + 1, translated: a, english: b })),
+      positions: verdict.positions,
     });
   }
   totals[bucket] += 1;
@@ -189,9 +188,15 @@ if (retags.length) {
 
   // The distribution that decides whether this is a gate or a backlog: a retag TO a localisable
   // tag is the #481 escape; anything else is ordinary tag drift and a likely false positive.
-  const escapes = retags.filter((r) => r.positions.some(
-    (p) => ['text', 'markdown', 'md'].includes(p.translated) && !['text', 'markdown', 'md'].includes(p.english),
-  ));
+  //
+  // `isRetagEscape`, and NOT a hand copy of it — which is the same sentence the rest of this
+  // change is about, one predicate over. This filter was a literal `['text','markdown','md']`
+  // pair until the review of #694 read the file the fix had just landed in and found it: the
+  // fourth literal copy that `isRetagEscape`'s own docstring names and forbids. `LOCALISABLE_TAGS`
+  // is a designed extension point (`fences.js` states the procedure for adding a tag), so the
+  // copy was not merely redundant — adding a tag would have moved the gate's blocking boundary
+  // and left this instrument's escape/drift split silently behind, which is #676 exactly.
+  const escapes = retags.filter((r) => isRetagEscape(r.positions));
   console.log(`\nof those, ${escapes.length} involve a frozen tag becoming localisable — the #481 escape proper.`);
   console.log(`the remaining ${retags.length - escapes.length} are other tag drift, and are the false-positive risk.`);
 }
