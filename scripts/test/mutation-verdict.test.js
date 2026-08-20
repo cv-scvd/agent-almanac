@@ -199,3 +199,69 @@ test('a small baseline does not let one honest failure look broad', () => {
   assert.deepEqual(crashSuspicion(ASSERTION_FAILURE, 3, MIN_BASELINE_FOR_SHARE - 1), []);
   assert.equal(crashSuspicion(ASSERTION_FAILURE, 3, MIN_BASELINE_FOR_SHARE).length, 1);
 });
+
+// ── both node:test reporters, pinned from measured transcripts (#666) ────────
+//
+// `package.json` permits `node >= 22.12.0`; CI runs 24. The piped DEFAULT reporter differs
+// across that range — Node 22 emits TAP, Node 23+ emits spec — and these parsers were
+// designed against spec alone. A parse failure disables the share signal by design and
+// says nothing, so a Node-22 user could have been getting one of the two SUSPECT signals
+// without ever being told which.
+//
+// Measured on 22.16.0 and 25.9.0: both parse, because `\S*` matches `#` as readily as `ℹ`.
+// These fixtures are literal transcript tails from those runs, so tightening either pattern
+// against one reporter fails loudly on the other.
+
+const TAP_TAIL = [
+  '# tests 3',
+  '# suites 0',
+  '# pass 2',
+  '# fail 1',
+  '# cancelled 0',
+  '# skipped 0',
+  '# todo 0',
+  '# duration_ms 91.861266',
+].join('\n');
+
+const SPEC_TAIL = [
+  'ℹ tests 3',
+  'ℹ suites 0',
+  'ℹ pass 2',
+  'ℹ fail 1',
+  'ℹ cancelled 0',
+  'ℹ skipped 0',
+  'ℹ todo 0',
+  'ℹ duration_ms 91.861266',
+].join('\n');
+
+test('the counts parse on Node 22 TAP and on Node 23+ spec alike', () => {
+  for (const [label, tail] of [['TAP (node 22)', TAP_TAIL], ['spec (node 23+)', SPEC_TAIL]]) {
+    assert.equal(parseFailCount(tail), 1, `fail count under ${label}`);
+    assert.equal(parsePassCount(tail), 2, `pass count under ${label}`);
+  }
+});
+
+test('an unrecognised format still returns null rather than inventing a count', () => {
+  // The property that makes the above safe to rely on: when the reporter changes again,
+  // the share signal disables itself instead of guessing. A parse that returned 0 here
+  // would read as "zero failures", which is the opposite of what it knows.
+  assert.equal(parseFailCount('RESULTS: 1 failure of 3'), null);
+  assert.equal(parsePassCount('RESULTS: 2 successes of 3'), null);
+  assert.equal(parseFailCount(''), null);
+});
+
+test('the crash signature is reporter-independent, on both transcript shapes', () => {
+  // Measured end to end on Node 22 rather than argued from format-independence: an
+  // undeclared-binding mutant reported `SUSPECT KILL — 18 failing test(s)`, and a
+  // behavioural mutant on the same file reported `MUTANT KILLED by 1` with no SUSPECT.
+  // `crashSuspicion` returns an ARRAY of reasons, and `[]` is truthy — so assert on its
+  // length. A bare `assert.ok(crashSuspicion(...))` passes for every input, which is a
+  // vacuous test dressed as a real one, and it is how this test first failed.
+  const crash = 'ReferenceError: preHook is not defined\n    at inspectPublishGate';
+  assert.equal(crashSuspicion(`${TAP_TAIL}\n${crash}`, 1, 600).length, 1,
+    'TAP transcript carrying a crash');
+  assert.equal(crashSuspicion(`${SPEC_TAIL}\n${crash}`, 1, 600).length, 1,
+    'spec transcript carrying a crash');
+  assert.deepEqual(crashSuspicion(TAP_TAIL, 1, 600), [], 'a clean TAP transcript is not suspect');
+  assert.deepEqual(crashSuspicion(SPEC_TAIL, 1, 600), [], 'a clean spec transcript is not suspect');
+});

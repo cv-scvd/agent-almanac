@@ -47,7 +47,7 @@
  * finding, so an entry file it cannot read is an error rather than an empty graph.
  */
 
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname, relative, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -76,8 +76,54 @@ const LIST = process.argv.includes('--list');
  * property of intent that no file states mechanically — `git-auto-commit-action` is a strong
  * signal but a job could write output another way — so this is the one thing a human declares.
  * Everything downstream of it is derived.
+ *
+ * That reasoning holds and its consequence did not follow from it (#663): a future
+ * auto-committing workflow was invisible here until a human remembered to add it, which is the
+ * same list-maintained-by-memory failure the input derivation exists to close, one level up.
+ *
+ * So the declaration is now itself CHECKED, by `assertHealersDeclared` below. The list stays
+ * authoritative — a human may still declare a healer no heuristic can see — and the heuristic
+ * can no longer miss one it can see. Superset, not replacement.
  */
 const HEALER_WORKFLOWS = ['.github/workflows/update-readmes.yml'];
+
+/**
+ * Actions and commands that write back to the repository.
+ *
+ * Enumerated rather than pattern-matched, and scoped the way the rest of this file is scoped:
+ * an unrecognised way of committing is a human decision, not an absence. Adding a fourth
+ * mechanism means adding it here, which is a smaller thing to remember than a whole workflow.
+ */
+const COMMIT_SIGNALS = [
+  { pattern: /stefanzweifel\/git-auto-commit-action/, name: 'git-auto-commit-action' },
+  { pattern: /peter-evans\/create-pull-request/, name: 'create-pull-request' },
+  { pattern: /EndBug\/add-and-commit/, name: 'add-and-commit' },
+  { pattern: /^\s*(?:-\s*)?run:.*\bgit\s+push\b/m, name: 'a bare `git push`' },
+];
+
+/**
+ * Refuse a workflow that commits and is not declared a healer.
+ *
+ * The failure this closes is quiet: an undeclared healer's committed output has generator
+ * inputs nobody is checking trigger coverage for, so drift lands at some later unrelated
+ * commit — the exact outcome `update-readmes.yml`'s own header says it exists to prevent.
+ */
+function assertHealersDeclared(workflowDir, declared) {
+  const undeclared = [];
+  for (const name of readdirSync(workflowDir).sort()) {
+    if (!/\.ya?ml$/.test(name)) continue;
+    const relative = `.github/workflows/${name}`;
+    if (declared.includes(relative)) continue;
+    const text = readFileSync(join(workflowDir, name), 'utf8');
+    // Comments are not commits. `validate-line-endings.yml` echoes `git add --renormalize`
+    // as ADVICE, and a repo-wide grep for commit verbs finds it — which is why the signals
+    // are anchored at `run:`/`uses:` rather than matched anywhere in the file.
+    const stripped = text.split(/\r?\n/).filter((line) => !/^\s*#/.test(line)).join('\n');
+    const hit = COMMIT_SIGNALS.find(({ pattern }) => pattern.test(stripped));
+    if (hit) undeclared.push({ relative, signal: hit.name });
+  }
+  return undeclared;
+}
 
 /** Read the `paths:` entries of a workflow's `push:` trigger. */
 function pushPaths(workflowText) {
@@ -285,6 +331,12 @@ let findings = 0;
 // Structural refusals: the check could not measure at all. Counted separately because
 // `--warn` must not swallow them -- see the exit logic at the bottom.
 let refusals = 0;
+
+for (const { relative, signal } of assertHealersDeclared(join(ROOT, '.github', 'workflows'), HEALER_WORKFLOWS)) {
+  console.error(`FAIL: ${relative} uses ${signal} but is not in HEALER_WORKFLOWS.`);
+  console.error('      Add it, or state why its committed output has no generator inputs.');
+  findings++;
+}
 
 for (const workflow of HEALER_WORKFLOWS) {
   const absolute = join(ROOT, workflow);
