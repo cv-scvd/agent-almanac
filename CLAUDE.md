@@ -145,7 +145,9 @@ npm run guard:rebaseline                       # prints the commits; refuses, ex
 npm run guard:rebaseline -- --accept=<sha>     # re-arms, recording what it accepted
 ```
 
-Read every author it prints before accepting — that is the only thing separating your merge from a commit you did not make, and the tool cannot read it for you. The `<sha>` must equal the current HEAD, so the acknowledgement cannot be typed unread, and the new snapshot records the accepted commits and reason where `--force` leaves no trace. It **refuses** any worktree, content, or index-flag change: "I moved HEAD deliberately" is a claim about history and says nothing about file contents.
+Read every commit it prints and decide whether you made it. The **author line is a hint, not the test** — a subagent commits through this repository's own git config, so in #493 the author was identical to the operator's; what the commit *contains* is the test. The `<sha>` must equal the current HEAD, and the new snapshot records the accepted commits and reason where `--force` leaves no trace. It **refuses** any worktree, content, or index-flag change: "I moved HEAD deliberately" is a claim about history and says nothing about file contents.
+
+The sha requirement is a control against **accident, not intent** — anyone can type `$(git rev-parse HEAD)`. What it buys is that a red `guard:verify` never carries a paste-ready override in its own output, so the green path is not one paste away from the failure it is reporting. `verify` therefore names the command without the sha, and refuses to name it at all when the working tree also moved, since `rebaseline` would then decline.
 
 It compares HEAD, branch, worktree status, **the content of every changed or untracked file**, and index flags. Content is load-bearing: overwriting a file that was already modified leaves its ` M path` status line byte-identical, and this repo is usually mid-edit. Index flags are included because `git update-index --skip-worktree` makes git report a modified file as clean from that point on, disarming every later check.
 

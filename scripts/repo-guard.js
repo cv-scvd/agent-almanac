@@ -122,7 +122,7 @@ const USAGE = `Usage:
                                       a branch switch), naming the commits it accepts
 
   npm run guard:snapshot -- --force   replace an existing snapshot (refused by default)
-  npm run guard:snapshot -- --quiet   suppress the success line (also valid on verify)
+  npm run guard:snapshot -- --quiet   suppress the success line (also valid on verify and rebaseline)
   npm run guard:rebaseline -- --accept=<sha> [--reason="..."]
                                       accept the printed move; <sha> must equal the
                                       current HEAD, so it cannot be typed unread
@@ -191,6 +191,22 @@ function git(args, { cwd = undefined, allowFailure = false } = {}) {
     die(`git ${args.join(' ')} failed (exit ${result.status}): ${(result.stderr || '').trim()}`);
   }
   return result.stdout;
+}
+
+/**
+ * Is `maybeAncestor` an ancestor of `descendant`? `true` / `false` / `'unknown'`.
+ *
+ * `git()` discards the exit status under `allowFailure`, so it cannot tell exit 1
+ * ("no") from exit >= 128 ("could not look"). Every other caller only needs the
+ * output; this one is the difference between a claim and a guess.
+ */
+function ancestry(maybeAncestor, descendant) {
+  const result = spawnSync('git', ['merge-base', '--is-ancestor', maybeAncestor, descendant],
+    { encoding: 'utf8', cwd: TOPLEVEL });
+  if (result.error) return 'unknown';
+  if (result.status === 0) return true;
+  if (result.status === 1) return false;
+  return 'unknown';
 }
 
 const TOPLEVEL = git(['rev-parse', '--show-toplevel']).trim();
@@ -362,12 +378,22 @@ for (const field of ['toplevel', 'head', 'branch', 'status', 'contents', 'indexF
 if (before.toplevel !== TOPLEVEL) {
   die(`snapshot was taken in ${before.toplevel}, but this is ${TOPLEVEL}.`);
 }
+// The rebaseline chain is spread at the write site, OUTSIDE writeSnapshot's try/catch.
+// A corrupt `{}` there throws an uncaught TypeError, which exits 1 — and 1 in this
+// tool's vocabulary is the verdict "the repository changed". A malformed snapshot is
+// uncertainty, which is 2. A string is worse: it spreads to its characters and writes
+// garbage history at exit 0.
+if (before.rebaselineHistory !== undefined && !Array.isArray(before.rebaselineHistory)) {
+  die(`snapshot has a malformed 'rebaselineHistory' (${typeof before.rebaselineHistory}) — ` +
+    'refusing to compare against a record this tool did not write.');
+}
 
 const after = captureState();
 let changed = false;
 let headMoved = false;
-let fastForward = false;
+let fastForward = 'created';
 let addedCommits = [];
+let commitsEnumerated = true;
 
 if (before.head !== after.head) {
   changed = true;
@@ -389,11 +415,27 @@ if (before.head !== after.head) {
   // rules out is the other shape: a checkout that moved to unrelated history,
   // where `git reset --mixed <snapshot>` would be destructive rather than
   // merely wrong.
-  fastForward = before.head !== UNBORN
-    && git(['merge-base', '--is-ancestor', before.head, after.head],
-      { cwd: TOPLEVEL, allowFailure: true }) !== null;
-  console.error(`  the snapshot commit IS${fastForward ? '' : ' NOT'} an ancestor of the new HEAD` +
-    `${fastForward ? ' — history was added on top, not replaced' : ' — history diverged or was replaced'}.`);
+  //
+  // Three-valued, because `--is-ancestor` exits 1 for "no" and >= 128 for "could
+  // not tell" — a pruned or corrupt snapshot commit, which is realistic in a tool
+  // whose whole subject is rebases. Collapsing those with `!== null` printed
+  // "history diverged or was replaced" over a question git declined to answer:
+  // a confident wrong claim, and the exact opposite of "evidence, not a verdict".
+  fastForward = before.head === UNBORN
+    ? 'created'
+    : ancestry(before.head, after.head);
+  console.error(`  ${{
+    true: 'the snapshot commit IS an ancestor of the new HEAD — history was added on top',
+    false: 'the snapshot commit is NOT an ancestor of the new HEAD — history diverged or was replaced',
+    created: 'the baseline had no commits, so this history was created, not moved',
+    unknown: 'git could NOT determine ancestry (a pruned or corrupt object?) — treat the reading below as unavailable, not as a "no"',
+  }[fastForward]}.`);
+
+  // The ENUMERATE leg of the acknowledgement rests on this list. If git could not
+  // produce it, `rebaseline` must not go on to accept an empty one — "read the
+  // commits above" printed over nothing, and `acceptedCommits: []` written into
+  // permanent provenance, is a record that says a review happened when none could.
+  commitsEnumerated = range !== null;
 }
 
 if (before.branch !== after.branch) {
@@ -470,6 +512,15 @@ if (command === 'rebaseline') {
     process.exit(1);
   }
 
+  if (!commitsEnumerated) {
+    console.error('\nrepo-guard: git could not list the commits between the baseline and HEAD.');
+    console.error('There is nothing to read, so there is nothing to acknowledge. Accepting here would');
+    console.error('write `acceptedCommits: []` into the record — provenance asserting a review that');
+    console.error('could not happen.');
+    console.error(`\n  git log --oneline ${before.head.slice(0, 8)}..HEAD   # to see why it failed`);
+    process.exit(2);
+  }
+
   const accepted = values['--accept'];
   if (!accepted) {
     console.error('\nrepo-guard: HEAD moved. Nothing has been accepted yet.');
@@ -479,8 +530,13 @@ if (command === 'rebaseline') {
     console.error(`  npm run guard:rebaseline -- --accept=${after.head}`);
     console.error('  npm run guard:rebaseline -- ' +
       `--accept=${after.head} --reason="merged my own PR"`);
-    console.error('\nThe sha is required so the acknowledgement cannot be typed without reading it,');
-    console.error('and so the transcript records WHICH move was accepted — which `--force` does not.');
+    console.error('\nThe sha is required so an acknowledgement cannot be given by reflex, and so the');
+    console.error('transcript records WHICH move was accepted — which `--force` does not. It is a');
+    console.error('control against ACCIDENT, not against intent: anyone who wants to can substitute');
+    console.error('`$(git rev-parse HEAD)`. What it buys is that the green path is never one paste');
+    console.error('away from a red verify. Read the authors above — and note they may be identical');
+    console.error('to yours, because a subagent commits through this repository\'s own git config.');
+    console.error('That is what happened in #493. The content is the test; the author is a hint.');
     process.exit(2);
   }
 
@@ -548,19 +604,29 @@ if (changed) {
     // merge the operator intended, offered at the moment they are deciding what
     // to trust. So both exits are named, and the discriminator (the author lines
     // above) is stated rather than guessed at.
-    console.error('HEAD moved. Read the author of every commit listed above — that is the only');
-    console.error('thing that separates the two cases, and this tool cannot read it for you.');
+    console.error('HEAD moved. Read every commit listed above and decide whether you made it —');
+    console.error('this tool cannot decide that for you. The author line is a HINT, not the test:');
+    console.error('a subagent commits through this repository\'s own git config, so in #493 the');
+    console.error('author was identical to the operator\'s. What the commit CONTAINS is the test.');
     console.error(`\n  If a commit is NOT yours — the case this guard exists for` +
       `${worktreeMoved ? '' : ' (the tree is otherwise clean, which is exactly how a committed stray write hides)'}:`);
     console.error(`    git log --oneline ${before.head.slice(0, 8)}..HEAD`);
     console.error(`    git reset --mixed ${before.head.slice(0, 8)}   # keeps the files, drops the commit`);
+    console.error('    Investigate BEFORE PUSHING — a stray commit is recoverable while unpushed.');
     if (!fastForward) {
       console.error('    NOTE: the snapshot commit is not an ancestor of HEAD, so that reset would');
       console.error('    move you onto different history. Inspect before running it.');
     }
-    console.error('\n  If every commit IS yours — you merged, switched branches, or rebased:');
-    console.error(`    npm run guard:rebaseline -- --accept=${after.head}`);
-    console.error('    (re-arms from here and RECORDS what it accepted, which --force does not)');
+    if (worktreeMoved) {
+      // Advising rebaseline here would advise a command that then refuses: it declines
+      // any worktree change. Incoherent advice at the moment of decision is the failure
+      // this file already fixed once, for the occupied-slot refusal.
+      console.error('\n  The working tree moved too, so `guard:rebaseline` would refuse. Settle that first.');
+    } else {
+      console.error('\n  If every commit IS yours — you merged, switched branches, or rebased:');
+      console.error('    npm run guard:rebaseline    # prints the delta and refuses; read it, then accept');
+      console.error('    (re-arms from here and RECORDS what it accepted, which --force does not)');
+    }
   } else {
     // `git reset --mixed` would unstage the caller's own work here, so it must
     // not be suggested when HEAD never moved.

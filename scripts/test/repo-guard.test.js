@@ -761,7 +761,9 @@ test('AC3: an agent commit the operator did not make still goes RED', async (t) 
 
   assert.equal(r.status, 1, 'a committed stray write must still be caught');
   assert.match(r.stderr, /HEAD moved/);
-  assert.match(r.stderr, /Subagent/, 'the author is printed — it is the discriminator');
+  assert.match(r.stderr, /Subagent/,
+    'the author is printed as a HINT — in #493 it was identical to the operator\'s, because a '
+    + 'subagent commits through this repository\'s own git config');
   assert.ok(r.stderr.includes(`git reset --mixed ${before.slice(0, 8)}`),
     'the recovery for a commit that is NOT yours must still be named');
   assert.ok(existsSync(snapshotPath(dir)), 'and the baseline is kept for a re-verify');
@@ -786,16 +788,116 @@ test('verify names BOTH exits when HEAD moves, and prefers neither', async (t) =
   // the moment they are deciding what to trust.
   const dir = makeRepo(t);
   guard(dir, ['snapshot']);
-  const head = mergeOwnBranch(dir);
+  mergeOwnBranch(dir);
 
   const r = guard(dir, ['verify']);
 
   assert.equal(r.status, 1, 'a moved HEAD is still a change; naming the exit is not accepting it');
   assert.match(r.stderr, /If a commit is NOT yours/);
   assert.match(r.stderr, /If every commit IS yours/);
-  assert.ok(r.stderr.includes(`--accept=${head}`), 'the rebaseline exit is copy-pasteable');
+  assert.match(r.stderr, /Investigate BEFORE PUSHING/,
+    'pushing is the irreversibility boundary and the advice must say so');
   assert.match(r.stderr, /IS an ancestor of the new HEAD/,
     'ancestry is reported as evidence for the reader to weigh');
+});
+
+test('THE HOLE: verify must not hand out a paste-ready override', async (t) => {
+  // An earlier version printed `guard:rebaseline -- --accept=<full HEAD>` in the
+  // FAILURE output. For the #493 case — a subagent commits, the tree reads clean —
+  // the red verify therefore ended with a command that makes the next verify green,
+  // one paste away. A guard whose own failure message carries its override is not a
+  // guard, and the test that used to live here asserted the paste-ready sha as a
+  // REQUIREMENT, cementing the hole against repair.
+  //
+  // The acknowledgement is a control against ACCIDENT, not intent: anyone can type
+  // `$(git rev-parse HEAD)`. What it buys is exactly that the green path is never
+  // sitting in the red output, and that is what this pins.
+  const dir = makeRepo(t);
+  guard(dir, ['snapshot']);
+  writeFileSync(join(dir, 'src', 'stray-fixture.sh'), '#!/bin/sh\n', 'utf8');
+  git(dir, ['add', '--', 'src/stray-fixture.sh']);
+  git(dir, ['commit', '-m', 'stray']);
+  const head = git(dir, ['rev-parse', 'HEAD']);
+
+  const r = guard(dir, ['verify']);
+
+  assert.equal(r.status, 1);
+  assert.ok(!r.stderr.includes(`--accept=${head}`),
+    'verify must not print a paste-ready --accept for the very commit it is reporting');
+  assert.ok(!r.stderr.includes(`--accept=${head.slice(0, 8)}`), 'not an abbreviated one either');
+  assert.match(r.stderr, /npm run guard:rebaseline {4}#/,
+    'it may still NAME the command — the caller must fetch the sha themselves');
+});
+
+test('verify does not advise rebaseline when it would refuse', async (t) => {
+  // Both moved. Advising a command that then exits 1 is incoherent advice at the
+  // moment of decision, which is the failure this file already fixed once for the
+  // occupied-slot refusal.
+  const dir = makeRepo(t);
+  guard(dir, ['snapshot']);
+  mergeOwnBranch(dir);
+  writeFileSync(join(dir, 'src', 'a.txt'), 'someone else wrote this\n', 'utf8');
+
+  const r = guard(dir, ['verify']);
+
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /would refuse. Settle that first/);
+  assert.ok(!r.stderr.includes('If every commit IS yours'),
+    'the rebaseline exit must not be offered when the tree also moved');
+  assert.ok(!/the tree is otherwise clean/.test(r.stderr),
+    'and it must not claim the tree is clean when it is not');
+});
+
+test('an unanswerable ancestry is reported as unknown, not as "no"', async (t) => {
+  // `git merge-base --is-ancestor` exits 1 for "not an ancestor" and >= 128 for
+  // "could not look" — a pruned or corrupt object, realistic in a tool whose whole
+  // subject is rebases. Collapsing them printed "history diverged or was replaced"
+  // over a question git declined to answer.
+  const dir = makeRepo(t);
+  guard(dir, ['snapshot']);
+  const snap = JSON.parse(readFileSync(snapshotPath(dir), 'utf8'));
+  snap.head = '0'.repeat(40);   // well-formed, and not an object in this repository
+  writeFileSync(snapshotPath(dir), JSON.stringify(snap), 'utf8');
+
+  const r = guard(dir, ['verify']);
+
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /could NOT determine ancestry/);
+  assert.ok(!/history diverged or was replaced/.test(r.stderr),
+    'a question git refused to answer must not be reported as an answer');
+});
+
+test('rebaseline refuses when it could not enumerate the commits', async (t) => {
+  // The ENUMERATE leg of the acknowledgement rests on that list. Accepting an empty
+  // one writes `acceptedCommits: []` into permanent provenance — a record asserting
+  // a review that could not have happened.
+  const dir = makeRepo(t);
+  guard(dir, ['snapshot']);
+  const snap = JSON.parse(readFileSync(snapshotPath(dir), 'utf8'));
+  snap.head = '0'.repeat(40);
+  writeFileSync(snapshotPath(dir), JSON.stringify(snap), 'utf8');
+
+  const r = guard(dir, ['rebaseline', `--accept=${git(dir, ['rev-parse', 'HEAD'])}`]);
+
+  assert.equal(r.status, 2, 'no evidence means the question is unanswered');
+  assert.match(r.stderr, /nothing to acknowledge/);
+  const after = JSON.parse(readFileSync(snapshotPath(dir), 'utf8'));
+  assert.equal(after.head, '0'.repeat(40), 'the baseline must be untouched');
+});
+
+test('a malformed rebaselineHistory exits 2, not 1 — uncertainty is not a verdict', async (t) => {
+  const dir = makeRepo(t);
+  guard(dir, ['snapshot']);
+
+  for (const corrupt of [{}, 'abc', 42]) {
+    const snap = JSON.parse(readFileSync(snapshotPath(dir), 'utf8'));
+    snap.rebaselineHistory = corrupt;
+    writeFileSync(snapshotPath(dir), JSON.stringify(snap), 'utf8');
+
+    const r = guard(dir, ['verify']);
+    assert.equal(r.status, 2, `${JSON.stringify(corrupt)} must read as uncertainty, not "changed"`);
+    assert.match(r.stderr, /malformed 'rebaselineHistory'/);
+  }
 });
 
 test('a replaced history is reported as NOT an ancestor', async (t) => {
