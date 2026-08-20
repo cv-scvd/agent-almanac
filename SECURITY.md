@@ -42,9 +42,12 @@ If you find a security issue, open a [GitHub issue](https://github.com/pjt222/ag
   `gh api repos/pjt222/agent-almanac/actions/permissions/fork-pr-contributor-approval`, though
   that endpoint needs admin rights — an external reader gets `401`/`403`, so ask us rather than
   assuming this paragraph has gone stale.
-- **CodeQL separately does not run on fork pull requests**, independently of the approval policy
-  above. So even once validators report on your PR, expect no code-scanning result from it; ours
-  runs on the weekly schedule and on the merge commit.
+- **CodeQL default setup separately does not run on fork pull requests**, independently of the
+  approval policy above — its PR scanning covers pull requests against the default or protected
+  branches, [excluding those from forks](https://docs.github.com/code-security/code-scanning/enabling-code-scanning/configuring-default-setup-for-code-scanning).
+  So even once validators report on your PR, expect no code-scanning result from it; ours runs
+  on the weekly schedule and on the merge commit. (Scoped to *default setup* deliberately: a
+  committed `codeql.yml` would be a different mechanism with different event coverage.)
 - The exact event coverage is GitHub's to define and ours only to read. Prefer the live
   configuration over this file: `gh api repos/pjt222/agent-almanac/code-scanning/default-setup`
   (needs `security-events` access, so an external reader will likely get a 403 — the schedule and

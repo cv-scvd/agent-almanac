@@ -137,11 +137,15 @@ Apply top to bottom. The **essential** tier is zero-downside and does not break 
 
   ```bash
   # 1. workflows a fork PR can trigger. ANCHORED, and both extensions — see the trap below
-  rg -l '^\s*pull_request:|^\s*on:.*\bpull_request\b' .github/workflows/*.yml .github/workflows/*.yaml
-  # 2. the two triggers that BREAK the predicate — any hit here and step 1 is not the answer
-  rg -n 'pull_request_target|workflow_run' .github/workflows/
+  rg -l '^\s*pull_request:|^\s*on:.*\bpull_request\b|^\s*-\s*pull_request\s*$' \
+     -g '*.yml' -g '*.yaml' .github/workflows/
+  # 2. triggers an OUTSIDER can fire that run base-context code WITH secrets.
+  #    Any hit and step 1 is not the answer for this repo.
+  rg -n 'pull_request_target|workflow_run|issue_comment' .github/workflows/
   # 3. workflows that carry secrets, including inherited ones
-  rg -l 'secrets\.|secrets:\s*inherit' .github/workflows/*.yml .github/workflows/*.yaml
+  rg -l 'secrets\.|secrets:\s*inherit' -g '*.yml' -g '*.yaml' .github/workflows/
+  # 4. the high-severity question, asked WITHOUT relying on the census above
+  rg -n 'self-hosted' .github/workflows/
   ```
 
   **Check the ruler before believing it.** The obvious first command, `rg '^\s*pull_request'`,
@@ -150,12 +154,33 @@ Apply top to bottom. The **essential** tier is zero-downside and does not break 
   this guide names two sections up as the documented privilege-escalation pattern — so an
   unanchored scan files your most dangerous workflow among the read-only validators. And it
   misses `on: [push, pull_request]` and `on: pull_request` entirely, because neither puts the
-  word at the start of a line. Globbing `*.yml` alone misses `.yaml`, which Actions accepts.
+  word at the start of a line.
 
-  Command 2 is not optional. A `pull_request_target` workflow is privileged regardless of the
-  approval policy, and a `workflow_run` workflow chained off a PR-triggered one extends
-  reachability *with* secrets — the pwn-request escalation. Either one and the reachability
-  argument below does not apply to your repo.
+  Two more rulers to check, both learned by tripping them. Pass the directory with `-g`
+  filters rather than shell globs: under **zsh**, `.github/workflows/*.yaml` matching nothing
+  *skips the whole command* with `no matches found`, which reads at a glance like a clean scan.
+  And these greps are heuristics for the common YAML styles — a block sequence (`on:` then
+  `- pull_request` on its own line) is covered by the third alternation above, but a multi-line
+  flow sequence is not. **Parse rather than grep to settle it**: `yq '.on' <file>`, or
+  `actionlint`.
+
+  Which is why command 4 exists and does not depend on the census at all. Self-hosted runners
+  are the high-severity case, so ask that question directly on the whole directory instead of
+  inheriting whatever the trigger scan missed.
+
+  Command 2 is not optional, and the list in it is **not closed**. The principle it samples:
+  *any trigger an outsider can fire runs base-context code with secrets, and the question is
+  whether attacker-controlled payload reaches a shell or a checkout.* `pull_request_target` is
+  privileged regardless of the approval policy; `workflow_run` chained off a PR-triggered
+  workflow extends reachability *with* secrets (the pwn-request escalation); and
+  `issue_comment` fires on **any** user's comment on any issue or PR, which makes the
+  comment-body-into-`run:` and `ok-to-test`-checkout patterns the most-exploited of the class.
+  `issues`, `fork` and `watch` are the exotic tail. Any hit and the reachability argument below
+  does not apply to your repo.
+
+  Two that look like members and are not, stated so the list is not padded:
+  `repository_dispatch` needs a token with repo write, which an outsider does not have, and
+  `merge_group` fires from a maintainer-controlled queue.
 
   Here that returns twelve `pull_request`-triggered workflows, every one a read-only validator; **zero** `pull_request_target` or `workflow_run` workflows; and two secret-bearing ones (`release.yml`, `update-readmes.yml`) plus the Pages deploy — **none of which carries a `pull_request` trigger at all**. So this repo does touch secrets and does deploy; a fork PR simply cannot reach any of it.
 
