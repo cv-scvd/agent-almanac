@@ -20,7 +20,7 @@ import { CONTENT_TYPES } from './lib/content-types.js';
 import { listAdapters } from '../cli/adapters/index.js';
 import { guideCategoryOrder, guideCategoryLabel, guideCategoryNames } from './lib/guide-categories.js';
 import { applySections, renderTranslationsTable, renderLocaleTable } from './lib/readme-sections.js';
-import { skillsDeclaringBash, nonDocumentationFiles, shippedTrees } from './lib/skills-inventory.js';
+import { skillsDeclaringBash, nonDocumentationFiles, shippedEntries, extensionOf, executableFiles } from './lib/skills-inventory.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -741,17 +741,30 @@ function generateSecuritySurface() {
   // staleness risk as the adapter list; a per-bullet caveat would have to be repeated on
   // every shipped bullet, which is the multi-site drift class this repository keeps paying
   // for elsewhere.
-  const trees = shippedTrees(ROOT);
+  //
+  // It enumerates FILES as well as directories. An earlier version filtered `files` to
+  // entries ending in `/`, which silently dropped `cli/index.js` — the file
+  // `npx agent-almanac` executes — so the sentence told a researcher that a vulnerability
+  // in the entry point was "against the repository only". #600's failure mode, in the
+  // prose written to prevent it.
+  const shippedList = shippedEntries(ROOT).included;
   const nonDoc = nonDocumentationFiles(ROOT);
-  const nonDocExtensions = [...new Set(nonDoc.map((f) => f.slice(f.lastIndexOf('.'))))].sort();
+  const nonDocExtensions = [...new Set(nonDoc.map(extensionOf).filter(Boolean))].sort();
+  // DERIVED, not named. A hardcoded `verify_runtime.py` inside a generated sentence is the
+  // exact defect this function polices ten lines up, where three `scripts/` tools get
+  // `existsSync` throws for being static prose among generated numbers. Deleting that one
+  // file — registry and SKILL.md untouched, so nothing throws and every gate stays green —
+  // would have had the HEALER regenerate and auto-commit "15 files … including
+  // verify_runtime.py": a false claim in a security document, produced by the machinery.
+  const executable = executableFiles(nonDoc);
 
   return [
-    `**Which artifact this describes.** Everything below is derived from **the repository at this revision**, whose \`package.json\` declares version \`${pkg.version}\`. That is not necessarily what \`npm install ${pkg.name}\` installs — the published version can lag this tree, and has. Check with \`npm view ${pkg.name} version\`. Of the components listed here, only these ship in the published package: ${trees.map((t) => `\`${t}\``).join(', ')}. A vulnerability report against an npm-installed copy is in scope for those, and may be against older code than this document describes; a report against anything else here is against the repository only.`,
+    `**Which artifact this describes.** Everything below is derived from **the repository at this revision**, whose \`package.json\` declares version \`${pkg.version ?? '(unset)'}\`. That is not necessarily what \`npm install ${pkg.name ?? '(unnamed)'}\` installs — the published version can lag this tree, and has. Check with \`npm view ${pkg.name ?? '(unnamed)'} version\`. What ships, from \`package.json\`'s own \`files\`: ${shippedList.map((t) => `\`${t}\``).join(', ')}. Everything else described here — \`viz/\`, \`scripts/\`, \`workflows/\`, \`.claude/\` — exists only in the repository. A vulnerability report against an npm-installed copy is in scope for the shipped list, and may be against older code than this document describes.`,
     '',
-    `- **Skills, agents, teams, guides**: predominantly Markdown and YAML, and ${nonDoc.length === 0 ? 'nothing else' : `**${nonDoc.length} files that are not** (${nonDocExtensions.join(', ')}) — including \`skills/verify-web-app-runtime/scripts/verify_runtime.py\`, an executable script`}. All of it ships. ${declaring} of ${ids.length} skills (~${share}%) declare \`Bash\` in their \`allowed-tools\`, meaning they instruct AI agents to execute shell commands when followed. Review any skill before letting an agent execute it.`,
+    `- **Skills, agents, teams, guides**: ${nonDoc.length === 0 ? 'Markdown and YAML only' : `mostly Markdown and YAML, plus **${nonDoc.length} files that are not** (${nonDocExtensions.join(', ')})${executable.length ? ` — ${executable.length === 1 ? 'one of them an executable script' : `${executable.length} of them executable scripts`}, \`${executable[0]}\`` : ''}`}. All of it ships. ${declaring} of ${ids.length} skills (~${share}%) declare \`Bash\` in their \`allowed-tools\`, meaning they instruct AI agents to execute shell commands when followed. Review any skill before letting an agent execute it.`,
     '- **Visualization pipeline** (`viz/`): A containerized R + Node.js + Vite build system with a Dockerfile, shell scripts, and an icon rendering pipeline. The Docker entrypoint serves content via a Python HTTP server.',
     `- **Scripts** (\`scripts/\`): ${scriptFiles} top-level Node.js and shell tools — registry validation, README and translation generation, i18n gates, and a small number that deliberately mutate the working tree or run repository commands (\`normalize-i18n-fences.js\`, \`mutation-check.js\`, \`gate-envelope.js\`). Maintainer-invoked; \`scripts/\` is not in \`package.json\`'s \`files\` array, so none of it ships in the published package.`,
-    `- **CLI** (\`cli/\`): The only EXECUTABLE component in the published package, and the only one that writes outside this repository. ${adapters.length} adapters install content into other tools' configuration directories, at global (home) or PROJECT scope depending on the adapter and the \`--scope\` flag, using ${strategyPhrase}. Adapters: ${adapters.map((a) => a.id).sort().join(', ')}.`,
+    `- **CLI** (\`cli/\`): The entry point \`npx\` executes (\`bin\` -> \`cli/index.js\`), and the only component that writes outside this repository. ${adapters.length} adapters install content into other tools' configuration directories, at global (home) or PROJECT scope depending on the adapter and the \`--scope\` flag, using ${strategyPhrase}. Adapters: ${adapters.map((a) => a.id).sort().join(', ')}.`,
     `- **Workflows** (\`workflows/\`): ${workflowFiles} executable orchestration scripts. They are not auto-installed and do not ship in the published package; the documented way to use one is to COPY its \`.mjs\` into \`.claude/workflows/\` by hand, after which Claude Code's Workflow tool runs it and it may spawn subagents with whatever tools those agents carry. Read one before copying it — that instruction is the whole security boundary.`,
     '- **Claude Code configuration** (`.claude/`): Agent discovery symlinks and permission settings.',
   ].join('\n');
