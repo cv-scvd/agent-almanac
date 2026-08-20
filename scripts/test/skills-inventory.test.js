@@ -14,7 +14,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,6 +25,9 @@ import {
   contentTrees,
   executableFiles,
   extensionOf,
+  assertInventoryClaims,
+  REPO_ONLY,
+  INSTALL_HOOKS,
 } from '../lib/skills-inventory.js';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -318,4 +321,59 @@ test('LIVE: the real tree still contains the exception the claim was false about
   for (const path of found) assert.ok(!/\.(md|ya?ml)$/.test(path), `documentation leaked in: ${path}`);
   assert.ok(executableFiles(found).length > 0,
     'and at least one of them is executable, which is the whole point of the sentence');
+});
+
+// ── the claims the inventory makes about what does NOT ship ─────────────────
+
+test('every repository-only claim is guarded, not just the two that had throws', (t) => {
+  // The previous revision kept the sentence's list in `generate-readmes.js` and guarded
+  // two of its four names. A mutation shrinking that list SURVIVED the whole suite,
+  // because that file runs its pipeline on import and no test can reach anything in it.
+  // Moving the list here is what makes this test possible at all.
+  const dir = mkdtempSync(join(tmpdir(), 'skills-inventory-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+
+  assert.ok(REPO_ONLY.length >= 4, 'the sentence names at least four directories');
+  for (const name of REPO_ONLY) {
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ files: ['skills/', `${name}/`] }), 'utf8');
+    assert.throws(
+      () => assertInventoryClaims(dir),
+      new RegExp(`${name.replace('.', '\\.')}/ exists only in the repository`),
+      `shipping ${name}/ must contradict the sentence loudly, not silently`,
+    );
+  }
+
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ files: ['skills/'] }), 'utf8');
+  assert.doesNotThrow(() => assertInventoryClaims(dir), 'and the honest arrangement passes');
+});
+
+test('an install-time script hook contradicts the sentence and throws', (t) => {
+  // `package.json` always ships, and install hooks run in a CONSUMER's tree. There are
+  // none today; the sentence says so, and this is what keeps the saying true.
+  const dir = mkdtempSync(join(tmpdir(), 'skills-inventory-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+
+  for (const hook of INSTALL_HOOKS) {
+    writeFileSync(join(dir, 'package.json'),
+      JSON.stringify({ files: ['skills/'], scripts: { [hook]: 'node evil.js' } }), 'utf8');
+    assert.throws(() => assertInventoryClaims(dir), new RegExp(`declares "${hook}"`));
+  }
+
+  // A publisher-side hook is not an install-time one and must NOT trip it.
+  writeFileSync(join(dir, 'package.json'),
+    JSON.stringify({ files: ['skills/'], scripts: { prepublishOnly: 'npm run test:cli' } }), 'utf8');
+  assert.doesNotThrow(() => assertInventoryClaims(dir));
+});
+
+test('LIVE: SECURITY.md names exactly the directories the guard covers', () => {
+  // The drift this closes: the sentence is rendered from REPO_ONLY, so shrinking that list
+  // silently drops guards AND shortens the sentence. Comparing the COMMITTED document
+  // against the list is what makes such a change go red rather than regenerate quietly.
+  const security = readFileSync(join(REPO_ROOT, 'SECURITY.md'), 'utf8');
+  const sentence = security.match(/Everything else described below \(([^)]*)\)/);
+
+  assert.ok(sentence, 'the repository-only sentence must be present in SECURITY.md');
+  const named = sentence[1].split(',').map((n) => n.replace(/[`\/\s]/g, '')).filter(Boolean);
+  assert.deepEqual(named, [...REPO_ONLY],
+    'the published sentence and the guarded list must be the same list');
 });

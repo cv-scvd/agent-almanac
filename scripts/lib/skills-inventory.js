@@ -25,6 +25,49 @@ const DOCUMENTATION_EXTENSIONS = ['.md', '.yml', '.yaml'];
 const CLI_PREFIX = 'cli/';
 
 /**
+ * Directories the generated inventory ASSERTS do not ship.
+ *
+ * Exported so the sentence and its guard read from one list. They were two lists for one
+ * revision, and the guard covered two of the four names the sentence made — mixed
+ * authority, where a reader seeing throws around `scripts/` and `workflows/` infers the
+ * whole sentence is machine-checked.
+ */
+export const REPO_ONLY = Object.freeze(['viz', 'scripts', 'workflows', '.claude']);
+
+/** npm lifecycle scripts that execute in a CONSUMER's tree at install time. */
+export const INSTALL_HOOKS = Object.freeze(['preinstall', 'install', 'postinstall']);
+
+/**
+ * Throw if anything the inventory calls repository-only actually ships, or if the package
+ * has grown a script that runs in a consumer's tree on install.
+ *
+ * Lives here rather than in `generate-readmes.js` for the reason everything else moved:
+ * that file executes its pipeline on import, so a guard written there is one no test can
+ * reach. Mutation confirmed it — shrinking the list in place survived the whole suite.
+ */
+export function assertInventoryClaims(root) {
+  const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+  const files = pkg.files ?? [];
+  for (const repoOnly of REPO_ONLY) {
+    if (files.some((entry) => entry.replace(/^!/, '').startsWith(repoOnly))) {
+      throw new Error(
+        `SECURITY.md says ${repoOnly}/ exists only in the repository, but package.json ` +
+        '`files` ships it. Give it an inventory bullet and remove it from that sentence.',
+      );
+    }
+  }
+  for (const hook of INSTALL_HOOKS) {
+    if (pkg.scripts?.[hook]) {
+      throw new Error(
+        'SECURITY.md states this package declares no install-time script hooks, but ' +
+        `package.json declares "${hook}". That script runs in a consumer's tree on ` +
+        'install — describe it in the inventory before adding it.',
+      );
+    }
+  }
+}
+
+/**
  * How many registered skills declare `Bash`, and how many there are.
  *
  * Enumerates the REGISTRY, never the directory. That is the whole property: a directory

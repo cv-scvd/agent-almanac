@@ -20,12 +20,8 @@ import { CONTENT_TYPES } from './lib/content-types.js';
 import { listAdapters } from '../cli/adapters/index.js';
 import { guideCategoryOrder, guideCategoryLabel, guideCategoryNames } from './lib/guide-categories.js';
 import { applySections, renderTranslationsTable, renderLocaleTable } from './lib/readme-sections.js';
-import { skillsDeclaringBash, nonDocumentationFiles, contentTrees, shippedEntries, extensionOf, executableFiles } from './lib/skills-inventory.js';
+import { skillsDeclaringBash, nonDocumentationFiles, contentTrees, shippedEntries, extensionOf, executableFiles, assertInventoryClaims, REPO_ONLY } from './lib/skills-inventory.js';
 
-/** Directories the generated inventory asserts do NOT ship. Each is guarded, not assumed. */
-const REPO_ONLY = ['viz', 'scripts', 'workflows', '.claude'];
-/** npm lifecycle scripts that execute in a CONSUMER's tree at install time. */
-const INSTALL_HOOKS = ['preinstall', 'install', 'postinstall'];
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -723,35 +719,11 @@ function generateSecuritySurface() {
   if (shipped.some((f) => f.replace(/^!/, '').startsWith('workflows'))) {
     throw new Error('SECURITY.md claims workflows/ does not ship, but package.json `files` says otherwise');
   }
-  // The repo-only sentence names four directories, and the previous revision guarded two.
-  // Half a guard is worse than none here: a reader seeing throws around `scripts/` and
-  // `workflows/` infers the whole sentence is machine-checked. Adding `viz/` to `files`
-  // would have had the healer auto-commit ONE PARAGRAPH saying viz/ ships (derived) and
-  // that it "exists only in the repository" (static), with check-readmes green.
-  //
-  // This sentence is prose authored in this revision, so it GREW the static-claim surface
-  // #691 finding 2 exists to shrink. Guarding it is the shrink.
-  for (const repoOnly of REPO_ONLY) {
-    if (shipped.some((f) => f.replace(/^!/, '').startsWith(repoOnly))) {
-      throw new Error(
-        `SECURITY.md says ${repoOnly}/ exists only in the repository, but package.json ` +
-        '`files` ships it. Give it an inventory bullet and remove it from that sentence.',
-      );
-    }
-  }
-  // `package.json` itself always ships, and it is the one shipped file that can EXECUTE at
-  // install time, via npm's install lifecycle hooks — which run in the consumer's tree when
-  // the package is installed as a dependency. There are none today; the sentence says so,
-  // and this makes the saying checkable rather than a claim aging in a security document.
-  for (const hook of INSTALL_HOOKS) {
-    if (pkg.scripts?.[hook]) {
-      throw new Error(
-        `SECURITY.md states this package declares no install-time script hooks, but ` +
-        `package.json declares "${hook}". That script runs in a consumer's tree on ` +
-        'install — describe it in the inventory before adding it.',
-      );
-    }
-  }
+  // The sentence and its guard read from ONE list, in `lib/skills-inventory.js`, where a
+  // test can reach the guard. They were two lists for one revision, and the guard covered
+  // two of the four names the sentence made — mixed authority, where a reader seeing two
+  // throws infers the whole sentence is machine-checked.
+  assertInventoryClaims(ROOT);
   for (const tool of ['normalize-i18n-fences.js', 'mutation-check.js', 'gate-envelope.js']) {
     if (!existsSync(resolve(ROOT, 'scripts', tool))) {
       throw new Error(`SECURITY.md names scripts/${tool}, which does not exist`);
