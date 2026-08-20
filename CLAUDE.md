@@ -179,7 +179,7 @@ comes from the `github-advanced-security` app and reports `neutral` while the pe
 CodeQL green" sees the wrong one. Read the `Analyze (…)` runs:
 
 ```bash
-gh api repos/pjt222/agent-almanac/commits/SHA/check-runs \
+gh api --paginate repos/pjt222/agent-almanac/commits/SHA/check-runs \
   --jq '.check_runs[] | select(.name|test("Analyze")) | "\(.name)\t\(.conclusion)"'
 ```
 

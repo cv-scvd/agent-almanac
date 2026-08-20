@@ -136,13 +136,30 @@ Apply top to bottom. The **essential** tier is zero-downside and does not break 
   **The predicate is fork-REACHABILITY, not "does this repo have secrets".** Getting that wrong in either direction is the usual mistake, so measure it:
 
   ```bash
-  # workflows a fork PR can trigger at all
-  for f in .github/workflows/*.yml; do rg -q '^\s*pull_request' "$f" && basename "$f"; done
-  # workflows that carry secrets, and what triggers them
-  rg -l 'secrets\.' .github/workflows/*.yml
+  # 1. workflows a fork PR can trigger. ANCHORED, and both extensions — see the trap below
+  rg -l '^\s*pull_request:|^\s*on:.*\bpull_request\b' .github/workflows/*.yml .github/workflows/*.yaml
+  # 2. the two triggers that BREAK the predicate — any hit here and step 1 is not the answer
+  rg -n 'pull_request_target|workflow_run' .github/workflows/
+  # 3. workflows that carry secrets, including inherited ones
+  rg -l 'secrets\.|secrets:\s*inherit' .github/workflows/*.yml .github/workflows/*.yaml
   ```
 
-  Here that returns twelve `pull_request`-triggered workflows, every one a read-only validator, and two secret-bearing ones (`release.yml`, `update-readmes.yml`) plus the Pages deploy — **none of which carries a `pull_request` trigger at all**. So this repo does touch secrets and does deploy; a fork PR simply cannot reach any of it.
+  **Check the ruler before believing it.** The obvious first command, `rg '^\s*pull_request'`,
+  is wrong in both directions and both are false-SAFE. It matches `pull_request_target:` —
+  the one trigger that runs in the **base-repo context with secrets and a write token**, which
+  this guide names two sections up as the documented privilege-escalation pattern — so an
+  unanchored scan files your most dangerous workflow among the read-only validators. And it
+  misses `on: [push, pull_request]` and `on: pull_request` entirely, because neither puts the
+  word at the start of a line. Globbing `*.yml` alone misses `.yaml`, which Actions accepts.
+
+  Command 2 is not optional. A `pull_request_target` workflow is privileged regardless of the
+  approval policy, and a `workflow_run` workflow chained off a PR-triggered one extends
+  reachability *with* secrets — the pwn-request escalation. Either one and the reachability
+  argument below does not apply to your repo.
+
+  Here that returns twelve `pull_request`-triggered workflows, every one a read-only validator; **zero** `pull_request_target` or `workflow_run` workflows; and two secret-bearing ones (`release.yml`, `update-readmes.yml`) plus the Pages deploy — **none of which carries a `pull_request` trigger at all**. So this repo does touch secrets and does deploy; a fork PR simply cannot reach any of it.
+
+  One caveat that only matters once command 2 is clean: a composite action or reusable workflow reaching for a secret is not a hole in a fork `pull_request` run, because on a public repo secrets are not provisioned to it at all — there is nothing to reach. Inside a `pull_request_target` workflow it is a hole, which is why that command comes first.
 
   Which is why "we have no secrets" is the wrong test, in both directions. A repo whose deploy runs only on push-to-main is not endangered by loosening this, because a fork PR cannot trigger it and the platform withholds secrets from fork runs regardless. A repo whose `pull_request` validators run on **self-hosted runners** should keep the gate strict even with no secret anywhere — arbitrary code execution on your own hardware, resource abuse and cache-poisoning are what the approval gate is actually for, and none of them is "touches secrets".
 - **Enable Dependabot alerts + security updates + a `.github/dependabot.yml`.** Alerts and fixes are *separate* toggles — enable both, or you detect vulnerabilities and fix nothing. Include a `github-actions` ecosystem block to keep action SHAs fresh.
@@ -168,7 +185,7 @@ Apply top to bottom. The **essential** tier is zero-downside and does not break 
   - **`CodeQL: neutral` is not evidence that code scanning passed.** The aggregate check named `CodeQL` comes from the `github-advanced-security` app and reports `neutral` even while the per-language `Analyze (…)` runs — from the `github-actions` app — report `failure`. Anything asserting code-scanning health, human or automated, must read the `Analyze (…)` runs:
 
     ```bash
-    gh api repos/OWNER/REPO/commits/SHA/check-runs \
+    gh api --paginate repos/OWNER/REPO/commits/SHA/check-runs \
       --jq '.check_runs[] | select(.name|test("Analyze")) | "\(.name)\t\(.conclusion)"'
     ```
 

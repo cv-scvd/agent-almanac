@@ -27,17 +27,26 @@ If you find a security issue, open a [GitHub issue](https://github.com/pjt222/ag
 - **Fork pull requests reported nothing, and the setting that caused it has since changed.**
   Measured on 2026-08-19: our first external contribution (PR #589) reported *no checks at all* —
   0 workflow runs, 0 check-runs, 0 check-suites — while a same-day pull request from a local
-  branch reported ten. The cause was the fork-PR approval policy, not CodeQL specifically:
-  nothing ran until a maintainer approved it, and nobody did.
+  branch reported ten. The LIKELY cause is the fork-PR approval policy rather than CodeQL
+  specifically — but that is a mechanism we inferred, not one we measured: the setting was not
+  API-readable at the time, and the approval queue showed zero `action_required` runs, meaning
+  GitHub never engaged Actions on that commit at all. If the attribution is wrong, loosening the
+  policy will not have fixed the silence, which is the other reason the measurement below
+  matters.
   On 2026-08-20 that policy was changed to its loosest value,
   `first_time_contributors_new_to_github` (#689), so a returning contributor's PR should now
   report checks without waiting for approval. **That has not yet been measured** — #589 is
   closed and remains the only fork PR in this repository's history, so the next external
   contribution is the measurement. Until then, treat "will my PR report checks?" as *unknown*
-  rather than as either yes or no, and read the live setting rather than this paragraph:
-  `gh api repos/pjt222/agent-almanac/actions/permissions/fork-pr-contributor-approval`
+  rather than as either yes or no. The live setting is at
+  `gh api repos/pjt222/agent-almanac/actions/permissions/fork-pr-contributor-approval`, though
+  that endpoint needs admin rights — an external reader gets `401`/`403`, so ask us rather than
+  assuming this paragraph has gone stale.
+- **CodeQL separately does not run on fork pull requests**, independently of the approval policy
+  above. So even once validators report on your PR, expect no code-scanning result from it; ours
+  runs on the weekly schedule and on the merge commit.
 - The exact event coverage is GitHub's to define and ours only to read. Prefer the live
   configuration over this file: `gh api repos/pjt222/agent-almanac/code-scanning/default-setup`
   (needs `security-events` access, so an external reader will likely get a 403 — the schedule and
-  the fork exclusion above are the parts that affect you)
+  the two fork exclusions above are the parts that affect you)
 - Dependabot is configured to monitor GitHub Actions and npm dependencies for known vulnerabilities
