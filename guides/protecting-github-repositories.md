@@ -131,7 +131,20 @@ Apply top to bottom. The **essential** tier is zero-downside and does not break 
     -f approval_policy=first_time_contributors_new_to_github
   ```
 
-  Three values, loosest to strictest: `first_time_contributors_new_to_github`, `first_time_contributors`, `all_external_contributors`. **This repository runs the loosest**, chosen against a measured blast radius rather than by default (#689): the token is read-only, no secrets are exposed to fork runs, and every workflow here is a validator. A repo whose workflows touch secrets or deploy should not copy that choice.
+  Three values, loosest to strictest: `first_time_contributors_new_to_github`, `first_time_contributors`, `all_external_contributors`. **This repository runs the loosest**, chosen against a measured blast radius rather than by default (#689).
+
+  **The predicate is fork-REACHABILITY, not "does this repo have secrets".** Getting that wrong in either direction is the usual mistake, so measure it:
+
+  ```bash
+  # workflows a fork PR can trigger at all
+  for f in .github/workflows/*.yml; do rg -q '^\s*pull_request' "$f" && basename "$f"; done
+  # workflows that carry secrets, and what triggers them
+  rg -l 'secrets\.' .github/workflows/*.yml
+  ```
+
+  Here that returns twelve `pull_request`-triggered workflows, every one a read-only validator, and two secret-bearing ones (`release.yml`, `update-readmes.yml`) plus the Pages deploy — **none of which carries a `pull_request` trigger at all**. So this repo does touch secrets and does deploy; a fork PR simply cannot reach any of it.
+
+  Which is why "we have no secrets" is the wrong test, in both directions. A repo whose deploy runs only on push-to-main is not endangered by loosening this, because a fork PR cannot trigger it and the platform withholds secrets from fork runs regardless. A repo whose `pull_request` validators run on **self-hosted runners** should keep the gate strict even with no secret anywhere — arbitrary code execution on your own hardware, resource abuse and cache-poisoning are what the approval gate is actually for, and none of them is "touches secrets".
 - **Enable Dependabot alerts + security updates + a `.github/dependabot.yml`.** Alerts and fixes are *separate* toggles — enable both, or you detect vulnerabilities and fix nothing. Include a `github-actions` ecosystem block to keep action SHAs fresh.
   ```bash
   gh api -X PUT repos/OWNER/REPO/vulnerability-alerts      # alerts + dependency graph
@@ -151,7 +164,7 @@ Apply top to bottom. The **essential** tier is zero-downside and does not break 
 - **Provision a GitHub App bypass for the bot** (Contents: read/write) via `actions/create-github-app-token`, pass the token to checkout + `git-auto-commit-action`, and add the App as an `Integration` bypass actor with `bypass_mode: always`. This is the correct realization of "let the bot through" once required checks/PR are on.
 - **Enable CodeQL "default setup"** (server-managed) rather than advanced setup, so no extra workflow YAML is committed into a repo that auto-commits. Two consequences to accept with it, both learned the expensive way (#643):
 
-  - **Its runs cannot be retried.** Default setup produces `event: dynamic` runs, and `gh run rerun` refuses them — both bare and `--failed`. A transient GitHub-side failure (a 503 while determining feature enablement) therefore pins a red check that no re-run can clear. The only ways forward are a new commit or a PR close/reopen. A committed `codeql.yml` produces retriable runs and would remove this entirely; that is the trade.
+  - **Its runs cannot be retried.** Default setup produces `event: dynamic` runs, and `gh run rerun` refuses them — both bare and `--failed`. A transient GitHub-side failure (#640 recorded a 503) therefore pins a red check that no re-run can clear. The only ways forward are a new commit or, *reportedly*, a PR close/reopen — the new-commit path is measured (#640's merge commit healed on `main`); the close/reopen path is not, and whether a `reopened` event re-fires a dynamic analysis on an unchanged head SHA is unrecorded. Try it, but do not plan around it. A committed `codeql.yml` produces retriable runs and would remove this entirely; that is the trade.
   - **`CodeQL: neutral` is not evidence that code scanning passed.** The aggregate check named `CodeQL` comes from the `github-advanced-security` app and reports `neutral` even while the per-language `Analyze (…)` runs — from the `github-actions` app — report `failure`. Anything asserting code-scanning health, human or automated, must read the `Analyze (…)` runs:
 
     ```bash

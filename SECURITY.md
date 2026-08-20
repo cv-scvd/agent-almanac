@@ -24,10 +24,18 @@ If you find a security issue, open a [GitHub issue](https://github.com/pjt222/ag
 - CodeQL uses GitHub's **server-managed default setup**, which commits no workflow YAML — so
   grepping `.github/workflows/` for it finds nothing. It runs on a **weekly** schedule and on
   pushes and pull requests against the default branch.
-- **It does not run on pull requests from forks.** Measured, not assumed: our first external
-  contribution (PR #589) reports *no checks at all*, while a same-day pull request from a local
-  branch reports ten. If you are contributing from a fork, expect our automation to have told us
-  nothing about your change — tracked as issue #689.
+- **Fork pull requests reported nothing, and the setting that caused it has since changed.**
+  Measured on 2026-08-19: our first external contribution (PR #589) reported *no checks at all* —
+  0 workflow runs, 0 check-runs, 0 check-suites — while a same-day pull request from a local
+  branch reported ten. The cause was the fork-PR approval policy, not CodeQL specifically:
+  nothing ran until a maintainer approved it, and nobody did.
+  On 2026-08-20 that policy was changed to its loosest value,
+  `first_time_contributors_new_to_github` (#689), so a returning contributor's PR should now
+  report checks without waiting for approval. **That has not yet been measured** — #589 is
+  closed and remains the only fork PR in this repository's history, so the next external
+  contribution is the measurement. Until then, treat "will my PR report checks?" as *unknown*
+  rather than as either yes or no, and read the live setting rather than this paragraph:
+  `gh api repos/pjt222/agent-almanac/actions/permissions/fork-pr-contributor-approval`
 - The exact event coverage is GitHub's to define and ours only to read. Prefer the live
   configuration over this file: `gh api repos/pjt222/agent-almanac/code-scanning/default-setup`
   (needs `security-events` access, so an external reader will likely get a 403 — the schedule and
