@@ -536,7 +536,7 @@ async function main() {
     logBtn.addEventListener('click', () => downloadLog());
   }
 
-  // ── Layout buttons (radio group: 2D / 3D / Hive / Chord / Flow) ──
+  // ── Layout buttons (radio group: 2D / 3D / Hive / Chord / Flow / Fire) ──
   for (const [modeName, btnId] of Object.entries(MODE_BUTTON_IDS)) {
     document.getElementById(btnId).addEventListener('click', async () => {
       if (switching || currentMode === modeName) return;

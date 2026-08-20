@@ -19,11 +19,14 @@
  *
  * Node identity only. All of the following are invisible to it:
  *
- *   - **Labels.** `bind_modes` reads "Bind mode switching (2D/3D/Hive/Chord/
- *     Flow)" and five is not six — Campfire is bound and unlisted (#639). That
- *     text comes from the annotation in `viz/js/app.js`, so a faithful
- *     regeneration reproduces the wrong label and this check stays green
- *     through it.
+ *   - **Labels.** `bind_modes` READ "Bind mode switching (2D/3D/Hive/Chord/
+ *     Flow)" while six modes were bound — Campfire missing (#639). The source
+ *     annotation was corrected in #702; the committed diagram still carries the
+ *     five-mode text, because repairing it means regenerating, which #601
+ *     blocks. This check was green through the defect and is green through the
+ *     divergence, which is the point: it compares ids, and `bind_modes` was
+ *     never missing from either side. `scripts/test/viz-mode-label.test.js` is
+ *     what covers the label now.
  *   - **`node_type`.** An `input` retyped to `process` moves the node's shape
  *     and its `class` line; the id is unchanged, so nothing here fires.
  *   - **Edges.** `input:`/`output:` chains build the `-->` block. A rewired

@@ -14,13 +14,23 @@
  *
  * ## What it asserts, and the limit
  *
- * The COUNT of modes named in the label against the count of bound modes. That is the
- * defect class: a mode is added to `modes` and the label is not extended — which is how
- * Campfire went missing from the moment it was added. It deliberately does NOT check the
- * names: the label renders `workflow` as "Flow" and `2d` as "2D", so a name-level check
- * would need a second mapping to drift out of step with. A rename with no count change
- * still slips through; that is a smaller and quieter defect than an omission, and pinning
- * it would cost a mapping table nobody maintains.
+ * Two things. The COUNT of modes named in the label against the count bound — that is the
+ * defect class that occurred, a mode added to `modes` without extending the label, which
+ * is how Campfire went missing from the moment it was added.
+ *
+ * And CONTAINMENT: every label entry, lowercased, must be a substring of some bound key.
+ * The first version asserted only the count, on the argument that a name check needs a
+ * mapping table nobody maintains. That argument was wrong for this corpus and a reviewer
+ * showed it: `2d`, `3d`, `hive`, `chord` match exactly, and `flow` is a substring of
+ * `workflow`. No table required. What the count alone missed is a mode REPLACEMENT —
+ * rename `hive` to `sunburst` in both maps and leave the label, and 6 = 6 stays green
+ * while the published page names a mode that no longer exists AND omits one that does.
+ * That is the full defect class, not the "smaller and quieter" drift the first version
+ * claimed it was.
+ *
+ * Containment is a heuristic, not a proof: "Flow" would also match a hypothetical
+ * `flowchart`. Its failure direction on a divergently-named future mode is loud red,
+ * which is the recoverable one.
  *
  * `ci-scripts.yml` carries no `paths:` filter (#641), so this test runs on a `viz/`-only
  * PR — which is the whole reason it can live in `scripts/test/` at all.
@@ -34,7 +44,7 @@ import { fileURLToPath } from 'node:url';
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const APP_JS = resolve(REPO_ROOT, 'viz', 'js', 'app.js');
 
-/** Modes bound at runtime, from the `modes` map `setActiveMode` switches over. */
+/** Modes bound at runtime, from the `modes` map `switchMode`/`loadMode` consult. */
 export function boundModes(source) {
   const match = source.match(/^const modes = \{(.*?)\};$/m);
   if (!match) return null;
@@ -61,6 +71,14 @@ test('the bind_modes label names as many modes as app.js binds', () => {
 
   assert.ok(bound, 'the `const modes = { … }` map must be findable — this test is its only reader');
   assert.ok(labelled, 'the bind_modes annotation must carry a parenthesised mode list');
+  for (const name of labelled) {
+    assert.ok(
+      bound.some((key) => key.toLowerCase().includes(name.toLowerCase())),
+      `the label names "${name}", which is not a substring of any bound mode key `
+      + `(${bound.join(', ')}). A mode replacement keeps the COUNT equal while the published `
+      + `page names a mode that no longer exists (#639).`,
+    );
+  }
   assert.equal(
     labelled.length,
     bound.length,
@@ -68,6 +86,22 @@ test('the bind_modes label names as many modes as app.js binds', () => {
     + `bound (${bound.join(', ')}). The label is copied verbatim into workflow.mmd and served `
     + `to readers, so this is a wrong statement on a published page — and check:diagram-nodes `
     + `cannot see it, because the node IDs agree and only the label differs (#639).`,
+  );
+});
+
+test('a mode REPLACEMENT is caught, though the counts still agree', () => {
+  // The case count-alone misses, and the reason containment was added. Six for six, and
+  // the label names a mode that does not exist while omitting one that does.
+  const swapped = readFileSync(APP_JS, 'utf8')
+    .replace('hive: null', 'sunburst: null');
+
+  const bound = boundModes(swapped);
+  const labelled = labelledModes(swapped);
+
+  assert.equal(labelled.length, bound.length, 'precondition: the counts still agree');
+  assert.ok(
+    !labelled.every((name) => bound.some((key) => key.toLowerCase().includes(name.toLowerCase()))),
+    'containment must reject a label entry naming a mode that is no longer bound',
   );
 });
 

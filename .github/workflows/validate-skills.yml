@@ -196,9 +196,13 @@ jobs:
       #
       # Read what a clean run does NOT claim before quoting one: labels,
       # node_type, edges and source-side annotation staleness are all invisible
-      # to it. `bind_modes` today reads "(2D/3D/Hive/Chord/Flow)" and Campfire is
-      # the sixth mode — that label is wrong in the source annotation, so a
-      # faithful regeneration reproduces it and this gate stays green through it.
+      # to it. `bind_modes` READ "(2D/3D/Hive/Chord/Flow)" while Campfire was the
+      # sixth bound mode; the source annotation was fixed in #702 and the
+      # committed diagram still carries the old text, because repairing that
+      # means regenerating (#601). This gate was green through the defect and is
+      # green through the divergence — it compares ids, and `bind_modes` was
+      # never missing from either side. The label is covered by
+      # scripts/test/viz-mode-label.test.js instead.
       - name: Check viz diagram node parity (warn only until #601)
         run: node scripts/check-workflow-diagram-nodes.js --warn
 
