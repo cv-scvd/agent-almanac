@@ -359,7 +359,7 @@ else
   compare_id_sets skills/_registry.yml skills "$a15_reg" "$a15_disk" "skills/<id>/SKILL.md" \
     || { failed=1; a15_fail=1; }
 fi
-a15_count=$(printf '%s\n' "$a15_reg" | sed '/^$/d' | wc -l)
+a15_count=$(printf '%s\n' "$a15_reg" | sed '/^$/d' | wc -l || true)
 [ "$a15_fail" -eq 0 ] && echo "OK: $a15_count skills in the registry match the directories on disk"
 
 # A6: Agent intent contract (#285)
