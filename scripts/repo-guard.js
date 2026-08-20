@@ -231,6 +231,33 @@ function reportList(label, before, after) {
   return true;
 }
 
+/**
+ * Write a baseline, failing closed if it cannot be recorded.
+ *
+ * `provenance` is merged into the file. `snapshot` records none; `rebaseline`
+ * records what it accepted, so a later reader can tell an arming from a
+ * re-arming — the distinction `--force` erases (#688).
+ */
+function writeSnapshot(state, provenance = {}) {
+  try {
+    writeFileSync(
+      SNAPSHOT_PATH,
+      JSON.stringify(
+        { formatVersion: FORMAT_VERSION, ...state, takenAt: new Date().toISOString(), ...provenance },
+        null,
+        2,
+      ) + '\n',
+      'utf8',
+    );
+  } catch (error) {
+    // An uncaught throw here exits 1, which in this tool's vocabulary means
+    // "the repository changed" — the fail-closed contract requires that an
+    // inability to record the baseline reads as uncertainty, not as a verdict.
+    die(`could not write the snapshot to ${SNAPSHOT_PATH}: ${error.message}\n` +
+      'The run is NOT guarded. Fix this before fanning out.');
+  }
+}
+
 if (command === 'snapshot') {
   // Refusing to clobber is what stops a nested or concurrent run from
   // rebaselining the outer run's damage as the new normal.
@@ -245,19 +272,7 @@ if (command === 'snapshot') {
       'Let that run release its own, or `npm run guard:snapshot -- --force` if you know it is dead.');
   }
   const state = captureState();
-  try {
-    writeFileSync(
-      SNAPSHOT_PATH,
-      JSON.stringify({ formatVersion: FORMAT_VERSION, ...state, takenAt: new Date().toISOString() }, null, 2) + '\n',
-      'utf8',
-    );
-  } catch (error) {
-    // An uncaught throw here exits 1, which in this tool's vocabulary means
-    // "the repository changed" — the fail-closed contract requires that an
-    // inability to record the baseline reads as uncertainty, not as a verdict.
-    die(`could not write the snapshot to ${SNAPSHOT_PATH}: ${error.message}\n` +
-      'The run is NOT guarded. Fix this before fanning out.');
-  }
+  writeSnapshot(state);
   if (!QUIET) {
     console.log(`repo-guard: snapshot at ${state.head.slice(0, 8)} on ${state.branch}` +
       ` (${state.status.length} pending change(s), ${state.indexFlags.length} index flag(s))`);
