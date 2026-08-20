@@ -128,6 +128,48 @@ The file also carries the **advisory-gate inventory**, checked rather than writt
 
 Negative evidence is `scripts/envelopes/debt-ratchet.mjs` (`npm run gate-envelope`), which mutates the real corpus against `npm run ratchet` — the command CI runs, not the inner script. Its `expect: null` case pins the scope boundary as a measurement: a new body divergence must **not** move the ratchet.
 
+## Merging With a Red Check
+
+A red check is not one situation. **The tool found something** and **the tool could not run** need
+opposite responses, and only the second is ever a merge-anyway case. Until #643 that distinction
+was unwritten, and PR #640 was merged at `UNSTABLE` on four judgements made in the moment, none
+of them recorded where a later session would find them.
+
+The rule, in the order it must be applied:
+
+1. **Is it one of the five required contexts** — `line-endings`, `integrity`, `skills`,
+   `scripts-test`, `cli-test`? Then it is not a judgement call: the merge is refused for everyone
+   except the `bypass_actors` maintainer, and bypassing a red required check is never covered by
+   the standing merge allowance.
+2. **Did the tool fail, or did it find something?** Read the log, not the conclusion. A
+   dependency install that 503s, a runner that dies, an API that is down — that is the tool
+   failing. Anything the check *reports about the diff* is a finding, and a finding is never
+   merged past.
+3. **If the tool failed: can it be re-run?** Prefer re-running to reasoning. Every check in
+   `.github/workflows/` is retriable with `gh run rerun --failed`. **CodeQL default setup is
+   not** — its runs are `event: dynamic` and `gh run rerun` refuses them, bare or `--failed`, so
+   a transient red there can only be cleared by a new commit or a PR close/reopen.
+4. **If it cannot be re-run: record the four facts before merging**, on the PR, in these words —
+   which log line shows the failure is the tool's; that the check is not required; that every
+   repo-owned workflow is green on the same SHA; and how the check will be re-exercised
+   afterwards (for CodeQL, it re-runs on `main`, and the merge commit's own result is the
+   confirmation).
+
+**`CodeQL: neutral` is not evidence that code scanning passed.** The aggregate check by that name
+comes from the `github-advanced-security` app and reports `neutral` while the per-language
+`Analyze (…)` runs — a different app, `github-actions` — report `failure`. A reader checking "is
+CodeQL green" sees the wrong one. Read the `Analyze (…)` runs:
+
+```bash
+gh api repos/pjt222/agent-almanac/commits/SHA/check-runs \
+  --jq '.check_runs[] | select(.name|test("Analyze")) | "\(.name)\t\(.conclusion)"'
+```
+
+Deliberately still open on #643: whether default setup stays at all. A committed `codeql.yml`
+produces retriable runs and removes step 3's exception; default setup is lower maintenance and
+commits no workflow YAML into a repo that auto-commits. That is a maintainer trade, not a
+technical one, and the rule above holds under either answer — only step 3's exception changes.
+
 ## Guarding a Multi-Agent Run
 
 `git status` cannot see a subagent that **committed**. Bracket any fan-out with Bash access in this repo:

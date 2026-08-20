@@ -121,7 +121,17 @@ Apply top to bottom. The **essential** tier is zero-downside and does not break 
   ```yaml
   - uses: stefanzweifel/git-auto-commit-action@<40-char-sha>  # v6.x.x
   ```
-- **Leave fork-PR approval at the public-repo default** ("Require approval for first-time contributors"). Fork `pull_request` runs already get a read-only token and no secrets.
+- **Decide fork-PR approval deliberately; the default has a cost this guide used to omit.** The public-repo default is "Require approval for first-time contributors", and fork `pull_request` runs already get a read-only token and no secrets — so the default is safe. What it also does is run **nothing at all** on a first-time contributor's PR until a maintainer clicks approve, and if nobody notices, the contributor sees a PR with no checks and no signal. Measured on this repo's first external PR: 0 workflow runs, 0 check-runs, 0 check-suites.
+
+  The setting is readable *and writable* over the API — it is not web-UI-only, an error worth naming because it sends people designing around a constraint that does not exist:
+
+  ```bash
+  gh api repos/OWNER/REPO/actions/permissions/fork-pr-contributor-approval
+  gh api -X PUT repos/OWNER/REPO/actions/permissions/fork-pr-contributor-approval \
+    -f approval_policy=first_time_contributors_new_to_github
+  ```
+
+  Three values, loosest to strictest: `first_time_contributors_new_to_github`, `first_time_contributors`, `all_external_contributors`. **This repository runs the loosest**, chosen against a measured blast radius rather than by default (#689): the token is read-only, no secrets are exposed to fork runs, and every workflow here is a validator. A repo whose workflows touch secrets or deploy should not copy that choice.
 - **Enable Dependabot alerts + security updates + a `.github/dependabot.yml`.** Alerts and fixes are *separate* toggles — enable both, or you detect vulnerabilities and fix nothing. Include a `github-actions` ecosystem block to keep action SHAs fresh.
   ```bash
   gh api -X PUT repos/OWNER/REPO/vulnerability-alerts      # alerts + dependency graph
@@ -139,7 +149,17 @@ Apply top to bottom. The **essential** tier is zero-downside and does not break 
 - **Add `required_status_checks`** to the ruleset with `do_not_enforce_on_create=true` and `strict_required_status_checks_policy=true`. **Critical:** this blocks the bot's direct push unless you provision a bypass (next item), *and* the checks must run on `push`, not only `pull_request`, or they never report and the push is permanently blocked.
 - **Add a `pull_request` rule** if you want a review surface. On a solo repo keep `required_approving_review_count: 0` — you cannot approve your own PR, and `>= 1` is an unsatisfiable self-lockout.
 - **Provision a GitHub App bypass for the bot** (Contents: read/write) via `actions/create-github-app-token`, pass the token to checkout + `git-auto-commit-action`, and add the App as an `Integration` bypass actor with `bypass_mode: always`. This is the correct realization of "let the bot through" once required checks/PR are on.
-- **Enable CodeQL "default setup"** (server-managed) rather than advanced setup, so no extra workflow YAML is committed into a repo that auto-commits.
+- **Enable CodeQL "default setup"** (server-managed) rather than advanced setup, so no extra workflow YAML is committed into a repo that auto-commits. Two consequences to accept with it, both learned the expensive way (#643):
+
+  - **Its runs cannot be retried.** Default setup produces `event: dynamic` runs, and `gh run rerun` refuses them — both bare and `--failed`. A transient GitHub-side failure (a 503 while determining feature enablement) therefore pins a red check that no re-run can clear. The only ways forward are a new commit or a PR close/reopen. A committed `codeql.yml` produces retriable runs and would remove this entirely; that is the trade.
+  - **`CodeQL: neutral` is not evidence that code scanning passed.** The aggregate check named `CodeQL` comes from the `github-advanced-security` app and reports `neutral` even while the per-language `Analyze (…)` runs — from the `github-actions` app — report `failure`. Anything asserting code-scanning health, human or automated, must read the `Analyze (…)` runs:
+
+    ```bash
+    gh api repos/OWNER/REPO/commits/SHA/check-runs \
+      --jq '.check_runs[] | select(.name|test("Analyze")) | "\(.name)\t\(.conclusion)"'
+    ```
+
+  Neither is a reason against default setup. They are the reasons to know which one you chose.
 - **Set merge-method toggles to match policy** (e.g. merge-commits-only: `allow_squash_merge=false`, `allow_rebase_merge=false`) and auto-delete head branches on merge.
 - **Restrict the allowed-actions policy** to GitHub-owned + an explicit allow-list that *includes* `stefanzweifel/git-auto-commit-action` (it is not GitHub-owned; omitting it silently fails the workflow).
 
@@ -258,6 +278,7 @@ These are the beliefs that feel like security but are not.
 - **"Convert the bot from push to a PR to satisfy the rules."** A PR opened by the default `GITHUB_TOKEN` does **not** trigger `pull_request`/`push` workflows, so required checks never run and the PR sits on "expected/pending" forever. The PR must be created with an App token or PAT.
 - **"Required status checks mean nothing unreviewed lands."** Without a *required-PR* rule, anyone with write can still push directly if a check reports on push; and in classic BP admins bypass by default unless `enforce_admins=true`. Rulesets differ — they do not auto-exempt admins — so porting the classic mental model silently changes who is gated.
 - **"Branch protection protects the repo from a malicious collaborator."** It protects one ref. A write collaborator can push to unprotected branches, add a malicious workflow, or move tags. Scope, allowed-actions policy, and fork approval matter as much.
+- **"Fork-PR approval is a Settings-only toggle."** It is at `/repos/{owner}/{repo}/actions/permissions/fork-pr-contributor-approval`, readable and writable, with three values. Designing a manual procedure around the belief that it is web-UI-only is wasted work — verify the premise before designing around it.
 - **"Public-repo secret scanning stops leaks."** Alerts fire *after* the commit; push protection blocks at push time but the auto-commit bot cannot click the interactive web bypass, so a CI-committed secret just fails the job — treat it as a real finding, not a flake. The free tier also covers provider patterns only, not every generic secret.
 - **"Require signed commits is free hardening."** It blocks the bot, which pushes unsigned via git CLI. Keeping both requires an API-based commit action.
 - **"Swap `GITHUB_TOKEN` for a broad PAT to get past protection."** A PAT is long-lived and account-wide — a strict privilege escalation over the ephemeral repo-scoped token. Prefer an App or deploy key.
