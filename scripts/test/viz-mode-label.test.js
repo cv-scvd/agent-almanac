@@ -28,8 +28,26 @@
  * That is the full defect class, not the "smaller and quieter" drift the first version
  * claimed it was.
  *
- * Containment is a heuristic, not a proof: "Flow" would also match a hypothetical
- * `flowchart`. Its failure direction on a divergently-named future mode is loud red,
+ * Containment runs BOTH ways, and the second direction closes two residuals a forward
+ * check alone leaves — both raised in review, both typo-shaped rather than
+ * refactor-shaped, and both green under count-plus-forward-containment:
+ *
+ *   (2D/3D/Hive/Chord/Flow/Flow)      a duplicated entry. Six entries, "flow" is a
+ *                                     substring of `workflow` twice, and Campfire is
+ *                                     omitted — the founding defect, re-entering as a
+ *                                     copy-paste artifact.
+ *   (2D/3D/Hive/Chord/Fire/Campfire)  "fire" and "campfire" both match `campfire`, and
+ *                                     Flow is omitted. Not fiction: the repo uses both
+ *                                     "Fire" and "Campfire" in sibling comments, for
+ *                                     different referents.
+ *
+ * Reverse containment kills both, and would independently have caught the original
+ * omission. The three assertions catch disjoint classes: the #639 defect (five entries,
+ * six keys) fails count alone; a swap fails forward containment alone; a padded label
+ * fails count alone; the two above fail reverse containment alone.
+ *
+ * Containment is still a heuristic, not a proof — "Flow" would also match a hypothetical
+ * `flowchart` key. Its failure direction on a divergently-named future mode is loud red,
  * which is the recoverable one.
  *
  * `ci-scripts.yml` carries no `paths:` filter (#641), so this test runs on a `viz/`-only
@@ -77,6 +95,12 @@ test('the bind_modes label names as many modes as app.js binds', () => {
       `the label names "${name}", which is not a substring of any bound mode key `
       + `(${bound.join(', ')}). A mode replacement keeps the COUNT equal while the published `
       + `page names a mode that no longer exists (#639).`,
+    );
+  }
+  for (const key of bound) {
+    assert.ok(
+      labelled.some((name) => key.toLowerCase().includes(name.toLowerCase())),
+      `mode "${key}" is bound but nothing in the label (${labelled.join('/')}) names it.`,
     );
   }
   assert.equal(

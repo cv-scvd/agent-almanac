@@ -201,8 +201,9 @@ jobs:
       # committed diagram still carries the old text, because repairing that
       # means regenerating (#601). This gate was green through the defect and is
       # green through the divergence — it compares ids, and `bind_modes` was
-      # never missing from either side. The label is covered by
-      # scripts/test/viz-mode-label.test.js instead.
+      # never missing from either side. scripts/test/viz-mode-label.test.js covers
+      # the SOURCE label against the code; nothing gates the diagram's COPY of it,
+      # which is the divergence #601 closes.
       - name: Check viz diagram node parity (warn only until #601)
         run: node scripts/check-workflow-diagram-nodes.js --warn
 

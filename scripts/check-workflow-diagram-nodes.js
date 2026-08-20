@@ -25,8 +25,9 @@
  *     five-mode text, because repairing it means regenerating, which #601
  *     blocks. This check was green through the defect and is green through the
  *     divergence, which is the point: it compares ids, and `bind_modes` was
- *     never missing from either side. `scripts/test/viz-mode-label.test.js` is
- *     what covers the label now.
+ *     never missing from either side. `scripts/test/viz-mode-label.test.js`
+ *     covers the SOURCE label against the code. Nothing gates the diagram's COPY
+ *     of it — that divergence is what #601 closes.
  *   - **`node_type`.** An `input` retyped to `process` moves the node's shape
  *     and its `class` line; the id is unchanged, so nothing here fires.
  *   - **Edges.** `input:`/`output:` chains build the `-->` block. A rewired
