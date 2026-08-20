@@ -523,6 +523,12 @@ test('the DECLARED healer is skipped, or the check would accuse itself', () => {
   // promptly OVERWROTE it with the standard fixture — a fixture that committed nothing, so
   // the skip was never exercised and deleting it left the suite green. Found by mutation; the
   // repair is in the fixture, which now commits like the real file does.
+  //
+  // Read the resulting kill count correctly. Deleting the skip now dies to EIGHT tests, and
+  // that is coupling through a shared fixture, not eight independent assertions — every test
+  // using the standard workflow inherits the accusation. Bigger is not stronger here, which
+  // is the inversion this repo's mutation doctrine warns about; the one that means something
+  // is this test, and it would die alone if it had a fixture of its own.
   const { status, output } = run({
     paths: ['skills/**', 'scripts/generate-readmes.js'],
     steps: ['node scripts/generate-readmes.js'],
