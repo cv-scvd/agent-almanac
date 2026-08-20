@@ -762,8 +762,8 @@ test('AC3: an agent commit the operator did not make still goes RED', async (t) 
   assert.equal(r.status, 1, 'a committed stray write must still be caught');
   assert.match(r.stderr, /HEAD moved/);
   assert.match(r.stderr, /Subagent/,
-    'the author is printed as a HINT — in #493 it was identical to the operator\'s, because a '
-    + 'subagent commits through this repository\'s own git config');
+    'the author is printed as a HINT, never as the discriminator — in #493 it was identical '
+    + 'to the operator\'s, because a subagent commits through this repository\'s own git config');
   assert.ok(r.stderr.includes(`git reset --mixed ${before.slice(0, 8)}`),
     'the recovery for a commit that is NOT yours must still be named');
   assert.ok(existsSync(snapshotPath(dir)), 'and the baseline is kept for a re-verify');
@@ -822,9 +822,12 @@ test('THE HOLE: verify must not hand out a paste-ready override', async (t) => {
   const r = guard(dir, ['verify']);
 
   assert.equal(r.status, 1);
-  assert.ok(!r.stderr.includes(`--accept=${head}`),
-    'verify must not print a paste-ready --accept for the very commit it is reporting');
-  assert.ok(!r.stderr.includes(`--accept=${head.slice(0, 8)}`), 'not an abbreviated one either');
+  // The token itself, not two of its lengths. Asserting only the 40- and 8-character
+  // forms left a 7-character gap: `--accept=${head.slice(0, 7)}` is paste-ready AND
+  // accepted (`accepted.length < 7` admits exactly 7) while containing neither. Verify's
+  // naming line carries no `--accept=` substring at all, so the strong form is free.
+  assert.ok(!r.stderr.includes('--accept='),
+    'verify must not print a paste-ready --accept at ANY abbreviation length');
   assert.match(r.stderr, /npm run guard:rebaseline {4}#/,
     'it may still NAME the command — the caller must fetch the sha themselves');
 });
@@ -865,6 +868,48 @@ test('an unanswerable ancestry is reported as unknown, not as "no"', async (t) =
   assert.match(r.stderr, /could NOT determine ancestry/);
   assert.ok(!/history diverged or was replaced/.test(r.stderr),
     'a question git refused to answer must not be reported as an answer');
+
+  // The reason the rendering alone is not enough: `'unknown'` is TRUTHY, so an
+  // `if (!fastForward)` guard on the reset-safety NOTE suppresses it in exactly the case
+  // the three-valued ancestry exists to surface — and prints `git reset --mixed <sha>`
+  // whose target's existence is what 'unknown' doubts. Without this assertion both the
+  // buggy and the fixed form pass.
+  assert.match(r.stderr, /git could not tell whether that commit is an ancestor/,
+    'the reset advice must be qualified when ancestry is unknown');
+  assert.match(r.stderr, /git cat-file -t/, 'and must say how to check');
+});
+
+test('an unborn baseline can still be re-baselined, without an invalid range', async (t) => {
+  // `git log '(unborn)..HEAD'` can never succeed, so the enumeration guard would brick
+  // rebaseline for an operator who armed an empty repository and then made their own
+  // first commits — back to `--force`, which is the whole point of this command. And the
+  // refusal would print that unrunnable range as copy-pasteable advice, the defect class
+  // the unborn branch of verify's message already exists to forbid.
+  const dir = mkdtempSync(join(tmpdir(), 'repo-guard-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  git(dir, ['init', '-b', 'main']);
+  git(dir, ['config', 'user.email', 'test@example.invalid']);
+  git(dir, ['config', 'user.name', 'Fixture']);
+
+  assert.equal(guard(dir, ['snapshot']).status, 0, 'an empty repo is a legitimate baseline');
+
+  mkdirSync(join(dir, 'src'), { recursive: true });
+  writeFileSync(join(dir, 'src', 'a.txt'), 'mine\n', 'utf8');
+  git(dir, ['add', '-A']);
+  git(dir, ['commit', '-m', 'my own first commit']);
+
+  const refusal = guard(dir, ['rebaseline']);
+  assert.equal(refusal.status, 2);
+  assert.match(refusal.stderr, /every commit now present arrived during the run/);
+  assert.match(refusal.stderr, /my own first commit/, 'the commits must actually be listed');
+  assert.ok(!refusal.stderr.includes('(unborn)..'),
+    'an invalid revision range must never be printed as advice');
+
+  const r = guard(dir, ['rebaseline', `--accept=${git(dir, ['rev-parse', 'HEAD'])}`]);
+  assert.equal(r.status, 0, r.stderr);
+  const snap = JSON.parse(readFileSync(snapshotPath(dir), 'utf8'));
+  assert.equal(snap.rebaselinedFrom.acceptedCommits.length, 1,
+    'the accepted commit is recorded, not an empty list');
 });
 
 test('rebaseline refuses when it could not enumerate the commits', async (t) => {

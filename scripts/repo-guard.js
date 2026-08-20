@@ -125,7 +125,8 @@ const USAGE = `Usage:
   npm run guard:snapshot -- --quiet   suppress the success line (also valid on verify and rebaseline)
   npm run guard:rebaseline -- --accept=<sha> [--reason="..."]
                                       accept the printed move; <sha> must equal the
-                                      current HEAD, so it cannot be typed unread
+                                      current HEAD, so the transcript records WHICH
+                                      move was accepted
 
   (flags must follow \`--\`; npm swallows them otherwise. Valued flags use \`=\`, not a
    space, so the value cannot be mistaken for the command.)`;
@@ -512,6 +513,20 @@ if (command === 'rebaseline') {
     process.exit(1);
   }
 
+  if (!commitsEnumerated && before.head === UNBORN) {
+    // `git log '(unborn)..HEAD'` can never succeed, so the enumeration guard would brick
+    // rebaseline for an operator who armed an empty repository and then made their own
+    // first commits — sending them back to `--force`, the whole point of this command.
+    // Everything present arrived during the run, so enumerate without a range.
+    const all = git(['log', '--format=  %h %an <%ae>  %s'], { cwd: TOPLEVEL, allowFailure: true });
+    if (all && all.trim()) {
+      console.error('\n  the baseline had no commits, so every commit now present arrived during the run:');
+      console.error(all.trimEnd());
+      addedCommits = all.trim().split('\n').filter(Boolean).map((l) => l.trim());
+      commitsEnumerated = true;
+    }
+  }
+
   if (!commitsEnumerated) {
     console.error('\nrepo-guard: git could not list the commits between the baseline and HEAD.');
     console.error('There is nothing to read, so there is nothing to acknowledge. Accepting here would');
@@ -533,8 +548,8 @@ if (command === 'rebaseline') {
     console.error('\nThe sha is required so an acknowledgement cannot be given by reflex, and so the');
     console.error('transcript records WHICH move was accepted — which `--force` does not. It is a');
     console.error('control against ACCIDENT, not against intent: anyone who wants to can substitute');
-    console.error('`$(git rev-parse HEAD)`. What it buys is that the green path is never one paste');
-    console.error('away from a red verify. Read the authors above — and note they may be identical');
+    console.error('`$(git rev-parse HEAD)`. What it buys is that no red `guard:verify` ever prints a');
+    console.error('paste-ready override in its own output. Read the authors above — they may be');
     console.error('to yours, because a subagent commits through this repository\'s own git config.');
     console.error('That is what happened in #493. The content is the test; the author is a hint.');
     process.exit(2);
@@ -613,9 +628,16 @@ if (changed) {
     console.error(`    git log --oneline ${before.head.slice(0, 8)}..HEAD`);
     console.error(`    git reset --mixed ${before.head.slice(0, 8)}   # keeps the files, drops the commit`);
     console.error('    Investigate BEFORE PUSHING — a stray commit is recoverable while unpushed.');
-    if (!fastForward) {
+    if (fastForward === false) {
       console.error('    NOTE: the snapshot commit is not an ancestor of HEAD, so that reset would');
       console.error('    move you onto different history. Inspect before running it.');
+    } else if (fastForward === 'unknown') {
+      // `'unknown'` is TRUTHY, so `if (!fastForward)` suppressed this warning in exactly
+      // the case the three-valued ancestry was introduced to surface — and printed a
+      // `git reset --mixed <sha>` whose target's existence is what 'unknown' doubts.
+      console.error('    NOTE: git could not tell whether that commit is an ancestor, so this reset');
+      console.error(`    may move you onto different history. Confirm it exists first:`);
+      console.error(`      git cat-file -t ${before.head.slice(0, 8)}`);
     }
     if (worktreeMoved) {
       // Advising rebaseline here would advise a command that then refuses: it declines
