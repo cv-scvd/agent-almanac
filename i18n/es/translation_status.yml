@@ -1,12 +1,12 @@
 locale: es
-last_updated: '2026-08-18'
+last_updated: '2026-08-23'
 coverage:
   skills:
     translated: 334
-    total: 370
-    pct: 90.3
-    stale: 164
-    stubs: 31
+    total: 371
+    pct: 90
+    stale: 165
+    stubs: 32
     unjudged: 2
   agents:
     translated: 3
@@ -31,8 +31,8 @@ coverage:
     unjudged: 1
   total:
     translated: 340
-    total: 502
-    pct: 67.7
-    stale: 169
-    stubs: 41
+    total: 503
+    pct: 67.6
+    stale: 170
+    stubs: 42
     unjudged: 3
