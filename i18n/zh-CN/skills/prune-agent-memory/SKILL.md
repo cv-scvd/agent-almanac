@@ -15,7 +15,7 @@ metadata:
   domain: general
   complexity: intermediate
   language: multi
-  tags: memory, pruning, forgetting, retention-policy, maintenance, auto-memory, inoculation
+  tags: memory, pruning, forgetting, retention-policy, maintenance, auto-memory, inoculation, deaccession
   locale: zh-CN
   source_locale: en
   source_commit: 33b561c9
