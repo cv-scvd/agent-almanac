@@ -61,9 +61,11 @@ function isPlaceholder(slug, isFullSlug) {
   // justification for anchoring it: a real slug encodes an absolute path, so it begins with the
   // filesystem root (`-mnt-…`, `-home-…`, `-Users-…`), which means a metasyntactic first segment
   // can only be a whole-slug stand-in. An elided tail begins with whatever the author cut it at,
-  // so the same rule there waives real projects — `…-project-billing/memory` or
-  // `…-test-rig_data/memory` would pass as placeholders. That is the exact shape of the incident
-  // this detector exists for, so the tail path does not get the keyword waiver at all.
+  // so the same rule there waives real projects. That is the exact shape of the incident this
+  // detector exists for, so the tail path does not get the keyword waiver at all. Worked examples
+  // live in the test rather than here: writing them in this comment made the rule fire on its own
+  // documentation, which is the third time this file has caught itself and the reason the
+  // examples are now somewhere the scan can distinguish from a real leak.
   if (isFullSlug && /^-(?:slug|project|example|placeholder|your|foo|bar|baz|qux|sample|test)\b/i.test(slug)) {
     return true;
   }
