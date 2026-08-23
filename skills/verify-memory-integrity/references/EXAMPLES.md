@@ -18,13 +18,14 @@ Real aggregate figures from one store, with paths and filenames removed. Step 0 
 
 ```text
 STORE <memory-dir>
-lines 129/200 = 64.5%    size 18656/25000 = 74.6%
-USAGE 74.6% -> OK
+lines 131/200 = 65.5%    size 19021/25000 = 76.1%
+USAGE 76.1% -> OK
 binds: neither
 mean 145 units/line — the size cap binds first above 125
-utf-8 bytes 18891; bytes/unit 1.0126; astral chars 0
+utf-8 bytes 19260; not loaded, so not counted: 0 unit(s)
+astral chars 0
 
-topic files 135; linked 135
+topic files 137; linked 137
 ORPHANS  0 = 0.0% of files, 0.0% of bytes
 DANGLING 0 (linked, absent on disk)
 
@@ -159,7 +160,7 @@ Measured against two real sibling pairs on one machine:
 (Slugs elided — both pairs are real private project identifiers. Only the `_` versus `-` spelling
 is load-bearing.)
 
-The two misses are the direction that matters. SPEC-407 §8's first consequence is that memory
+The two misses are the direction that matters. Memory
 written before the change lives under a slug the harness never opens again — which you discover
 while sitting in the *modern* store, exactly where substitution is blind. Normalizing both sides to
 one key (`tr '_' '-'`) collapses the two spellings and catches all four.
@@ -189,8 +190,11 @@ model's context. Anyone reproducing this hits that trap first. The full run, wit
 generator, is at `tests/results/2026-08-23-memory-cap-truncation-probe/RESULT.md`.
 
 The external tables in `anthropics/claude-code#82056` put the boundary one line further on. That
-does not reproduce on either version they cite, so do not read the difference as a release change
-and do not stamp the whole-line rule to one build — state it as measured across 2.1.237–2.1.241.
+does not reproduce on **linux-x64 official builds of either version they cite** — the external
+2.1.238 arm is native Windows and the external Linux arm reports `ccd-cli`, so neither platform nor
+artifact is matched — but within that scope the release hypothesis is dead, so do not read the
+difference as a release change and do not stamp the whole-line rule to one build: state it as
+measured across 2.1.237–2.1.241, linux-x64.
 The discrepancy is one line in the unsafe direction: a reader budgeting from the higher figure
 believes one more line survives than does.
 

@@ -47,14 +47,24 @@ const ELIDED_RE = /(?:…|\.\.\.)\s*(-?[A-Za-z0-9][A-Za-z0-9_-]*)\/memory\b/g;
 // spellings, because the `/memory` suffix disambiguates it.
 const ELIDED_BARE_RE = /…\s*(-?[A-Za-z0-9][A-Za-z0-9_-]{4,})(?![\w/-])/g;
 
-/** A slug is a placeholder if any part of it is visibly a stand-in rather than a real path. */
-function isPlaceholder(slug) {
+/**
+ * A slug is a placeholder if it is visibly a stand-in rather than a real path.
+ *
+ * @param {boolean} isFullSlug true when the capture is a whole slug (matched after
+ *   `projects/`), false when it is an elided TAIL. The distinction is load-bearing, see below.
+ */
+function isPlaceholder(slug, isFullSlug) {
   if (/[<>{}$*]/.test(slug)) return true; // <project_a>, ${SLUG}, -foo-*
   if (/\.{3}|…/.test(slug)) return true; // elided
-  // Anchored at the start of the slug on purpose: a real slug encodes an absolute path, so it
-  // begins with the filesystem root (`-mnt-…`, `-home-…`, `-Users-…`). A metasyntactic name can
-  // therefore only be a whole-slug stand-in, and `-mnt-d-dev-p-test-harness` still reports.
-  if (/^-(?:slug|project|example|placeholder|your|foo|bar|baz|qux|sample|test)\b/i.test(slug)) {
+
+  // The metasyntactic-name rule applies to FULL SLUGS ONLY, and the reason is the whole
+  // justification for anchoring it: a real slug encodes an absolute path, so it begins with the
+  // filesystem root (`-mnt-…`, `-home-…`, `-Users-…`), which means a metasyntactic first segment
+  // can only be a whole-slug stand-in. An elided tail begins with whatever the author cut it at,
+  // so the same rule there waives real projects — `…-project-billing/memory` or
+  // `…-test-rig_data/memory` would pass as placeholders. That is the exact shape of the incident
+  // this detector exists for, so the tail path does not get the keyword waiver at all.
+  if (isFullSlug && /^-(?:slug|project|example|placeholder|your|foo|bar|baz|qux|sample|test)\b/i.test(slug)) {
     return true;
   }
   return false;
@@ -72,7 +82,7 @@ export function findPrivateStoreSlugs(text) {
       for (const m of line.matchAll(re)) {
         const slug = m[1];
         if (slug === OWN_SLUG) continue;
-        if (isPlaceholder(slug)) continue;
+        if (isPlaceholder(slug, re === SLUG_RE)) continue;
         // An elided mention of this repo's own store discloses nothing new, and the elision
         // means it will not match OWN_SLUG outright. Applies to both elided shapes.
         if (re !== SLUG_RE && OWN_SLUG.endsWith(slug.replace(/^-/, ''))) continue;

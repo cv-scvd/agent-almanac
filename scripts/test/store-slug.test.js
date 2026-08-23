@@ -86,6 +86,18 @@ test('a real slug is still reported when it merely contains a metasyntactic word
   assert.equal(hits('~/.claude/projects/-home-u-work-example_client/memory'), 1);
 });
 
+test('an elided tail does not get the full-slug metasyntactic waiver', () => {
+  // The keyword rule is anchored because a real slug starts at the filesystem root. An elided
+  // tail starts wherever the author cut it, so the same rule there waives real projects. These
+  // are the shape of the incident this detector exists for: a project genuinely named
+  // `project-…` or `test-…`, elided by an author who knew the path was sensitive.
+  assert.equal(hits('| `…-project-billing/memory/` | 3 files |'), 1);
+  assert.equal(hits('| `…-test-rig_data/memory/` | 3 files |'), 1);
+  assert.equal(hits('the legacy store `…-sample-corpus_v2` is unreachable'), 1);
+  // ...while the full-slug form keeps the waiver, since there the anchor argument holds.
+  assert.equal(hits('~/.claude/projects/-project-example/memory'), 0);
+});
+
 test('reports every occurrence with its line number', () => {
   const doc = [
     '# report',

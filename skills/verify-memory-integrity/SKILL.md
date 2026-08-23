@@ -174,18 +174,26 @@ print(f"lines {lines}/200 = {lf:.1%}    size {size}/25000 = {sf:.1%}")
 print(f"USAGE {max(lf, sf):.1%} -> " + ("OVER CAP - the tail is dropped on load" if max(lf, sf) >= 1.0
       else "COMPACT NOW (target 70%)" if max(lf, sf) >= 0.80 else "OK"))
 print(f"binds: {binds}" + (f"; first line dropped: {min(cuts)}" if cuts else ""))
-print(f"mean {size / lines:.0f} units/line — the size cap binds first above 124")
+print(f"mean {size / lines:.0f} units/line — the size cap binds first above 125")
 print(f"utf-8 bytes {len(raw)}; not loaded, so not counted: {units(full) - size} unit(s)")
 print(f"astral chars {sum(1 for c in text if ord(c) > 0xFFFF)}")
 PY
 ```
 
-**Measurement-basis note.** The block measures the raw decoded file. On Claude Code v2.1.211 and
-later the loader strips YAML frontmatter and block-level HTML comments before applying the limits,
-so on an index carrying either, this over-reports both fractions — the same over-report direction
-the `max(len(raw), chars)` hedge has, and the same reason to distrust it. On an index carrying
-neither, the common case and true of every store measured for this skill, raw and stripped
-measurements coincide. Strip both before believing a `COMPACT NOW` on an index that has them.
+**Measurement-basis note.** The block measures the content that LOADS: it strips YAML frontmatter
+and block-level HTML comments first, because the loader strips them before applying the limits and
+excludes them from the measurement. Measuring the raw file instead over-reports — the same
+direction as the `max(len(raw), chars)` hedge, and not a theoretical risk: of four stores measured
+while this skill was written, one carried 420 units of maintainer comment and read 70.4% of cap
+raw against 68.7% loaded.
+
+*One boundary, stated because it is unmeasured.* The documentation records this strip for the index
+without saying whether a comment inside a fenced code block survives it, and the nearest documented
+behavior — for `CLAUDE.md`, not `MEMORY.md` — says comments inside code blocks ARE preserved. This
+block strips any line-anchored comment, fenced or not, which is the unsafe direction if the loader
+keeps them: it would report headroom that does not exist. No probe arm covers it. On an index whose
+fenced blocks contain HTML comments near a cap, treat a `COMPACT NOW`/`OK` boundary reading as
+unverified and measure by hand.
 
 **Expected:** Both fractions with both denominators, a `binds:` verdict naming which cap would cut
 first (`neither` while both still have headroom), the mean units per line against the crossover,
@@ -309,7 +317,8 @@ mention into a markdown link — but it is `manage-memory`'s repair, not this sk
 ### Step 5: Resolve cross-references across naming conventions
 
 Two naming conventions coexisting in one store — hyphen versus underscore, prefix retained versus
-stripped — produced a measured 13% of link targets that no exact match resolved. That is a convention
+stripped — produced a measured 13% of link targets that no exact match resolved
+(pjt222/agent-almanac#407). That is a convention
 split, not a typo rate, and the two need different responses. Normalization tells you which you have;
 it never makes an unresolved target reachable.
 
@@ -464,7 +473,7 @@ it, and require a copy of the store before any mutating run against it.
   comfortable `129/200` can sit at 74.6% of the real budget. Always print both and name which binds.
 - **Using `max(len(raw), chars)` as a fail-safe hedge**: it is fail-safe in direction and was
   measured over-reporting **2.44x** on a CJK index — a checker acting on it would demand a prune of
-  117 lines that actually load. The hedge was reasonable when the unit was unknown; it is now known.
+  117 lines that actually load (pjt222/agent-almanac#407, comment). The hedge was reasonable when the unit was unknown; it is now known.
 - **Counting a prose mention as reachable**: only an exact filename match on a real link target makes a topic file loadable; a near-match is a degraded reference and belongs in its own column.
 - **Suppressing a noisy check instead of extending its exclusion list**: a check that cries wolf gets ignored, but a disabled check is not auditable. Extend `EXAMPLES`; never delete the check.
 - **Writing the report into the memory directory**: it breaks the read-only contract, and the next run reports the report as an orphan.

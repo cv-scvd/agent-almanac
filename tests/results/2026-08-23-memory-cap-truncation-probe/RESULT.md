@@ -85,8 +85,8 @@ three versions); two runs per cell, zero disagreement anywhere. Auto-memory does
 | # | Claim | Verdict | Evidence |
 |---|---|---|---|
 | 1 | The cap counts UTF-16 code units | **CONFIRMED** | `cjk` cuts at the same line as `ascii` while carrying 2.81x the UTF-8 bytes, so not bytes. `astral` cuts at 103 against `ascii`'s 196 — ratio 1.903 against a UTF-16-per-line ratio of 242/127 = 1.906 — while holding the same code-point count as `cjk`, so not code points. |
-| 2 | The size cap is ~25,000 | **BRACKETED** to [24,958, 25,018) | Kept-prefix lengths for N whole lines: `ascii`/`cjk` 127N−1, `ascii200` 201N−1, `astral` 242N−1, `crlf` 128N−2. Intersecting `L(kept) <= cap < L(kept+1)` over the four widths gives the bracket; 25,000 sits inside it. Counting the trailing EOL shifts it to [24,960, 25,019) — same conclusion. |
-| 3 | Whichever cap binds first applies | **CONFIRMED, both directions** | `lines300` is 300 lines / 6,299 units and cuts at 200 — the line cap biting alone. The other six arms exceed both and every one cuts on size. |
+| 2 | The size cap is ~25,000 | **BRACKETED** to [24,958, 25,018) | Kept-prefix lengths for N whole lines: `ascii`/`cjk` 127N−1, `ascii200` 201N−1, `astral` 242N−1, `crlf` 128N−2. Intersecting `L(kept) <= cap < L(kept+1)` over those four distinct widths — `ascii` and `cjk` share one — gives the bracket; 25,000 sits inside it. Counting the trailing EOL shifts it to [24,960, 25,019) — same conclusion. |
+| 3 | Whichever cap binds first applies | **CONFIRMED, both directions** | `lines300` is 300 lines / 6,299 units and cuts at 200 — the line cap biting alone. The other six arms sit exactly AT 200 lines and over the size cap, so the line cap never bites on them and every one cuts on size. |
 | 4 | **Truncation is whole-line** | **MEASURED** | `wide2000` settles it with a large margin: lines are 2,001 units, the cap lands deep inside line 13, and that line's canary occupies units 24,012–24,022 — comfortably under the cap. Line 13 is absent. A partial-line-kept implementation cannot produce that. |
 | 5 | **Carriage returns count toward the cap** | **MEASURED** | `crlf` cuts one line earlier than `ascii` on identical visible content — 199 extra CR units, one line lost. A budget quoted in lines is therefore EOL-dependent. At this line width a CRLF index loses roughly one line per 128; the penalty grows as lines get shorter, since the EOL's share of the budget scales inversely with width — 2/128 against 1/127 at 126 code points, but 2/22 against 1/21 at 20. |
 | 6 | The boundary changed between releases | **REFUTED for linux-x64 across 2.1.237–2.1.241** | Identical results on all three, byte-identical fixtures (sha256-checked before probing). Scope note: the external Linux replication reports `ccd-cli 2.1.237` while this run used the official Claude Code 2.1.237 build; if those are not the same artifact, "same version" is carrying more weight than it should. |
@@ -126,8 +126,10 @@ model is right, not that its constant is exact.
 
 The external report gives the last loaded line as 197 (`ascii`, `cjk`) and 99 (`astral`); this run
 measures 196 and 103. The unit finding those rows support is unaffected — it rests on the byte and
-unit totals, which reproduce here exactly — but the boundary column does not reproduce on either
-version it was reported against. (The totals reproduce exactly for the ASCII and CJK rows. The
+unit totals, which reproduce here exactly — but the boundary column does not reproduce on
+**linux-x64 official builds of either cited version**. The qualifier is load-bearing: the external
+2.1.238 result is native Windows, this run is Linux only, and the external Linux replication reports
+`ccd-cli 2.1.237` rather than the official build used here. (The totals reproduce exactly for the ASCII and CJK rows. The
 astral row does not: its stated totals require 126 astral code points per line with the canary
 prefix counted nowhere, which is why that fixture could not be rebuilt here.)
 
@@ -194,7 +196,7 @@ assuming it.
   here; CRLF — the obvious Windows-specific mechanism — moves the cut in the *other* direction.
 - The instrument is the model's own report of what it can see, not a captured wire trace. Two runs
   per cell agreed everywhere, which bounds flakiness, not systematic error.
-- The cap bracket is a bound from four line widths, not a read constant. A fifth width would
+- The cap bracket is a bound from four distinct line widths across seven arms, not a read constant. A fifth width would
   narrow it.
 - `~/.claude.json` was copied before invoking the older binaries in case a downgrade migrated
   state; it did not — no keys added or removed, and the five that changed are per-session activity
@@ -212,21 +214,28 @@ to get a true figure of 43.
 That matters beyond tidiness, because it is the same failure this issue is about pointed the other
 way: an orphan is a store the tooling cannot see, and a fixture is a non-store the tooling counts.
 
-The fixture is one of **four** store-shaped things that a walk of `~/.claude/projects/` meets, and
-three of the four should not be counted — each for a different reason. Counted on this machine
-after the probe was cleaned up:
+The fixture is one of several store-shaped things a walk of `~/.claude/projects/` meets, and most
+of them should not be counted — each for a different reason. Counted on this machine after the
+probe was cleaned up, as a **partition** of the 53 slug directories, since the first version of
+this table let the classes overlap and its column summed past the population:
 
-| shape | count here | count it? |
+| shape | count | count it as a store? |
 |---|---:|---|
-| live store (`<slug>/memory/` with an index) | 43 | yes |
-| `memory/` with no `MEMORY.md` | 2 | as a store with no catalog, which is its own finding |
-| pre-flip ghost (`_`-form slug, live twin under the converted form) | 2 | no — unreachable, and counting it inflates the corpus |
-| dated backup beside a live store (`memory.bak-…`) | 1 | no — a copy, not a store |
-| probe fixture | 0 (removed) | no — a non-store |
+| live store — `memory/` with an index | **42** | yes |
+| pre-flip ghost **with** an index | 1 | no — unreachable; it is inside the 43 below |
+| pre-flip ghost **without** an index | 1 | no — same, and it has no catalog either |
+| `memory/` with no `MEMORY.md`, not a ghost | 1 | as a store with no catalog, which is its own finding |
+| no `memory/` at all | 8 | no |
+| **total slug directories** | **53** | |
 
-53 slug directories, 45 with a `memory/`, 43 with an index. Every denominator in that sentence is
-defensible and they are all different, which is the hazard: a figure quoted without saying which
-one it counted is unfalsifiable. The same trap appeared one layer down while writing this — a
+Two derived figures, and they are not classes: **45** directories have a `memory/` (42 + 2 ghosts +
+1 catalog-less), and **43** have an index (42 + the ghost that has one). One `memory.bak-…`
+directory sits *inside* a live store rather than beside it as its own slug, so it is not in the
+partition at all; the probe fixtures were their own slug directories and are gone.
+
+Every one of 53 / 45 / 43 / 42 is defensible and they are all different, which is the hazard: a
+figure quoted without saying which one it counted is unfalsifiable. This table asserted that in its
+own text while getting it wrong — 43 + 2 + 2 + 1 exceeds the population it was drawn from. The same trap appeared one layer down while writing this — a
 store reported as holding 91 files against 86, the difference being an `archive/` subdirectory the
 harness never loads. The root-level count is the one that describes what loads.
 

@@ -94,7 +94,7 @@ print(f"lines {lines}/200 = {lf:.1%}    size {size}/25000 = {sf:.1%}")
 print(f"USAGE {max(lf, sf):.1%} -> " + ("OVER CAP - the tail is dropped on load" if max(lf, sf) >= 1.0
       else "COMPACT NOW (target 70%)" if max(lf, sf) >= 0.80 else "OK"))
 print(f"binds: {binds}" + (f"; first line dropped: {min(cuts)}" if cuts else ""))
-print(f"mean {size / lines:.0f} units/line — the size cap binds first above 124")
+print(f"mean {size / lines:.0f} units/line — the size cap binds first above 125")
 print(f"utf-8 bytes {len(raw)}; not loaded, so not counted: {units(full) - size} unit(s)")
 print(f"astral chars {sum(1 for c in text if ord(c) > 0xFFFF)}")
 PY
@@ -300,7 +300,7 @@ Two facts that make this step load-bearing rather than ceremonial:
 - **Stale counts**: Updating code but not memory. Counts (skills, agents, domains, files) drift silently. Always verify counts against the source of truth before trusting memory.
 - **Duplicating CLAUDE.md**: CLAUDE.md is the authoritative project instruction file. Memory should capture things NOT in CLAUDE.md — debugging insights, architecture decisions, workflow preferences, cross-project patterns.
 - **Measuring lines instead of size**: A line-only check reports false headroom, because the two caps do not bind at the same place. Above ~125 units per line the size cap binds first, so an index at 129 of 200 lines can already be at 75% of its real budget and a `wc -l` reading of "65%" is wrong in the dangerous direction. Measure both, act on `max(size / 25000, lines / 200)`, and name which cap binds.
-- **Trusting a byte count**: `wc -c` is not the cap either. The cap counts UTF-16 code units, and bytes over-report against it — by up to 3x on CJK content — so a byte-only checker demands prunes the loader does not need. Count units (`sum(2 if ord(c) > 0xFFFF else 1 for c in text)`), and do not paper over the ambiguity with `max(bytes, chars)`: that hedge was measured over-reporting 2.44x on a CJK index.
+- **Trusting a byte count**: `wc -c` is not the cap either. The cap counts UTF-16 code units, and bytes over-report against it — by up to 3x on CJK content — so a byte-only checker demands prunes the loader does not need. Count units (`sum(2 if ord(c) > 0xFFFF else 1 for c in text)`), and do not paper over the ambiguity with `max(bytes, chars)`: that hedge was measured over-reporting 2.44x on a CJK index (pjt222/agent-almanac#407, comment).
 - **Assuming a skill's guarantees hold at write time**: Nothing in this file is enforced on write. The path that writes memory is not the path that runs skills, so every checkbox above describes the state when this skill last ran — not an invariant the harness maintains. A memory written after the last audit is unaudited, however green the last report was.
 
 ## Related Skills
