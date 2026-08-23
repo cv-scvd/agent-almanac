@@ -91,8 +91,11 @@ test('an elided tail does not get the full-slug metasyntactic waiver', () => {
   // tail starts wherever the author cut it, so the same rule there waives real projects. These
   // are the shape of the incident this detector exists for: a project genuinely named
   // `project-…` or `test-…`, elided by an author who knew the path was sensitive.
+  // security-scan-ignore: synthetic fixture, required to be a positive
   assert.equal(hits('| `…-project-billing/memory/` | 3 files |'), 1);
+  // security-scan-ignore: synthetic fixture, required to be a positive
   assert.equal(hits('| `…-test-rig_data/memory/` | 3 files |'), 1);
+  // security-scan-ignore: synthetic fixture, required to be a positive
   assert.equal(hits('the legacy store `…-sample-corpus_v2` is unreachable'), 1);
   // ...while the full-slug form keeps the waiver, since there the anchor argument holds.
   assert.equal(hits('~/.claude/projects/-project-example/memory'), 0);

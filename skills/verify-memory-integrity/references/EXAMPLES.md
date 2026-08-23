@@ -266,3 +266,26 @@ run twice.
 If the baseline `BEFORE` capture is missing, do not compact. There is nothing to compare against, the
 store almost certainly has no version control and no archive path (check 8), and a stranded file
 announces nothing about its own condition. Take a copy of the directory first.
+
+## The strip boundary nobody has measured
+
+The budget block strips YAML frontmatter and block-level HTML comments before counting, because the
+loader strips them before applying the limits and excludes them from the measurement. That much is
+documented for the index.
+
+What is not documented is whether a comment **inside a fenced code block** survives that strip. The
+nearest documented behavior points the other way: for `CLAUDE.md` — not `MEMORY.md` — comments
+inside code blocks are explicitly preserved. The two files are loaded by different paths, so
+neither answer transfers.
+
+The block takes the unsafe side of that fork. It strips any line-anchored comment, fenced or not,
+so on an index whose fences contain HTML comments it can subtract content the loader may still be
+counting, and report headroom that does not exist. None of the seven probe arms carries a comment
+of any kind, so nothing here settles it.
+
+Practical rule until it is measured: on such an index, a `USAGE` reading near the 0.80 or 1.0
+boundary is unverified — measure by hand. Everywhere else the difference is immaterial.
+
+The experiment that settles it is one arm on the existing rig: two fixtures identical except that
+one puts its HTML comment inside a fence, both sized so the strip decides which side of the cap
+they land on, read out with the canary protocol and `--tools ""`.

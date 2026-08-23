@@ -187,13 +187,8 @@ direction as the `max(len(raw), chars)` hedge, and not a theoretical risk: of fo
 while this skill was written, one carried 420 units of maintainer comment and read 70.4% of cap
 raw against 68.7% loaded.
 
-*One boundary, stated because it is unmeasured.* The documentation records this strip for the index
-without saying whether a comment inside a fenced code block survives it, and the nearest documented
-behavior — for `CLAUDE.md`, not `MEMORY.md` — says comments inside code blocks ARE preserved. This
-block strips any line-anchored comment, fenced or not, which is the unsafe direction if the loader
-keeps them: it would report headroom that does not exist. No probe arm covers it. On an index whose
-fenced blocks contain HTML comments near a cap, treat a `COMPACT NOW`/`OK` boundary reading as
-unverified and measure by hand.
+One boundary of that strip is unmeasured and matters at a threshold reading — see
+[references/EXAMPLES.md](references/EXAMPLES.md#the-strip-boundary-nobody-has-measured).
 
 **Expected:** Both fractions with both denominators, a `binds:` verdict naming which cap would cut
 first (`neither` while both still have headroom), the mean units per line against the crossover,
