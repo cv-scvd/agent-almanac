@@ -32,6 +32,7 @@ import { readFileSync, readdirSync, lstatSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { findPrivateStoreSlugs } from './lib/store-slug.js';
+import { isSuppressed } from './lib/suppression.js';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, '..');
@@ -135,16 +136,6 @@ function walk(dir, acc = []) {
   return acc;
 }
 
-function isSuppressed(lines, idx) {
-  const here = lines[idx] || '';
-  const above = lines[idx - 1] || '';
-  // `//` and `/*` were added when the privacy rule brought .js files into scope (#407): the
-  // mechanism silently did not apply to them, so an inline waiver in a JS file read as accepted
-  // and was not. A suppression syntax that does not suppress is worse than none — the author
-  // believes the line is waived and stops looking at the finding.
-  const re = /(?:<!--|#|\/\/|\/\*)\s*security-scan-ignore:\s*\S/;
-  return re.test(here) || re.test(above);
-}
 
 // join backslash line-continuations into logical lines, keeping the first line number
 function logicalLines(physical) {
