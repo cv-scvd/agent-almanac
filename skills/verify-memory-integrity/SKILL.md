@@ -428,9 +428,9 @@ same verdict.
 
 Memory files do not expire: Claude Code excludes `projects/<project>/memory/` from the
 `cleanupPeriodDays` retention sweep (default 30 days, minimum 1), so the index and its topic files
-stay until someone edits or deletes them. That is why this check exists, not a reason to skip it —
-no retention copy exists to fall back on, so a bad overwrite is unrecoverable unless the store is
-under version control or has a tombstone path. Most memory directories have neither.
+stay until someone edits or deletes them. That is why this check exists rather than a reason to skip
+it: no retention copy exists to fall back on, so a bad overwrite is unrecoverable unless the store
+is under version control or has a tombstone path. Most have neither.
 
 ```bash
 DIR=<memory-dir>
@@ -464,11 +464,8 @@ it, and require a copy of the store before any mutating run against it.
 
 ## Common Pitfalls
 
-- **Reporting a line count alone**: The size cap binds first above ~125 units per line, so a
-  comfortable `129/200` can sit at 74.6% of the real budget. Always print both and name which binds.
-- **Using `max(len(raw), chars)` as a fail-safe hedge**: it is fail-safe in direction and was
-  measured over-reporting **2.44x** on a CJK index — a checker acting on it would demand a prune of
-  117 lines that actually load (pjt222/agent-almanac#407, comment). The hedge was reasonable when the unit was unknown; it is now known.
+- **Reporting a line count alone**: the size cap binds first above ~125 units per line, so a comfortable `129/200` can sit at 74.6% of the real budget. Print both, name which binds.
+- **Using `max(len(raw), chars)` as a fail-safe hedge**: fail-safe in direction, and measured over-reporting **2.44x** on a CJK index — a checker acting on it demands a prune of 117 lines that actually load (pjt222/agent-almanac#407, comment). Reasonable while the unit was unknown; it is now known.
 - **Counting a prose mention as reachable**: only an exact filename match on a real link target makes a topic file loadable; a near-match is a degraded reference and belongs in its own column.
 - **Suppressing a noisy check instead of extending its exclusion list**: a check that cries wolf gets ignored, but a disabled check is not auditable. Extend `EXAMPLES`; never delete the check.
 - **Writing the report into the memory directory**: it breaks the read-only contract, and the next run reports the report as an orphan.
@@ -485,9 +482,7 @@ Worked runs, the full report template, the link-form census, and the before/afte
 - **A write succeeding tells you nothing about whether the memory will ever be read again.** Verify
   reachability, not write success — and verify it every session, because the operation that breaks
   reachability (compaction) is the same operation the caps make mandatory.
-- **Nothing here is enforced at write time.** These skills run as out-of-band maintenance in an
-  ordinary session; the path that actually writes memory is not the path that runs skills. Every
-  guarantee in these files is *verified when the skill last ran*, not an invariant.
+- **Nothing here is enforced at write time** — every guarantee is *verified when the skill last ran*, not an invariant ([why](references/EXAMPLES.md#nothing-here-is-enforced-at-write-time)).
 
 ## Related Skills
 

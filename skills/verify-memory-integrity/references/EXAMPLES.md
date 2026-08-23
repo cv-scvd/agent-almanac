@@ -289,3 +289,15 @@ boundary is unverified — measure by hand. Everywhere else the difference is im
 The experiment that settles it is one arm on the existing rig: two fixtures identical except that
 one puts its HTML comment inside a fence, both sized so the strip decides which side of the cap
 they land on, read out with the canary protocol and `--tools ""`.
+
+## Nothing here is enforced at write time
+
+These skills run as out-of-band maintenance inside an ordinary session. The path that actually
+writes memory is not the path that runs skills, so nothing in this file is a constraint the runtime
+applies — the caps are enforced at load, by truncation, silently.
+
+The consequence for how the report should be read: every line in it is *verified when the skill last
+ran*. A store that passed this morning can be over both caps and half-orphaned by this evening, and
+the report will not know. That is why the trigger list puts a run before and after every index
+compaction rather than on a schedule: the mutating operation is the event, not the clock.
+
