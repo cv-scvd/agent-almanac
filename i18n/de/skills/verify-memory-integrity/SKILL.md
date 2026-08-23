@@ -17,8 +17,8 @@ metadata:
   tags: memory, claude-code, verification, reachability, read-only, maintenance
   locale: de
   source_locale: en
-  source_commit: 0edef8edd
-  fence_basis_commit: 0edef8edd
+  source_commit: 41b80766f
+  fence_basis_commit: 41b80766f
   translator: "Claude + human review"
   translation_date: "2026-08-23"
 ---
@@ -112,12 +112,7 @@ separator is counted, since 200 lines carry 199 separators. At the ~150-characte
 targets — a derivation here, not a documented recommendation — the real budget is ~166 lines, not
 200. Never report a line count alone, and always name which cap binds.
 
-**Provenance note — read before quoting the paragraph above.** The two caps are documented, in
-those words. The thresholds around them are not: no character-based entry-length guidance is
-published anywhere, so `~150 characters` is a working figure for deriving the ~166-line budget
-rather than a recommendation to cite. The only nearby published number is a line-based rewrite
-target in a sample error message ("Rewrite it to under 140 lines") — 140/200 is the same `0.70`
-used here. Nothing published fixes `0.80`; it is this skill's warn threshold.
+**Before quoting the paragraph above**, read what in it is documented and what is derived: [references/EXAMPLES.md](references/EXAMPLES.md#what-is-documented-and-what-is-derived).
 
 **What the size cap counts (measured, not documented).** The cap is applied to UTF-16 code units —
 JavaScript `String.length` — rather than UTF-8 bytes or Unicode code points. For any text inside
@@ -153,10 +148,19 @@ full = raw.decode('utf-8', 'replace')
 
 # Only the content that LOADS counts toward either limit. YAML frontmatter and
 # block-level HTML comments are stripped before the index is loaded and are
-# excluded from the measurement. Measuring the raw file over-reports, which is
-# how a checker demands a prune the loader does not need.
+# excluded from the measurement; a comment INSIDE a fenced code block is not —
+# it is preserved and counted (measured, see the skill text). Stripping it too
+# under-reports, which hides a truncation that is already happening.
 text = re.sub(r'\A---\r?\n.*?\r?\n---[ \t]*\r?\n', '', full, flags=re.S)
-text = re.sub(r'(?ms)^[ \t]*<!--.*?-->[ \t]*\r?\n?', '', text)
+kept, fence, cmt = [], False, False
+for ln in text.split('\n'):
+    if ln.lstrip().startswith('```'):
+        fence = not fence
+    elif not fence and (cmt or ln.lstrip().startswith('<!--')):
+        cmt = '-->' not in ln
+        continue
+    kept.append(ln)
+text = '\n'.join(kept)
 
 units = lambda s: sum(2 if ord(c) > 0xFFFF else 1 for c in s)   # UTF-16 code units
 
@@ -186,15 +190,13 @@ print(f"astral chars {sum(1 for c in text if ord(c) > 0xFFFF)}")
 PY
 ```
 
-**Measurement-basis note.** The block measures the content that LOADS: it strips YAML frontmatter
-and block-level HTML comments first, because the loader strips them before applying the limits and
-excludes them from the measurement. Measuring the raw file instead over-reports — the same
-direction as the `max(len(raw), chars)` hedge, and not a theoretical risk: of four stores measured
-while this skill was written, one carried 420 units of maintainer comment and read 70.4% of cap
-raw against 68.7% loaded.
-
-One boundary of that strip is unmeasured and matters at a threshold reading — see
-[references/EXAMPLES.md](references/EXAMPLES.md#the-strip-boundary-nobody-has-measured).
+**Measurement-basis note.** The block measures what LOADS: frontmatter and block-level HTML
+comments are stripped, because the loader strips them before applying the limits. A comment inside
+a fenced code block is **not** stripped — measured, and it counts against the cap like any other
+content ([how](references/EXAMPLES.md#what-the-strip-does-and-does-not-remove)). Getting either
+half wrong is a silent misread in a different direction: measuring raw over-reports, and one store
+of four measured here read 70.4% of cap raw against 68.7% loaded; stripping fenced comments
+under-reports, and hides a truncation already happening.
 
 **Expected:** Both fractions with both denominators, a `binds:` verdict naming which cap would cut
 first (`neither` while both still have headroom), the mean units per line against the crossover,
@@ -456,9 +458,8 @@ it, and require a copy of the store before any mutating run against it.
 
 - [ ] Nothing inside `memory_dir` was created, modified, or deleted; `report_path` is outside it
 - [ ] Step 0 printed the resolved `STORE` path and reported any `_`-versus-`-` sibling store
-- [ ] Index budget is within both caps (`max(size / 25000, lines / 200) < 0.80`), reported as both numbers
-- [ ] Step 1 reported both denominators, the `binds:` verdict and the mean units per line
-- [ ] The provenance and measurement-basis notes in Step 1 were read before any figure was quoted
+- [ ] Index budget is within both caps (`max(size / 25000, lines / 200) < 0.80`), reported as both numbers, with the `binds:` verdict and the mean units per line
+- [ ] Step 1's provenance and measurement-basis notes were read before any figure was quoted
 - [ ] Step 2 reported orphan share as file share **and** byte share, each labeled
 - [ ] Every dangling entry is either a real break or an accounted-for `EXAMPLES` target
 - [ ] Degraded references were counted separately and never added to `linked`
@@ -485,9 +486,7 @@ Worked runs, the full report template, the link-form census, and the before/afte
 
 ## What Verification Does Not Buy
 
-- **A write succeeding tells you nothing about whether the memory will ever be read again.** Verify
-  reachability, not write success — and verify it every session, because the operation that breaks
-  reachability (compaction) is the same operation the caps make mandatory.
+- **A write succeeding tells you nothing about whether the memory will ever be read again.** Verify reachability, not write success — every session, because the operation that breaks reachability (compaction) is the one the caps make mandatory.
 - **Nothing here is enforced at write time** — every guarantee is *verified when the skill last ran*, not an invariant ([why](references/EXAMPLES.md#nothing-here-is-enforced-at-write-time)).
 
 ## Related Skills
