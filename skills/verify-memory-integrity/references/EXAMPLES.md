@@ -267,28 +267,40 @@ If the baseline `BEFORE` capture is missing, do not compact. There is nothing to
 store almost certainly has no version control and no archive path (check 8), and a stranded file
 announces nothing about its own condition. Take a copy of the directory first.
 
-## The strip boundary nobody has measured
+## What the strip does and does not remove
 
-The budget block strips YAML frontmatter and block-level HTML comments before counting, because the
-loader strips them before applying the limits and excludes them from the measurement. That much is
-documented for the index.
+Documented: only content that loads counts toward either cap, and YAML frontmatter plus
+block-level HTML comments are stripped before the index is loaded, so they are excluded from the
+measurement.
 
-What is not documented is whether a comment **inside a fenced code block** survives that strip. The
-nearest documented behavior points the other way: for `CLAUDE.md` — not `MEMORY.md` — comments
-inside code blocks are explicitly preserved. The two files are loaded by different paths, so
-neither answer transfers.
+Not documented, and the reason this section exists: whether a comment **inside a fenced code
+block** survives that strip. The nearest documented behavior — for `CLAUDE.md`, not `MEMORY.md` —
+says comments inside code blocks are preserved, so neither answer could be assumed.
 
-The block takes the unsafe side of that fork. It strips any line-anchored comment, fenced or not,
-so on an index whose fences contain HTML comments it can subtract content the loader may still be
-counting, and report headroom that does not exist. None of the seven probe arms carries a comment
-of any kind, so nothing here settles it.
+Measured on Claude Code 2.1.241 (linux-x64, `claude -p`, tool use disabled), three arms of 150
+canary lines at 201 units each, sized so the line cap can never bind and only the size cap can move
+the cut:
 
-Practical rule until it is measured: on such an index, a `USAGE` reading near the 0.80 or 1.0
-boundary is unverified — measure by hand. Everywhere else the difference is immaterial.
+| arm | comment | predicted if stripped | predicted if counted | measured |
+|---|---|---:|---:|---:|
+| `ctrl` | none | 124 | 124 | **124** |
+| `bare` | ~1.9k units, not fenced | 124 | ~109 | **124** |
+| `fenced` | same bytes, inside a ```text fence | 124 | ~109 | **109** |
 
-The experiment that settles it is one arm on the existing rig: two fixtures identical except that
-one puts its HTML comment inside a fence, both sized so the strip decides which side of the cap
-they land on, read out with the canary protocol and `--tools ""`.
+Two runs per arm, no disagreement. So:
+
+- an unfenced block comment **is** stripped and excluded, as documented;
+- a comment inside a fence is **preserved and counted**, and 15 lines of index disappeared because
+  of one.
+
+The block therefore tracks fence state and strips only outside fences. The earlier version stripped
+both, which under-reports — the dangerous direction, because it reports headroom on an index that
+is already losing its tail. This was shipped as a labelled unmeasured boundary before the arm was
+run; the label was correct and the code was wrong.
+
+Boundaries: one platform, one version, `-p` only, and ```text is the only fence tag exercised. A
+tagged fence (```bash, ```yaml) is untested, though nothing in the observed behavior suggests the
+tag matters.
 
 ## Nothing here is enforced at write time
 
@@ -301,3 +313,11 @@ ran*. A store that passed this morning can be over both caps and half-orphaned b
 the report will not know. That is why the trigger list puts a run before and after every index
 compaction rather than on a schedule: the mutating operation is the event, not the clock.
 
+## What is documented and what is derived
+
+The two caps are documented, in
+those words. The thresholds around them are not: no character-based entry-length guidance is
+published anywhere, so `~150 characters` is a working figure for deriving the ~166-line budget
+rather than a recommendation to cite. The only nearby published number is a line-based rewrite
+target in a sample error message ("Rewrite it to under 140 lines") — 140/200 is the same `0.70`
+used here. Nothing published fixes `0.80`; it is this skill's warn threshold.

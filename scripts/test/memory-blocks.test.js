@@ -209,6 +209,31 @@ test('budget block: frontmatter and block comments are excluded from the measure
   assert.match(plain, /not loaded, so not counted: 0 unit/, plain);
 });
 
+test('budget block: a comment inside a fenced block is counted, one outside is not', () => {
+  // Measured on Claude Code 2.1.241 (`claude -p`, tools disabled), three arms of 150 canary lines
+  // at 201 units each, sized so the line cap can never bind: an unfenced block comment is stripped
+  // and excluded (cut unchanged at canary 124), while the same bytes inside a ```text fence are
+  // preserved and counted (cut moves to canary 109). The first version of this block stripped
+  // both, which under-reports — it hides a truncation that is already happening.
+  const canaries = Array.from(
+    { length: 150 },
+    (_, i) => `CANARY-${String(i + 1).padStart(3, '0')} ${'x'.repeat(189)}`,
+  );
+  const comment = ['<!--', ...Array.from({ length: 15 }, () => 'm'.repeat(200)), '-->'];
+  const run = (lines) =>
+    runBlock(extractBlock(SOURCE_OF_TRUTH, 'budget'), fixture({ 'MEMORY.md': lines.join('\n') }));
+  const dropped = (out) => Number(/first line dropped: (\d+)/.exec(out)[1]);
+
+  const ctrl = run(canaries);
+  const bare = run([...comment, ...canaries]);
+  const fenced = run(['```text', ...comment, '```', ...canaries]);
+
+  assert.equal(dropped(ctrl), 125, ctrl);
+  assert.equal(dropped(bare), 125, `an unfenced comment was counted:\n${bare}`);
+  // 19 comment and fence lines precede the canaries, so raw line 129 is canary 109.
+  assert.equal(dropped(fenced), 129, `a fenced comment was stripped:\n${fenced}`);
+});
+
 test('budget block: CR characters survive the read', () => {
   // Python text mode deletes CR before anything counts it, silently shrinking the string the
   // loader actually measures. 200 CRs is 200 units — enough to move a file across a threshold.

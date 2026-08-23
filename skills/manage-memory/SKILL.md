@@ -67,10 +67,19 @@ full = raw.decode('utf-8', 'replace')
 
 # Only the content that LOADS counts toward either limit. YAML frontmatter and
 # block-level HTML comments are stripped before the index is loaded and are
-# excluded from the measurement. Measuring the raw file over-reports, which is
-# how a checker demands a prune the loader does not need.
+# excluded from the measurement; a comment INSIDE a fenced code block is not —
+# it is preserved and counted (measured, see the skill text). Stripping it too
+# under-reports, which hides a truncation that is already happening.
 text = re.sub(r'\A---\r?\n.*?\r?\n---[ \t]*\r?\n', '', full, flags=re.S)
-text = re.sub(r'(?ms)^[ \t]*<!--.*?-->[ \t]*\r?\n?', '', text)
+kept, fence, cmt = [], False, False
+for ln in text.split('\n'):
+    if ln.lstrip().startswith('```'):
+        fence = not fence
+    elif not fence and (cmt or ln.lstrip().startswith('<!--')):
+        cmt = '-->' not in ln
+        continue
+    kept.append(ln)
+text = '\n'.join(kept)
 
 units = lambda s: sum(2 if ord(c) > 0xFFFF else 1 for c in s)   # UTF-16 code units
 

@@ -122,6 +122,37 @@ width that places a cumulative boundary *inside* [24,958, 25,018), the block's p
 uncertain by one line and nothing here settles it. Seven-for-seven is evidence that the block's
 model is right, not that its constant is exact.
 
+### Follow-up arm: does the strip reach inside a fenced code block?
+
+Run after the first eight arms, because a skill review found the shipped block taking an unmeasured
+side of this fork. Documented: frontmatter and block-level HTML comments are stripped before load
+and excluded from the limits. Not documented: whether a comment inside a fenced code block survives
+that strip — and the nearest documented behavior, for `CLAUDE.md` rather than `MEMORY.md`, says
+comments inside code blocks are preserved.
+
+Three arms of 150 canary lines at 201 units each. The geometry is the point: at 150 lines no arm can
+reach the 200-line cap even with 17 comment lines prepended, so only the size cap can move the cut.
+A taller fixture would let the line cap fire in the comment-counted case and give the right answer
+by the wrong mechanism.
+
+| arm | comment | if stripped | if counted | measured (2 runs) |
+|---|---|---:|---:|---:|
+| `ctrl` | none | 124 | 124 | **124** |
+| `bare` | ~1.9k units, unfenced | 124 | ~109 | **124** |
+| `fenced` | same bytes, inside a ```text fence | 124 | ~109 | **109** |
+
+**An unfenced block comment is stripped and excluded, as documented. A comment inside a fence is
+preserved and counted.** One comment cost 15 lines of index.
+
+The shipped block was fixed to track fence state and strip only outside fences; it now reproduces
+all three arms. Stripping both — what it did before — under-reports, which is the dangerous
+direction: it reports headroom on an index that is already losing its tail. The skill had shipped
+this as a labelled unmeasured boundary, so the label was right and the code was wrong.
+
+Boundaries: 2.1.241 only, linux-x64, `claude -p`, and ```text is the only fence tag exercised.
+Fixture directories removed afterwards — note they collect session transcripts as well as the
+`memory/` subdirectory, so removing only the index leaves the slug behind.
+
 ### Where the external table and this run disagree
 
 The external report gives the last loaded line as 197 (`ascii`, `cjk`) and 99 (`astral`); this run
