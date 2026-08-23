@@ -404,7 +404,7 @@ agents:
       - preserve-materials
       - curate-collection
       - manage-memory
-      - observe
+      - prune-agent-memory
 
   - id: gardener
     path: agents/gardener.md

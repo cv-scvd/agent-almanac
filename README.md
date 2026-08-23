@@ -16,11 +16,11 @@ A library of executable skills, specialist agents, and pre-built teams for [Clau
 ## At a Glance
 
 <!-- AUTO:START:stats -->
-- **370 skills** across 66 domains — structured, executable procedures
+- **371 skills** across 66 domains — structured, executable procedures
 - **75 agents** — specialized Claude Code personas covering development, review, compliance, and more
 - **22 teams** — predefined multi-agent compositions for complex workflows
 - **35 guides** — human-readable documentation across workflow, infrastructure, reference, design, and investigation
-- **Interactive visualization** — force-graph explorer with 370 R-generated skill icons and 9 color themes
+- **Interactive visualization** — force-graph explorer with 371 R-generated skill icons and 9 color themes
 <!-- AUTO:END:stats -->
 
 ## How It Works
@@ -82,7 +82,7 @@ claude plugin install agent-almanac@local
 ```
 
 <!-- AUTO:START:plugin-discovery -->
-Auto-discovers all 370 skills and 75 agents. To use a team, read its definition in `teams/<name>.md` and spawn each listed member as a subagent via the [Agent tool](guides/creating-agents-and-teams.md) (`subagent_type`), coordinating them with SendMessage under the session's single implicit team. Windows / macOS variants in the [Installation guide](guides/installation.md#phase-1--plugin-install-claude-code-native).
+Auto-discovers all 371 skills and 75 agents. To use a team, read its definition in `teams/<name>.md` and spawn each listed member as a subagent via the [Agent tool](guides/creating-agents-and-teams.md) (`subagent_type`), coordinating them with SendMessage under the session's single implicit team. Windows / macOS variants in the [Installation guide](guides/installation.md#phase-1--plugin-install-claude-code-native).
 <!-- AUTO:END:plugin-discovery -->
 
 ### Path 3 — Global CLI (cross-framework)
@@ -120,7 +120,7 @@ Requires R 4.5.x or Docker; per-OS R paths in the [Installation guide](guides/in
 ```
 agent-almanac/
   .claude-plugin/  Plugin manifest for Claude Code plugin installation
-  skills/          370 executable procedures across 66 domains
+  skills/          371 executable procedures across 66 domains
   agents/          75 specialist personas
   teams/           22 multi-agent compositions with 8 coordination patterns
   guides/          35 human-readable reference docs
@@ -215,7 +215,7 @@ Agent-almanac is packaged as a Claude Code plugin at `.claude-plugin/plugin.json
 <!-- AUTO:START:plugin-table -->
 | Component | Discovery | Count |
 |-----------|-----------|-------|
-| Skills | `skills/*/SKILL.md` | 370 |
+| Skills | `skills/*/SKILL.md` | 371 |
 | Agents | `agents/*.md` | 75 |
 | Teams | Bundled but not auto-discovered | 22 |
 <!-- AUTO:END:plugin-table -->

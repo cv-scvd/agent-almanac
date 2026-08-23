@@ -1,7 +1,7 @@
 version: "1.6"
 generated: "2026-04-07"
 standard: "agentskills.io/specification"
-total_skills: 370
+total_skills: 371
 
 domains:
   r-packages:
@@ -403,7 +403,7 @@ domains:
         path: manage-memory/SKILL.md
         complexity: intermediate
         language: multi
-        description: Organize, extract, prune, and verify Claude Code persistent memory files
+        description: Organize and extract Claude Code memory under the dual 200-line / 25KB load cap, with a reachability gate on every index rewrite
       - id: create-skill
         path: create-skill/SKILL.md
         complexity: intermediate
@@ -459,6 +459,11 @@ domains:
         complexity: intermediate
         language: multi
         description: Audit, classify, and selectively forget stored memories with retention policies
+      - id: verify-memory-integrity
+        path: verify-memory-integrity/SKILL.md
+        complexity: intermediate
+        language: multi
+        description: Verify memory reachability and dual-cap budget read-only, without modifying the store
       - id: circuit-breaker-pattern
         path: circuit-breaker-pattern/SKILL.md
         complexity: intermediate
