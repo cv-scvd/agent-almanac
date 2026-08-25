@@ -16,6 +16,9 @@
 
 import { execSync } from "node:child_process";
 import { readFileSync, existsSync } from "node:fs";
+// The shared extractor, so `--untagged-strict` cannot drift from the fold it protects (#629).
+// Node builtins and local libs only — no package dependency is added to this script.
+import { extractFences } from "./lib/fences.js";
 
 const CONTENT_GLOBS = ["skills/", "agents/", "teams/", "guides/", "i18n/"];
 
@@ -202,10 +205,31 @@ function runUntaggedStrict() {
   }
 
   const errors = [];
+  let scanned = 0;
   for (const file of files) {
-    if (!existsSync(file)) continue;
-    const { untaggedOpeners } = scanFile(readFileSync(file, "utf8"));
-    for (const ln of untaggedOpeners) errors.push(`${file}:${ln}`);
+    // Was `if (!existsSync(file)) continue;`, copied from the informational `runAll`. In a
+    // BLOCKING gate a silent skip is the green-over-nothing shape this repo bans -- and the
+    // success line counted `files.length`, so a skipped file would still have read as covered.
+    // Refuse instead: git named it, so it should be readable.
+    let text;
+    try {
+      text = readFileSync(file, "utf8");
+    } catch (err) {
+      console.error(`FAIL: ${file} is listed by git but unreadable (${err.code}).`);
+      console.error("A blocking gate must not silently skip its own subject.");
+      process.exit(2);
+    }
+    scanned++;
+    // `extractFences`, NOT this file's local `scanFile`. The escape #629 protects against is
+    // defined by `foldedTagSequence`, which folds an untagged fence to `text` -- and an untagged
+    // fence is exactly `info === ''` in the shared extractor. Detecting openers with a second
+    // state machine would make this gate a THIRD fence parser, against the repo's own doctrine
+    // ("A second copy would drift"), and that copy already had a divergence to show for it: the
+    // local FENCE_RE uses `(.*)$` and normalises only CRLF, where `toLines` also normalises a
+    // lone CR -- so a committed lone-CR file yields openers the fold sees and the gate did not.
+    for (const fence of extractFences(text)) {
+      if (fence.info === "") errors.push(`${file}:${fence.line}`);
+    }
   }
 
   if (errors.length) {
@@ -219,7 +243,9 @@ function runUntaggedStrict() {
     process.exit(1);
   }
   console.log(
-    `Untagged-fence gate: 0 untagged openers across ${files.length} English content file(s).`,
+    // `scanned`, not `files.length`: the two are equal only because nothing was skipped, and
+    // reporting the list size would have claimed coverage a skip did not deliver.
+    `Untagged-fence gate: 0 untagged openers across ${scanned} English content file(s).`,
   );
 }
 

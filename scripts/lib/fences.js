@@ -60,16 +60,35 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
  * the body check skips it because gating is read off the translated file. The
  * #481 escape, surviving through the check built to close it (#629).
  *
- * What makes it safe is that no untagged English opener exists. That was a
- * measurement taken once and written here, and a style rule in prose is exactly
- * what this repo violated 1,220 times (#472). It is now CHECKED, blocking, in
- * the required `skills` job:
+ * What makes it safe is that no untagged English opener exists **in the working
+ * tree**. That was a measurement taken once and written here, and a style rule
+ * in prose is exactly what this repo violated 1,220 times (#472). It is now
+ * CHECKED, blocking, in the required `skills` job:
  *
  *     npm run validate:untagged-fences
  *
  * Do not restore a count to this comment. Ask the gate — a number here is a
  * number that can go stale without anything noticing, which is the failure this
  * paragraph used to be an instance of.
+ *
+ * **The gate stops the escape surface GROWING; it does not close it.** The
+ * sequence check accepts a match against ANY pooled revision, and the pool
+ * stores FOLDED joins — so a historical English revision carrying an untagged
+ * fence pools `text` at that ordinal permanently, indistinguishable from a
+ * literal ```text fence, and `git ls-files` cannot see history. A translation
+ * posing as stale against such a revision can carry a localised ```text fence
+ * where English is frozen today, and every check reads green.
+ *
+ * Historical untagged English openers are not hypothetical: the fold exists
+ * precisely because `normalize-content-style.js --mode fences` retro-tagged
+ * untagged blocks, so history demonstrably contains them. The harmful
+ * subpopulation — untagged then, frozen-tagged now — is UNMEASURED and cannot
+ * be measured from the pool, which has already folded the evidence away; it
+ * needs a history re-walk keeping raw info strings. Filed as its own issue.
+ *
+ * One corollary worth stating: the guarantee decays monotonically under bypass.
+ * A violation pushed straight to `main` is pooled before any fix lands, and
+ * widens the surface permanently.
  *
  * Adding a tag here requires naming which machine consumes that fence.
  *
@@ -424,7 +443,7 @@ export function extractFences(text) {
  *
  * @param {string[]} mine folded tag sequence of the translation
  * @param {Set<string>|undefined} englishSequences joined folded sequences from every revision
- * @returns {null | {unalignable: true} | {positions: {index: number, english: string, translated: string}[]}}
+ * @returns {null | {unalignable: true} | {positions: {index: number, english: string, translated: string}[], minimalCandidates: number}}
  */
 export function compareTagSequence(mine, englishSequences) {
   if (!englishSequences || englishSequences.has(mine.join(','))) return null;
@@ -463,6 +482,17 @@ export function compareTagSequence(mine, englishSequences) {
   // "Some legal basis says this fence left the gated set" is the safe reading: the gate's job is
   // to catch a fence leaving, and refusing to look away when one candidate says it did costs a
   // false positive at worst, where the other direction costs the escape the gate exists for.
+  //
+  // TWO LIMITS, both narrower than "deterministic" sounds:
+  //
+  //   1. Deterministic in the KIND, not in the POSITIONS. Once `best` is an escape nothing
+  //      displaces it, so a tie among two escape candidates -- or among all-drift ones -- still
+  //      resolves by Set insertion order. That is bounded to the finding's message text, since
+  //      `debt-ratchet.yml` keys on file+kind and the kind is now order-independent.
+  //   2. This removes the ARBITRARINESS of the kind flip, not the flip. An English edit that
+  //      creates a new equidistant escape reading still deterministically moves a drift member
+  //      to escape, reddening `npm run ratchet` on a PR that touched only English. The old code
+  //      had the same exposure and picked a direction by walk order; this one picks it by rule.
   //
   // Measured before changing it, on the whole corpus: 6 tag-sequence findings, 0 with more than
   // one minimal candidate, 0 whose verdict a tie could change. So this alters no current member
