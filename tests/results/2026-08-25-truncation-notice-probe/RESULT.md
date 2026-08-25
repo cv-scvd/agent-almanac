@@ -70,7 +70,7 @@ and per-store noise. Measured, it was 29 lines, of which four are that noise:
 |---|---|
 | 24 × `CANARY-101…124` | the lines `under` does not have |
 | ` - Primary working directory: …/over` | differs by arm |
-| `Contents of …-t722-over/memory/MEMORY.md …` | differs by arm |
+| `Contents of <store-slug>/memory/MEMORY.md …` | differs by arm |
 | `You have a persistent file-based memory at …` | embeds the store path |
 | `{"device_id":…,"session_id":…}` | differs per session |
 | **the WARNING line** | **the finding** |
@@ -94,7 +94,7 @@ in the arm directory, observes which `~/.claude/projects/` entry appears, and fa
 does.
 
 **That was not caution for its own sake — a computed slug would have been wrong.** The observed
-directory was `-home-phtho--claude-jobs-…`: the `.` of `.claude` maps to `-`, giving a doubled dash.
+directory was `-home-<user>--claude-jobs-…`: the `.` of `.claude` maps to `-`, giving a doubled dash.
 `memcap-fixture.py`'s hand-rolled `slug()` implements `/`→`-` and `_`→`-` and **not** `.`→`-`, so it
 would have written all three fixtures to paths nothing reads, and all three arms would have reported
 no memory index at all. Concrete support for #720, found by following it.
