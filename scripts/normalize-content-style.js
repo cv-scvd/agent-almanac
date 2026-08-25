@@ -39,13 +39,14 @@
 
 import { execSync, execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { isTemplate } from "./lib/content-paths.js";
 
 const CONTENT_GLOBS = ["skills/", "agents/", "teams/", "guides/", "i18n/"];
 const ENGLISH_GLOBS = ["skills/", "agents/", "teams/", "guides/"];
 
 function isContentFile(p) {
   if (!CONTENT_GLOBS.some((g) => p.startsWith(g))) return false;
-  if (p.includes("/_template")) return false;
+  if (isTemplate(p)) return false; // #672 — see check-content-style.js
   return p.endsWith(".md");
 }
 

@@ -75,6 +75,13 @@ function fixture() {
   mkdirSync(join(dir, 'scripts'), { recursive: true });
   mkdirSync(join(dir, 'agents'), { recursive: true });
   cpSync(join(REPO, SCRIPT), join(dir, SCRIPT));
+  // `scripts/lib/` too, since #672 routed this script's template exclusion through
+  // `lib/content-paths.js`. Copying the script ALONE worked only while it imported nothing
+  // local — and that isolation is part of how the duplicated predicate stayed invisible: the
+  // file's own comment said "Predicates copied verbatim from check-content-style.js" and no
+  // fixture could have noticed. A missing dependency here surfaces as ERR_MODULE_NOT_FOUND
+  // inside the child, which the exit-code assertions report as a plain `1 !== 0`.
+  cpSync(join(REPO, 'scripts', 'lib'), join(dir, 'scripts', 'lib'), { recursive: true });
   writeFileSync(join(dir, 'agents', 'sample.md'), DECORATIVE);
   git(dir, ['init', '-q']);
   git(dir, ['config', 'user.email', 'test@example.com']);

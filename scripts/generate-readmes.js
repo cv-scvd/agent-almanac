@@ -17,6 +17,7 @@ import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import * as yaml from 'js-yaml';
 import { CONTENT_TYPES } from './lib/content-types.js';
+import { isTemplateSegment } from './lib/content-paths.js';
 import { listAdapters } from '../cli/adapters/index.js';
 import { guideCategoryOrder, guideCategoryLabel, guideCategoryNames } from './lib/guide-categories.js';
 import { applySections, renderTranslationsTable, renderLocaleTable } from './lib/readme-sections.js';
@@ -706,8 +707,12 @@ function generateSecuritySurface() {
   // it entirely — a larger gap, for a section scoping executable content, than the `scripts/`
   // mis-description #600 was filed about (#691). `_template.mjs` is excluded the same way
   // `skills/_template/` is: it is scaffolding, not a workflow.
+  // `!f.startsWith('_')` before #672. The comment above states the TEMPLATE intent while the
+  // code tested the `_`-prefix convention, so a future `workflows/_draft.mjs` would have gone
+  // uncounted under a sentence that describes scaffolding as the only exclusion. No-op today:
+  // `_template.mjs` is the sole `_`-prefixed entry in `workflows/`.
   const workflowFiles = readdirSync(resolve(ROOT, 'workflows'))
-    .filter((f) => f.endsWith('.mjs') && !f.startsWith('_')).length;
+    .filter((f) => f.endsWith('.mjs') && !isTemplateSegment(f)).length;
 
   const pkg = JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8'));
   const shipped = pkg.files || [];

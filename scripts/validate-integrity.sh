@@ -36,6 +36,12 @@ set -euo pipefail
 failed=0
 warn_count=0
 
+# The one definition of "this name is author scaffolding" (#672). Sourced rather than
+# repeated: this script carried 19 such tests in four spellings, and
+# `sync-discovery-symlinks.sh` carried two more that had to agree with them.
+# shellcheck source=lib/template-names.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/template-names.sh"
+
 # ── Assert that a corpus extraction found something (#647) ──────────────────────
 #
 # This is the other half of the rule above, and the reason a blanket `|| true` sweep would
@@ -145,7 +151,8 @@ echo "=== Category A: Static Validation ==="
 echo "--- A1: Agent frontmatter ---"
 for f in agents/*.md; do
   name=$(basename "$f")
-  [[ "$name" == "_template.md" || "$name" == "README.md" ]] && continue
+  is_template "$name" && continue
+  [[ "$name" == "README.md" ]] && continue
   # DO NOT add `intent` here without reading scripts/envelopes/a6a-abort-capable-substitutions.mjs
   # first. A6a owns that field and prints `FAIL: $f missing required field: intent`, which is
   # byte-identical to what this loop would render for `intent` — and the envelope case proving
@@ -165,7 +172,8 @@ echo "--- A2: Team frontmatter ---"
 a2_fail=0
 for f in teams/*.md; do
   name=$(basename "$f")
-  [[ "$name" == "_template.md" || "$name" == "README.md" ]] && continue
+  is_template "$name" && continue
+  [[ "$name" == "README.md" ]] && continue
   for field in name description lead members coordination; do
     if ! grep -q "^${field}:" "$f"; then
       echo "FAIL: $f missing required field: $field"
@@ -181,7 +189,8 @@ echo "--- A3: Guide frontmatter ---"
 a3_fail=0
 for f in guides/*.md; do
   name=$(basename "$f")
-  [[ "$name" == "_template.md" || "$name" == "README.md" ]] && continue
+  is_template "$name" && continue
+  [[ "$name" == "README.md" ]] && continue
   for field in title description category; do
     if ! grep -q "^${field}:" "$f"; then
       echo "FAIL: $f missing required field: $field"
@@ -244,7 +253,7 @@ registry_entry_set() { # <tree> <registry> <section key>
 
   # Same class: `/^\$/d` deleted lines consisting of a literal `$`, not empty lines.
   reg_ids=$(printf '%s\n' "$reg_ids_all" | sed '/^$/d' | sort -u || true)
-  disk_ids=$(find "$tree" -maxdepth 1 -name '*.md' -not -name '_template.md' -not -name 'README.md' \
+  disk_ids=$(find "$tree" -maxdepth 1 -name '*.md' "${TEMPLATE_FIND_PRUNE[@]}" -not -name 'README.md' \
     -exec basename {} .md \; | sort || true)
 
   # Fail-closed. An empty extraction means the pattern drifted from the file it reads, and
@@ -294,7 +303,7 @@ compare_id_sets() { # <registry> <tree> <reg ids> <disk ids> <expected path shap
 # A4: Agent registry count and entry set
 echo "--- A4: Agent registry vs disk ---"
 a4_fail=0
-disk_count=$(find agents -maxdepth 1 -name '*.md' -not -name '_template.md' -not -name 'README.md' | wc -l) # abort-ok: find over a directory whose absence is not drift but a broken checkout
+disk_count=$(find agents -maxdepth 1 -name '*.md' "${TEMPLATE_FIND_PRUNE[@]}" -not -name 'README.md' | wc -l) # abort-ok: find over a directory whose absence is not drift but a broken checkout
 # `|| true` and it is the point of this check: if `total_agents:` is ever renamed, the bare
 # form aborted the run rather than reporting the drift it exists to catch. The `!=` below is
 # the explicit zero-check -- an empty string never equals a number, so the FAIL prints.
@@ -309,7 +318,7 @@ registry_entry_set agents agents/_registry.yml agents || { failed=1; a4_fail=1; 
 # A5: Team registry count and entry set
 echo "--- A5: Team registry vs disk ---"
 a5_fail=0
-disk_count=$(find teams -maxdepth 1 -name '*.md' -not -name '_template.md' -not -name 'README.md' | wc -l) # abort-ok: find over a directory whose absence is not drift but a broken checkout
+disk_count=$(find teams -maxdepth 1 -name '*.md' "${TEMPLATE_FIND_PRUNE[@]}" -not -name 'README.md' | wc -l) # abort-ok: find over a directory whose absence is not drift but a broken checkout
 reg_count=$(grep 'total_teams:' teams/_registry.yml | tr -d '\r' | awk '{print $2}' || true) # see A4
 if [ "$disk_count" != "$reg_count" ]; then
   echo "FAIL: teams disk=$disk_count registry=$reg_count"
@@ -351,6 +360,12 @@ fi
 a15_reg=$(printf '%s\n' "$a15_reg_all" | sed '/^$/d' | sort -u || true)
 # Directories carrying a SKILL.md, which is what the generator and the CLI both consume. A bare
 # directory with no SKILL.md is not a skill and must not count as one on either side.
+# NOT array-expanded, deliberately. `TEMPLATE_FIND_PRUNE` holds `-not -name` predicates over
+# BASENAMES; this is a `-not -path` prune whose anchor is tree-specific. The generic form
+# `-not -path '*/_template/*'` would be depth-agnostic, which is the exact direction
+# `content-paths.js` documents as measured-wrong (a nested `_template/` ships). At
+# `-maxdepth 2` the two agree, so the generic form would be a correct-today rule carrying a
+# latent bug for whenever the depth changes.
 a15_disk=$(find skills -mindepth 2 -maxdepth 2 -name 'SKILL.md' -not -path 'skills/_template/*' -printf '%h\n' | sed 's|^skills/||' | sort) # abort-ok: find over a directory whose absence is not drift but a broken checkout
 a15_declared=$(grep -m1 '^total_skills:' skills/_registry.yml | tr -d '\r' | awk '{print $2}' || true)
 a15_extracted=$(printf '%s\n' "$a15_reg" | sed '/^$/d' | wc -l || true)
@@ -382,7 +397,8 @@ declare -A AGENT_INTENT
 # A6a: every agent has a valid intent that agrees with tools
 for f in agents/*.md; do
   name=$(basename "$f" .md)
-  [[ "$name" == "_template" || "$name" == "README" ]] && continue
+  is_template "$name" && continue
+  [[ "$name" == "README" ]] && continue
   # `|| true` on both, and it is load-bearing rather than defensive (#647). Under
   # `set -euo pipefail` a bare `x=$(grep … | …)` carries the pipeline's status, so an agent
   # file WITHOUT `intent:` aborted the whole script on this line -- one line before the
@@ -428,7 +444,8 @@ done
 impl_kw='Developer|Implementer|Programmer|Builder|Engineer|Operator|Hardener|Architect'
 for f in teams/*.md; do
   tname=$(basename "$f")
-  [[ "$tname" == "_template.md" || "$tname" == "README.md" ]] && continue
+  is_template "$tname" && continue
+  [[ "$tname" == "README.md" ]] && continue
   while IFS='|' read -r ag sub role; do
     [ -z "$ag" ] && continue
     eff="$ag"
@@ -473,7 +490,7 @@ a7_fail=0
 a7_count=0
 for f in workflows/*.mjs; do
   wname=$(basename "$f")
-  [[ "$wname" == "_template.mjs" ]] && continue
+  is_template "$wname" && continue
   stem=$(basename "$f" .mjs)
   a7_count=$((a7_count + 1))
   for field in name description phases; do
@@ -689,7 +706,9 @@ a9_warned=0
 a9_hits=$(grep -lE "$a9_pattern" skills/*/SKILL.md || true)
 while IFS= read -r f; do
   [ -z "$f" ] && continue
-  [ "$f" = "skills/_template/SKILL.md" ] && continue
+  # Was a literal path comparison -- a fourth spelling of the rule, and the only one that
+  # would not have followed the template if it moved tree. `basename` feeds the shared set.
+  is_template "$(basename "$(dirname "$f")")" && continue
   invoked=$(grep -oE "$a9_pattern" "$f" | grep -oE "${a9_bt}(${a9_tools})${a9_bt}" | tr -d "$a9_bt" | sort -u || true)
   # Frontmatter region only (skips body code-fence examples); supports both
   # `allowed-tools: A B C` and the YAML block-list form.
@@ -1094,7 +1113,7 @@ a12_fail=0
 # envelope's count case cannot see it: mutating 35 -> 36 keeps the key greppable, so only a
 # deletion reaches this path. Safe because the comparison below is a string `!=` -- an empty
 # `reg_count` compares unequal and fails correctly rather than passing.
-disk_count=$(find guides -maxdepth 1 -name '*.md' -not -name '_template.md' -not -name 'README.md' | wc -l || true)
+disk_count=$(find guides -maxdepth 1 -name '*.md' "${TEMPLATE_FIND_PRUNE[@]}" -not -name 'README.md' | wc -l || true)
 reg_count=$(grep 'total_guides:' guides/_registry.yml | tr -d '\r' | awk '{print $2}' || true)
 if [ "$disk_count" != "$reg_count" ]; then
   echo "FAIL: guides disk=$disk_count total_guides=$reg_count"
@@ -1111,7 +1130,7 @@ if [ -n "$a12_dupe_paths" ]; then
   failed=1; a12_fail=1
 fi
 a12_reg_paths=$(printf '%s\n' "$a12_reg_paths_all" | sort -u || true)
-a12_disk_paths=$(find guides -maxdepth 1 -name '*.md' -not -name '_template.md' -not -name 'README.md' | sort || true)
+a12_disk_paths=$(find guides -maxdepth 1 -name '*.md' "${TEMPLATE_FIND_PRUNE[@]}" -not -name 'README.md' | sort || true)
 if [ -z "$a12_reg_paths" ]; then
   echo "FAIL: A12 extracted 0 'path:' values from guides/_registry.yml -- pattern drift, not a clean tree"
   failed=1; a12_fail=1
@@ -1132,7 +1151,7 @@ b1_fail=0
 b1_count=0
 for dir in skills/*/; do
   skill_name=$(basename "$dir")
-  [[ "$skill_name" == "_template" ]] && continue
+  is_template "$skill_name" && continue
   [ ! -f "$dir/SKILL.md" ] && continue
   b1_count=$((b1_count + 1))
   if [ ! -L ".claude/skills/$skill_name" ]; then
@@ -1158,7 +1177,8 @@ b3_fail=0
 b3_checked=0
 for f in teams/*.md; do
   name=$(basename "$f")
-  [[ "$name" == "_template.md" || "$name" == "README.md" ]] && continue
+  is_template "$name" && continue
+  [[ "$name" == "README.md" ]] && continue
   # Extract member ids from structured YAML: members:\n  - id: agent-name
   while IFS= read -r line; do
     # GUARDED, not annotated (#647 review). The first version claimed `sed -n …p` exits 0 on
@@ -1187,7 +1207,8 @@ b4_fail=0
 b4_checked=0
 for f in agents/*.md; do
   name=$(basename "$f")
-  [[ "$name" == "_template.md" || "$name" == "README.md" ]] && continue
+  is_template "$name" && continue
+  [[ "$name" == "README.md" ]] && continue
   # Extract skills from YAML frontmatter (indented list items under skills:)
   in_skills=0
   while IFS= read -r line; do
@@ -1219,12 +1240,12 @@ orphan_count=0
 orphan_list=""
 # Build reference corpus: all .md files except registries, READMEs, and templates
 ref_corpus_file=$(mktemp)
-find agents teams guides -name '*.md' -not -name '_template.md' -not -name 'README.md' -exec cat {} + > "$ref_corpus_file" 2>/dev/null
+find agents teams guides -name '*.md' "${TEMPLATE_FIND_PRUNE[@]}" -not -name 'README.md' -exec cat {} + > "$ref_corpus_file" 2>/dev/null
 # Add skill-to-skill cross-references (all SKILL.md files)
 find skills -name 'SKILL.md' -exec cat {} + >> "$ref_corpus_file" 2>/dev/null
 for dir in skills/*/; do
   skill_name=$(basename "$dir")
-  [[ "$skill_name" == "_template" ]] && continue
+  is_template "$skill_name" && continue
   # A skill is orphaned if it only appears in its own SKILL.md, nowhere else
   # Count total occurrences, subtract self-references (skill name appears in its own file)
   total=$(grep -c "$skill_name" "$ref_corpus_file" 2>/dev/null || echo 0)
@@ -1379,7 +1400,7 @@ fi
 # The fix path is: bash scripts/sync-discovery-symlinks.sh --fix
 echo "--- B12: Global discovery-hub coverage ---"
 if [ -d "$HOME/.claude/skills" ]; then
-  b12_reg=$(grep '^      - id: ' skills/_registry.yml | sed 's/.*- id: //' | tr -d '\r ' | grep -v '^_template$' | sort -u || true)
+  b12_reg=$(grep '^      - id: ' skills/_registry.yml | sed 's/.*- id: //' | tr -d '\r ' | strip_template_ids | sort -u || true)
   b12_hub=$(find "$HOME/.claude/skills" -maxdepth 1 -mindepth 1 -printf '%f\n' 2>/dev/null | sort -u || true)
   # Only the registry side is asserted. An empty `b12_hub` is a legitimate state -- a machine
   # that has never run sync-discovery-symlinks.sh -- and the comparison is exactly what should
