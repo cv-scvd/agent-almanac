@@ -36,6 +36,17 @@ import { CONTENT_TYPES } from './content-types.js';
 export const TEMPLATE_SEGMENTS = Object.freeze(['_template', '_template.md', '_template.mjs']);
 
 /**
+ * What a template's name could plausibly be spelled as — the DISCOVERY ruler for
+ * `templateSpellingDrift`, never the membership test.
+ *
+ * Looser than `TEMPLATE_SEGMENTS` on purpose: finding a spelling the exact set has never seen
+ * is the whole job. Tighter than `startsWith('_template')`, because that also matches
+ * `_templates.md` and `_template_backup` — see `templateSpellingDrift`'s docblock for the
+ * deadlock that produced.
+ */
+const TEMPLATE_SPELLING = /^_template(\.[a-z0-9]+)?$/;
+
+/**
  * Is this single path SEGMENT a template's name?
  *
  * For callers that already hold a bare name — a `readdirSync` entry, a `basename`. Callers
@@ -126,6 +137,28 @@ function anchoredSegment(relPath) {
  * Takes the path list rather than reading the filesystem, so the caller supplies the tracked
  * ruler rather than a walk that would descend into `node_modules` and `i18n/`.
  *
+ * ## The discovery ruler, and the deadlock it used to create
+ *
+ * Discovery is `TEMPLATE_SPELLING`, deliberately LOOSER than membership but not merely a
+ * prefix. `startsWith('_template')` was the first version and two reviewers independently
+ * found the same defect in it: it is also true of `_templates.md` and `_template_backup`.
+ * Neither is a template, and the unit tests say so — so the day one was tracked, this check
+ * would go red reporting it `uncovered`, i.e. demanding the predicate absorb a path a sibling
+ * test forbids it to absorb. No waiver existed; the only exit was renaming the file.
+ *
+ * `^_template(\.[a-z0-9]+)?$` is the whole of it: the bare name, or the bare name plus one
+ * extension. A genuinely new spelling (`_template.yml`) still lands as `uncovered`, which is
+ * the entire job; a lookalike is simply not a candidate.
+ *
+ * ## What it still cannot see, stated rather than left to be found
+ *
+ * A path with fewer than two segments after normalisation has no anchored position, so a
+ * repo-root `_template.md` and a locale-root `i18n/de/_template.md` are invisible here —
+ * neither covered nor uncovered. Both are outside every content tree, so neither is scaffolding
+ * in the sense any consumer means, and treating them as findings would report drift against
+ * files no exclusion site would ever consult. The boundary is recorded because "the check did
+ * not fire" and "the check cannot see it" read identically in a green run.
+ *
  * @param {string[]} paths every repo-relative tracked path
  * @returns {{uncovered: string[], dead: string[]}}
  */
@@ -138,7 +171,7 @@ export function templateSpellingDrift(paths) {
   // `skills-inventory.test.js` pins that it must be counted. Scanning every segment reported
   // it as `uncovered`, so this check would have gone red demanding the predicate absorb a path
   // the predicate is right to reject. Caught by its own test before it ever ran in CI.
-  const anchored = paths.filter((p) => anchoredSegment(p)?.startsWith('_template') === true);
+  const anchored = paths.filter((p) => TEMPLATE_SPELLING.test(anchoredSegment(p) ?? ''));
   const uncovered = anchored.filter((p) => !isTemplate(p)).sort();
   const used = new Set(anchored.filter((p) => isTemplate(p)).map((p) => anchoredSegment(p)));
   const dead = TEMPLATE_SEGMENTS.filter((s) => !used.has(s));

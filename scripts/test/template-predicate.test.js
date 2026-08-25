@@ -132,6 +132,30 @@ test('the drift check ignores a nested _template rather than calling it uncovere
   assert.deepEqual(uncovered, []);
 });
 
+test('a LOOKALIKE at the anchored position is not reported as an uncovered spelling', () => {
+  // Two reviewers found this independently. Discovery was `startsWith('_template')`, which is
+  // true of both names below — so tracking either turned THE CORPUS red reporting it
+  // `uncovered`, demanding the predicate absorb a path the lookalike test above forbids it to
+  // absorb. A deadlock with no waiver: the only exit was renaming the file.
+  const { uncovered, dead } = templateSpellingDrift([
+    'agents/_template.md', 'skills/_template/SKILL.md', 'workflows/_template.mjs',
+    'agents/_templates.md',            // plural
+    'skills/_template_backup/SKILL.md', // suffixed
+  ]);
+  assert.deepEqual(uncovered, []);
+  assert.deepEqual(dead, []);
+});
+
+test('a genuinely new spelling is STILL reported after that tightening', () => {
+  // The other direction, and the reason the ruler is a pattern rather than the exact set: a
+  // discovery rule tightened until it only matches known members can never find anything.
+  for (const candidate of ['guides/_template.yml', 'guides/_template.json', 'guides/_template.txt']) {
+    const { uncovered } = templateSpellingDrift(['agents/_template.md', 'skills/_template/SKILL.md',
+      'workflows/_template.mjs', candidate]);
+    assert.deepEqual(uncovered, [candidate], candidate);
+  }
+});
+
 test('THE CORPUS: no template spelling on disk escapes the predicate, and no member is dead', () => {
   // #672 AC4, against the real tree rather than a fixture. Add `guides/_template.yml` and this
   // fails naming it; delete the last `.mjs` template and it fails naming the dead member.
