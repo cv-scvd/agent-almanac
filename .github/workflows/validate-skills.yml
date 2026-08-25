@@ -125,6 +125,24 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # #434. Agent frontmatter vs `agents/_registry.yml`, on `skills` and `tools`.
+      #
+      # Nothing compared them, which is how #398 survived from an agent's creation commit
+      # (`apa-specialist`: 1 skill in the file, 3 in the registry) and why #403 §2a re-synced
+      # four agents BY HAND. A hand-sync with no gate behind it is a repair, not a fix.
+      #
+      # BLOCKING: measured clean at introduction — 75 files, 75 entries, 0 drift, and 150 of 150
+      # field comparisons populated on BOTH sides. The second number is the load-bearing one: two
+      # empty lists compare equal, so "0 drift" over absent fields would assert nothing, and the
+      # checker fails on an empty side rather than passing quietly.
+      #
+      # HERE and not in `validate-integrity.yml`, which is the better semantic fit and is also
+      # required: that job deliberately runs no `npm ci`, and this checker imports `js-yaml`.
+      # Placing it there would need a dependency-free YAML reader — a second parser to disagree
+      # with the first.
+      - name: Check agent file vs registry parity (#434)
+        run: npm run validate:agent-parity
+
       - name: Check translation freshness (warn only)
         run: node scripts/check-translation-freshness.js --warn
 
