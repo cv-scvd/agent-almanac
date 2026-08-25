@@ -51,6 +51,34 @@ export const CRASH_SIGNATURES = [
 // failing, so one such name poisons every later run against that suite.
 
 /**
+ * ANSI SGR sequences, stripped before matching (#729).
+ *
+ * The reporter measurement below is real and still holds — and it missed COLOUR, because both
+ * transcripts were captured from a PIPE, where node disables colour. On a TTY the same spec line
+ * arrives as `"\x1b[34mℹ fail 0\x1b[39m"`: the trailing reset sits after the digits, so
+ * `\s*$` cannot match and BOTH parsers return null.
+ *
+ * The consequence was not a wrong number, it was a missing one, which is worse than it sounds.
+ * `--expect-killed-by` refuses rather than passing silently — correct — so the flag that
+ * separates a targeted kill from a crash kill (#621, where the same line reported 15 versus 1)
+ * simply could not be used. It worked in CI, where there is no TTY, and never on the machine
+ * where anyone iterates.
+ *
+ * `parsePassCount` feeds `BROAD_KILL_SHARE`, so the share half of the SUSPECT guard was degraded
+ * in the same place and by the same cause.
+ *
+ * Deliberately narrow: SGR (`ESC [ … m`) only, which is what colour uses. Matching every CSI
+ * would also eat cursor movement, and a reporter that repositions the cursor mid-line is not
+ * producing a summary line worth parsing anyway.
+ *
+ * Written `\x1b`, never a literal escape byte. Typing the examples above inserted three real
+ * 0x1B bytes into this file — invisible in an editor, in a diff, and in review.
+ */
+const ANSI_SGR = /\x1b\[[0-9;]*m/g;
+
+const stripAnsi = (output) => String(output ?? '').replace(ANSI_SGR, '');
+
+/**
  * Pull `fail N` out of node:test output; null if the format is not recognised.
  *
  * ## Both reporters, MEASURED (#666)
@@ -82,13 +110,13 @@ export const CRASH_SIGNATURES = [
  * settled by an end-to-end run, and this is which.
  */
 export function parseFailCount(output) {
-  const match = String(output ?? '').match(/^\s*\S*\s*fail\s+(\d+)\s*$/m);
+  const match = stripAnsi(output).match(/^\s*\S*\s*fail\s+(\d+)\s*$/m);
   return match ? Number(match[1]) : null;
 }
 
 /** Pull `pass N` out of node:test output; null if the format is not recognised. */
 export function parsePassCount(output) {
-  const match = String(output ?? '').match(/^\s*\S*\s*pass\s+(\d+)\s*$/m);
+  const match = stripAnsi(output).match(/^\s*\S*\s*pass\s+(\d+)\s*$/m);
   return match ? Number(match[1]) : null;
 }
 

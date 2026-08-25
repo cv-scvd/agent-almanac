@@ -118,6 +118,62 @@ test('parseFailCount and parsePassCount read node:test summaries', () => {
   assert.equal(parseFailCount(undefined), null);
 });
 
+// ── COLOUR: the dimension the #666 reporter measurement did not vary (#729) ──
+
+// #666 measured TAP against spec and pinned both. Both transcripts came from a PIPE, where node
+// disables colour — so the patterns were only ever seen without it, and on a TTY both parsers
+// returned null. `--expect-killed-by` therefore refused on every local run and worked only in
+// CI, which is the inverse of where it is needed.
+//
+// The escapes are written `\x1b`, NOT pasted. Typing the real bytes into a source file embeds
+// 0x1B directly, invisible in an editor and in review; that happened while fixing this and is
+// why the constant carries the same warning.
+const COLOURED_SPEC_FAIL = '\x1b[34mℹ fail 3\x1b[39m';
+const COLOURED_SPEC_PASS = '\x1b[34mℹ pass 20\x1b[39m';
+
+test('coloured node:test output parses — the TTY case (#729)', () => {
+  assert.equal(parseFailCount(COLOURED_SPEC_FAIL), 3);
+  assert.equal(parsePassCount(COLOURED_SPEC_PASS), 20);
+});
+
+test('the trailing reset is what used to break it, not the leading colour', () => {
+  // Diagnosis pinned, because "strip ANSI" is a fix whose REASON is easy to misremember. The
+  // opening `\x1b[34m` is absorbed by `\S*` and never mattered; the closing `\x1b[39m` sits
+  // after the digits, where `\s*$` cannot pass it.
+  assert.equal(parseFailCount('\x1b[34mℹ fail 3'), 3, 'a leading colour alone always parsed');
+  assert.equal(
+    /^\s*\S*\s*fail\s+(\d+)\s*$/m.exec('ℹ fail 3\x1b[39m'),
+    null,
+    'and a trailing reset alone is what the old pattern could not pass',
+  );
+  assert.equal(parseFailCount('ℹ fail 3\x1b[39m'), 3, 'which the strip now handles');
+});
+
+test('the ESC byte is part of the sequence, not decoration around it', () => {
+  // The trap on the way to this fix, kept because it is easy to repeat: a pattern of
+  // `/\[[0-9;]*m/g` looks like it strips ANSI and does not — it removes `[39m` and leaves 0x1B
+  // behind, and ESC is not whitespace, so `\s*$` is blocked exactly as before.
+  const halfStripped = COLOURED_SPEC_FAIL.replace(/\[[0-9;]*m/g, '');
+  assert.ok(halfStripped.includes('\x1b'), 'the half-strip leaves the control byte');
+  assert.equal(
+    /^\s*\S*\s*fail\s+(\d+)\s*$/m.exec(halfStripped),
+    null,
+    'so the summary is still unreadable after it',
+  );
+
+  // And the parser does not paper over that either: an orphan ESC with no `[…m` after it is
+  // not an SGR sequence, so it is deliberately NOT stripped. Asserted so nobody "fixes" this
+  // by broadening the pattern to bare ESC, which would start eating real content.
+  assert.equal(parseFailCount(halfStripped), null);
+
+  // What works is stripping the WHOLE sequence, ESC included — from the original bytes.
+  assert.equal(parseFailCount(COLOURED_SPEC_FAIL), 3);
+});
+
+test('colour does not make an unparseable line parseable', () => {
+  assert.equal(parseFailCount('\x1b[34mℹ nothing here\x1b[39m'), null);
+});
+
 // ── the false SUSPECT that self-review caught (#621) ────────────────────────
 
 // A LEGITIMATE behavioural kill whose assertion message embeds crash text. Real output,
