@@ -100,6 +100,13 @@ export function isTemplate(relPath) {
  */
 function anchoredSegment(relPath) {
   let parts = String(relPath).split('/');
+  // A leading `./` would shift every index by one and return a SILENT wrong answer -- the
+  // anchored segment would be the tree name, so `./agents/_template.md` reads as not a
+  // template. No caller passes that shape today; all four feed it `git ls-files` output or a
+  // `readdirSync` entry. It is handled anyway because `fences.js` already carries the lesson
+  // in its own margin: "a 'cannot happen' margin is exactly how this module keeps getting
+  // bypassed". Repeated `./` is not handled and does not occur.
+  if (parts[0] === '.') parts = parts.slice(1);
   if (parts[0] === 'i18n' && parts.length > 2) parts = parts.slice(2);
   return parts.length >= 2 ? parts[1] : undefined;
 }

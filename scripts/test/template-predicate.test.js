@@ -18,7 +18,6 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -74,6 +73,15 @@ test('a mirror anchors like its English source', () => {
   assert.equal(isTemplate('i18n/de/skills/_template/SKILL.md'), true);
   assert.equal(isTemplate('i18n/zh-CN/agents/_template.md'), true);
   assert.equal(isTemplate('i18n/de/skills/create-r-package/SKILL.md'), false);
+});
+
+test('a `./`-prefixed path anchors like a bare one', () => {
+  // Without normalisation the anchored segment is the TREE name, so this returns false --
+  // a silent wrong answer rather than a throw. No caller passes this shape today.
+  assert.equal(isTemplate('./agents/_template.md'), true);
+  assert.equal(isTemplate('./skills/_template/SKILL.md'), true);
+  assert.equal(isTemplate('./i18n/de/agents/_template.md'), true);
+  assert.equal(isTemplate('./agents/real-agent.md'), false);
 });
 
 test('degenerate inputs do not throw and do not match', () => {
@@ -132,32 +140,58 @@ test('THE CORPUS: no template spelling on disk escapes the predicate, and no mem
   assert.deepEqual(dead, [], 'a declared spelling no tracked path uses');
 });
 
+/** The shell's TEMPLATE_NAMES as bash itself sees it — sourced, never parsed. */
+function shellArray() {
+  const out = execFileSync('bash', [
+    '-c', 'set -euo pipefail; source "$1"; printf "%s\\n" "${TEMPLATE_NAMES[@]}"',
+    '_', resolve(ROOT, 'scripts/lib/template-names.sh'),
+  ], { encoding: 'utf8' });
+  return out.split('\n').filter(Boolean);
+}
+
+/** What the shell's own `is_template` says about one name. */
+function shellSaysTemplate(name) {
+  const out = execFileSync('bash', [
+    '-c', 'source "$1"; if is_template "$2"; then echo yes; else echo no; fi',
+    '_', resolve(ROOT, 'scripts/lib/template-names.sh'), name,
+  ], { encoding: 'utf8' }).trim();
+  if (out !== 'yes' && out !== 'no') throw new Error(`unreadable shell verdict: ${JSON.stringify(out)}`);
+  return out === 'yes';
+}
+
 test('THE PAIR: the shell list matches TEMPLATE_SEGMENTS exactly', () => {
   // `scripts/lib/template-names.sh` cannot import this module, so the set exists twice. Gated
   // in BOTH directions: a name added to either side alone fails here naming the other.
-  const shell = readFileSync(resolve(ROOT, 'scripts/lib/template-names.sh'), 'utf8');
-  const line = shell.match(/^TEMPLATE_NAMES=\((.*)\)$/m);
-  assert.ok(line, 'TEMPLATE_NAMES=( ... ) not found in scripts/lib/template-names.sh');
-
-  const names = [...line[1].matchAll(/'([^']*)'/g)].map((m) => m[1]);
-  assert.ok(names.length > 0, 'parsed zero names — the parse, not the corpus, is broken');
+  //
+  // The array is read by SOURCING the file, not by parsing it. A regex over
+  // `TEMPLATE_NAMES=( ... )` was the first version and it had the bug this whole PR is about:
+  // it matched the FIRST assignment only, so appending
+  //
+  //     TEMPLATE_NAMES+=('_template.yml')
+  //
+  // on any later line left the shell excluding a name the JS did not, with all twelve tests
+  // green. Measured, not imagined -- the append was planted and the suite passed. Sourcing is
+  // immune to that and to reformatting, quote style, and conditional assignment, because it
+  // observes exactly what `validate-integrity.sh` observes.
+  const names = shellArray();
+  assert.ok(names.length > 0, 'sourced an empty TEMPLATE_NAMES — the read, not the corpus, is broken');
   assert.deepEqual([...names].sort(), [...TEMPLATE_SEGMENTS].sort());
 });
 
-test('the shell helper agrees with the JS predicate name by name', () => {
-  // Parsing the array proves the LISTS match. This proves the shell FUNCTION reads them, which
+test('the shell helper agrees with the JS predicate over the UNION of both sets', () => {
+  // Reading the array proves the LISTS match. This proves the shell FUNCTION reads them, which
   // a typo in `is_template` itself would otherwise leave green.
-  const script = resolve(ROOT, 'scripts/lib/template-names.sh');
+  //
+  // Probing the UNION rather than `TEMPLATE_SEGMENTS` matters: a name present only on the
+  // shell side would never be probed by a JS-side list, so the divergence it represents would
+  // go unmeasured by the very test meant to catch it.
   const probe = [
-    ...TEMPLATE_SEGMENTS,
-    '_templates.md', 'README.md', '_registry.yml', 'my_template_notes.md', '',
+    ...new Set([...TEMPLATE_SEGMENTS, ...shellArray()]),
+    '_templates.md', 'README.md', '_registry.yml', 'my_template_notes.md', '_template.yml', '',
   ];
   for (const name of probe) {
-    const status = execFileSync('bash', [
-      '-c', `source "$1"; if is_template "$2"; then echo yes; else echo no; fi`, '_', script, name,
-    ], { encoding: 'utf8' }).trim();
     assert.equal(
-      status === 'yes',
+      shellSaysTemplate(name),
       isTemplateSegment(name),
       `is_template(${JSON.stringify(name)}) disagrees with isTemplateSegment`,
     );
