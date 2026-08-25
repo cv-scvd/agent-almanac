@@ -140,21 +140,30 @@ test('THE CORPUS: no template spelling on disk escapes the predicate, and no mem
   assert.deepEqual(dead, [], 'a declared spelling no tracked path uses');
 });
 
+/**
+ * The script both helpers below source, as a LITERAL relative path.
+ *
+ * Not `resolve(ROOT, …)`. CodeQL flagged the first version — "Shell command built from
+ * environment values" — because the path derived from `import.meta.url` reached a `bash -c`
+ * invocation. It was already passed as a positional argument rather than interpolated, so it
+ * was not injectable, but naming the script literally and pointing `cwd` at the repo removes
+ * the pattern rather than arguing with it, and reads better besides.
+ */
+const NAMES_SH = 'scripts/lib/template-names.sh';
+
 /** The shell's TEMPLATE_NAMES as bash itself sees it — sourced, never parsed. */
 function shellArray() {
   const out = execFileSync('bash', [
-    '-c', 'set -euo pipefail; source "$1"; printf "%s\\n" "${TEMPLATE_NAMES[@]}"',
-    '_', resolve(ROOT, 'scripts/lib/template-names.sh'),
-  ], { encoding: 'utf8' });
+    '-c', `set -euo pipefail; source ${NAMES_SH}; printf '%s\\n' "\${TEMPLATE_NAMES[@]}"`,
+  ], { cwd: ROOT, encoding: 'utf8' });
   return out.split('\n').filter(Boolean);
 }
 
 /** What the shell's own `is_template` says about one name. */
 function shellSaysTemplate(name) {
   const out = execFileSync('bash', [
-    '-c', 'source "$1"; if is_template "$2"; then echo yes; else echo no; fi',
-    '_', resolve(ROOT, 'scripts/lib/template-names.sh'), name,
-  ], { encoding: 'utf8' }).trim();
+    '-c', `source ${NAMES_SH}; if is_template "$1"; then echo yes; else echo no; fi`, '_', name,
+  ], { cwd: ROOT, encoding: 'utf8' }).trim();
   if (out !== 'yes' && out !== 'no') throw new Error(`unreadable shell verdict: ${JSON.stringify(out)}`);
   return out === 'yes';
 }
