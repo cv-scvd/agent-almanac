@@ -51,6 +51,60 @@ export const CRASH_SIGNATURES = [
 // failing, so one such name poisons every later run against that suite.
 
 /**
+ * ANSI SGR sequences, stripped before matching (#729).
+ *
+ * The reporter measurement below is real and still holds — and it missed COLOUR. When colour
+ * reaches the capture, the spec summary arrives as `"\x1b[34mℹ fail 0\x1b[39m"`: the trailing
+ * reset sits after the digits, so `\s*$` cannot match and BOTH parsers return null.
+ *
+ * ## What actually triggers it — measured, after a review corrected the first answer
+ *
+ * NOT a TTY. `mutation-check.js` captures through `spawn(..., {shell: true})` with piped stdio,
+ * so the child's stdout is a pipe whatever the operator's terminal is, and node does not colour
+ * a pipe. The trigger is **`FORCE_COLOR` in the environment**, which forces colour INTO the pipe.
+ * Measured on node v25.9.0, all runs piped:
+ *
+ *     FORCE_COLOR inherited (=3)   coloured  "\x1b[34mℹ fail 0\x1b[39m"
+ *     FORCE_COLOR removed          plain     "ℹ fail 0"
+ *     FORCE_COLOR=1                coloured  "\x1b[34mℹ fail 0\x1b[39m"
+ *
+ * The first draft of this comment said "on a TTY … it worked in CI and never locally". That is
+ * wrong in a way worth keeping written down, because it inverts the risk: `FORCE_COLOR` is
+ * orthogonal to TTY-ness, some CI configurations export it for readable logs, and such a CI
+ * would hit this bug while a plain local pipe would not.
+ *
+ * The consequence was not a wrong number, it was a missing one, which is worse than it sounds.
+ * `--expect-killed-by` refuses rather than passing silently — correct — so the flag that
+ * separates a targeted kill from a crash kill (#621, where the same line reported 15 versus 1)
+ * could not be used at all wherever colour is forced.
+ *
+ * `parsePassCount` feeds `BROAD_KILL_SHARE`, so the share half of the SUSPECT guard was degraded
+ * in the same place and by the same cause. The CRASH half was NOT: `crashSuspicion` scans raw
+ * output, and the worry that `\x1b[31m` abutting `ReferenceError` would defeat `\b` does not
+ * materialise — node emits the reset, a newline and indentation before the error name, so the
+ * character preceding it is a space. Measured, not assumed, and pinned by a test.
+ *
+ * Deliberately narrow: SGR (`ESC [ … m`) only, which is what colour uses. Cursor-control
+ * sequences are left alone — not because such output would deserve refusal, which was a bad
+ * argument in an earlier draft, but simply because node:test does not emit them in summary
+ * lines. If that changes, widen to full CSI rather than to bare ESC.
+ *
+ * Known and unclosed: `.match(/…/m)` takes the FIRST match, while the true summary is at the
+ * end of the transcript. A coloured earlier line that only becomes matchable after stripping
+ * therefore wins — turning a refusal into a wrong number. The uncoloured form of this predates
+ * the strip (see the name-poisoning note under CRASH_SIGNATURES); anchoring on the last match
+ * would close both.
+ *
+ * Written `\x1b`, never a literal escape byte. Typing the examples above inserted three real
+ * 0x1B bytes into this file — invisible in an editor, in a diff, and in review, and caught only
+ * with `cat -A`. No gate in this repo would have found them: the line-endings check looks for
+ * CRLF, and ESC does not trip git's binary heuristic the way NUL does.
+ */
+const ANSI_SGR = /\x1b\[[0-9;]*m/g;
+
+const stripAnsi = (output) => String(output ?? '').replace(ANSI_SGR, '');
+
+/**
  * Pull `fail N` out of node:test output; null if the format is not recognised.
  *
  * ## Both reporters, MEASURED (#666)
@@ -82,13 +136,13 @@ export const CRASH_SIGNATURES = [
  * settled by an end-to-end run, and this is which.
  */
 export function parseFailCount(output) {
-  const match = String(output ?? '').match(/^\s*\S*\s*fail\s+(\d+)\s*$/m);
+  const match = stripAnsi(output).match(/^\s*\S*\s*fail\s+(\d+)\s*$/m);
   return match ? Number(match[1]) : null;
 }
 
 /** Pull `pass N` out of node:test output; null if the format is not recognised. */
 export function parsePassCount(output) {
-  const match = String(output ?? '').match(/^\s*\S*\s*pass\s+(\d+)\s*$/m);
+  const match = stripAnsi(output).match(/^\s*\S*\s*pass\s+(\d+)\s*$/m);
   return match ? Number(match[1]) : null;
 }
 
