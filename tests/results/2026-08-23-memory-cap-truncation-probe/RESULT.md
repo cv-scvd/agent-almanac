@@ -52,6 +52,16 @@ a clean, internally consistent, completely wrong table showing that truncation d
 `--tools` is also variadic and eats a positional prompt (`Error: Input must be provided either
 through stdin or as a prompt argument when using --print`), so the prompt goes on stdin.
 
+**`--tools ""` is not tool-zero, and this section overstated it (corrected 2026-08-25, #722).** A
+wire capture of the same invocation on 2.1.245 shows one tool still offered — `advisor`, type
+`advisor_20260301` — because `--tools` filters *client* tools while `advisor` is server-side,
+enabled by `advisorModel` in `~/.claude/settings.json`. `--strict-mcp-config` does not remove it
+either. The claim is therefore machine-dependent: true only for an operator who has not set that
+key. It does not affect this run's arms, since `advisor` cannot read a file off disk and the
+disk-read failure above is the one the flag exists to prevent — but "tools asserted zero" should be
+read as "no file-reading tool was offered", and the honest way to assert it is to read the `tools`
+array out of the request rather than to infer it from a decoy.
+
 ### Fixtures
 
 | arm | filler | width (code points) | lines | EOL | UTF-8 bytes | UTF-16 units | code points | astral | what it discriminates |
@@ -338,6 +348,48 @@ arithmetic over a width it can see. The probe asks for the highest visible canar
 `CANARY-NNN` sits on numbered lines, so reported-what-I-saw and computed-from-constants yield
 the identical number. The arm cannot separate them. That is the confound, and it is enough.
 
+**Superseded in the operator's favour on 2026-08-25 — the cap did not have to come from
+documentation either.** The paragraph above concedes that reconstruction needs *one* input from
+outside the model's own arithmetic: the line width, which only the index carries. It assumed the
+other input, the cap itself, reaches the model from documentation outside the run. A wire capture
+of the request body — not a question put to the model — shows that it does not:
+
+**Scope, before the strings: this was captured on 2.1.245, and the arms below ran on 2.1.237,
+2.1.238, 2.1.241 and (tonydzi) 2.1.201.** Whether those builds injected the notice at all, let
+alone with the `limit:` figure the answer-key arithmetic needs, was **not measured**. A
+third-party report of the `Only part of it was loaded` string at `tools_offered: 0` supports its
+*existence* on an earlier build but does not carry the limit figure, and its build is unstated.
+So the strengthening below is an INFERENCE across builds, not a measurement of this run. If the
+notice turns out to be absent on 2.1.237–241, the #717 downgrades stand unchanged on their
+original argument and only this strengthening lapses — the error direction is safe either way.
+
+```
+> WARNING: MEMORY.md is 29.4KB (limit: 24.4KB) — index entries are too long. Only part of it was loaded. …
+> WARNING: MEMORY.md is 300 lines (limit: 200). Only part of it was loaded. …
+```
+
+The harness appends one of these **inside the same `<system-reminder>` as the index**, at read time,
+in a session with no file tools. If it did so on the builds above, then every over-cap arm here
+carried its own answer key: the cap stated in the notice, the width visible in the index, and
+`floor(24.4 × 1024 / 201) = 124` — which is the cut measured for the 201-unit arms `ctrl`, `bare`
+and `ascii200`. **Not `fenced`**, whose measured 109 is the one cell this arithmetic does not
+reach, and which is why it remains the least reconstructible in the run.
+
+Two caveats on "the width visible in the index", both of which narrow the claim rather than
+overturn it. For the ASCII arms the width is directly countable. For `cjk`, `astral`, `crlf` and
+`emoji` it must be counted in **UTF-16 units** — a third input, and one this corpus discovered
+rather than read anywhere, so those arms are not reconstructible from the prompt alone by a model
+without that rule. (The notice's own total is self-calibrating enough to recover it in principle —
+a bytes reading implies fewer lines than are visibly present — but nothing here measures whether
+that happens.)
+
+`lines300` is the starkest case and needs none of that: its notice reads `is 300 lines
+(limit: 200)`, so the answer `200` was a literal in its own prompt.
+
+This makes reconstruction **cheaper** than this section claims, so it strengthens every downgrade
+below rather than softening one. Full method, both verbatim strings, the delivery path and the
+limits of the finding: [`2026-08-25-truncation-notice-probe/RESULT.md`](../2026-08-25-truncation-notice-probe/RESULT.md) (#722).
+
 **Consequence for the Verdicts table above.** Verdicts 1, 4 and 5 are downgraded from
 CONFIRMED/MEASURED to **consistent-with, and refuting the naive alternatives**. That is not
 nothing: a model reconstructing from the *documented* figure — 25KB, bytes — gives `cjk` ≈ 70,
@@ -368,7 +420,8 @@ do while applying the same standard to an external party's bracket. They rest on
   reconstructible cells — reconstructible *and* whole-line-dependent, precisely the combination
   criticised elsewhere in this document. §2's `[24999, 25023)` is therefore this run's only sound
   bracket, and verdict 2 should not be quoted beside it as though the two were peers.
-- **Verdict 3** rests on `lines300`, whose answer is the documented 200-line cap.
+- **Verdict 3** rests on `lines300`, whose answer is the documented 200-line cap — and which #722
+  showed was additionally handed that number verbatim, as `(limit: 200)` in its own prompt.
 - **Verdict 6** is the sharpest: an instrument that reconstructs is *insensitive to a boundary
   change*, so identical tables across three versions cannot refute one. It weakens from REFUTED to
   **no change detected, by an instrument not shown sensitive to change.**
@@ -383,7 +436,10 @@ reason it is flagged against the external bracket.
 ### 2. A behavioural re-measurement, 2.1.245
 
 Invented-token needles carrying facts rather than labels, right-aligned to the line end, three
-trials each, tools asserted zero behaviourally via a disk-only decoy. Five fixtures at 136–251
+trials each, tools asserted zero behaviourally via a disk-only decoy — read that as "no
+file-reading tool was offered", not literally zero: these arms ran on 2.1.245 on this machine,
+the exact configuration where a wire capture later showed one server-side `advisor` tool still
+present (see the Method correction above, #722). Five fixtures at 136–251
 units per line:
 
 ```

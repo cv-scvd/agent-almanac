@@ -168,6 +168,51 @@ BRACKET_PROVENANCE = {
 }
 
 
+# ── #722: the harness states the cap in the prompt ────────────────────────────
+# A third instrument, added 2026-08-25. `echo` and `behavioural` both read the MODEL; `wire`
+# reads the request body the client actually sent, captured with tools/wirecap.py. The
+# reconstruction ruler does not apply to it -- bytes that were sent cannot be confused with
+# bytes that were computed -- so these arms need no `informative` accounting.
+#
+# (label, units_per_line, fixture_lines, highest_line_on_the_wire, build)
+WIRE = [
+    ('under 100x200', 201.0, 100, 100, '2.1.245'),   # complete: no cut, no notice
+    ('over 150x200',  201.0, 150, 124, '2.1.245'),   # size cut  + size notice
+    ('lines 300x20',   21.0, 300, 200, '2.1.245'),   # line cut  + line notice
+]
+
+# The notice the harness appends inside the memory <system-reminder> when it truncates. Recorded
+# because its NUMBERS are the finding: it states the cap, so a model never needs documentation.
+NOTICE_SIZE = ('over 150x200', 29.4, 24.4)   # (arm, "MEMORY.md is X KB", "(limit: Y KB)")
+NOTICE_LINES = ('lines 300x20', 300, 200)    # (arm, "MEMORY.md is N lines", "(limit: M)")
+
+
+def notice_kb(units):
+    """The KB figure the notice displays for an index of `units` UTF-16 units.
+
+    Divisor is 1024, not 1000: the 30,149-unit fixture displayed 29.4, and 30149/1000 = 30.1."""
+    return round(units / 1024, 1)
+
+
+def kb_bracket(displayed):
+    """The unit range consistent with a one-decimal KB figure, ASSUMING round-half.
+
+    This is what the notice's rounding permits, and the reason the notice CANNOT sharpen the cap
+    estimate even though it names it.
+
+    The mode is ASSUMED, not measured. If the harness TRUNCATES to one decimal the range is
+    [24985.6, 25088) instead, and the single calibration point available (29.4423 -> 29.4) reads
+    the same under both. No conclusion moves: both variants contain 25,000, and both sit inside
+    [24924, 25125), the preimage of 124 under floor(./201) -- which is the only property the
+    reconstruction argument needs."""
+    return ((displayed - 0.05) * 1024, (displayed + 0.05) * 1024)
+
+
+def cut_from_notice(displayed_limit_kb, units_per_line):
+    """What a model computes from the notice alone: it is TOLD the cap and can SEE the width."""
+    return int(displayed_limit_kb * 1024 // units_per_line)
+
+
 # ── verification ──────────────────────────────────────────────────────────────
 
 def verify():
@@ -225,16 +270,181 @@ def verify():
         print('  UNEXPECTED: these overlap; neither contains the other')
         ok = False
 
+    print('\n=== wire arms: the cut read from the request body, not from an answer ===\n')
+    for label, upl, fixture_lines, on_wire, build in WIRE:
+        pred = reconstructed_cut(upl)
+        cut = on_wire < fixture_lines
+        expected = pred if cut else fixture_lines
+        flag = 'OK' if on_wire == expected else f'*** MISMATCH: expected {expected} ***'
+        print(f"  {label:16} {fixture_lines:3d} lines -> {on_wire:3d} on the wire  "
+              f"({'cut' if cut else 'complete'})  {flag}  [{build}]")
+        if on_wire != expected:
+            ok = False
+
+    print('\n=== the notice states the cap, so reconstruction needs no documentation ===\n')
+    arm, shown_kb, limit_kb = NOTICE_SIZE
+    upl = next(w[1] for w in WIRE if w[0] == arm)
+    fixture_units = int(next(w[2] for w in WIRE if w[0] == arm) * upl) - 1
+    measured_cut = next(w[3] for w in WIRE if w[0] == arm)
+
+    if notice_kb(fixture_units) != shown_kb:
+        print(f'  *** notice_kb({fixture_units}) = {notice_kb(fixture_units)}, '
+              f'notice showed {shown_kb} ***')
+        ok = False
+    else:
+        print(f'  notice_kb({fixture_units} units) = {shown_kb}  '
+              f'-- matches the captured string, so the divisor is 1024')
+
+    if notice_kb(DOCUMENTED_CAP) != limit_kb:
+        print(f'  *** notice_kb({DOCUMENTED_CAP}) = {notice_kb(DOCUMENTED_CAP)}, '
+              f'notice showed limit {limit_kb} ***')
+        ok = False
+    else:
+        print(f'  notice_kb({DOCUMENTED_CAP}) = {limit_kb}  '
+              f'-- the stated limit is consistent with the documented cap')
+
+    told = cut_from_notice(limit_kb, upl)
+    flag = 'OK' if told == measured_cut else f'*** derives {told}, measured {measured_cut} ***'
+    print(f'  a model TOLD "limit: {limit_kb}KB" and SEEING {upl:.0f}-unit lines computes '
+          f'floor({limit_kb}*1024/{upl:.0f}) = {told}   {flag}')
+    if told != measured_cut:
+        ok = False
+
+    nb = kb_bracket(limit_kb)
+    print(f'\n  the notice brackets the cap to [{nb[0]:.1f}, {nb[1]:.1f})  '
+          f'{nb[1]-nb[0]:.1f} units wide')
+    print(f'  sound behavioural bracket      [{sound[0]}, {sound[1]})  '
+          f'{sound[1]-sound[0]} units wide')
+    print(f'  contains {DOCUMENTED_CAP}? {nb[0] <= DOCUMENTED_CAP < nb[1]}   '
+          f'contains the behavioural bracket? {nb[0] <= sound[0] and sound[1] <= nb[1]}')
+    # The notice names the cap but rounds it, so it must NOT be quoted as sharpening the
+    # estimate. Pin that as an assertion, because "the harness told us the cap" is exactly the
+    # sentence that invites treating it as a measurement.
+    if (nb[1] - nb[0]) <= (sound[1] - sound[0]):
+        print('  UNEXPECTED: the notice bracket should be WIDER -- it names the cap but '
+              'rounds it, and is not an independent behavioural measurement')
+        ok = False
+
+    arm_l, shown_lines, limit_lines = NOTICE_LINES
+    wire_l = next(w for w in WIRE if w[0] == arm_l)
+    on_wire_l = wire_l[3]
+    print(f'\n  line variant states "is {shown_lines} lines (limit: {limit_lines})"; '
+          f'wire cut = {on_wire_l}')
+    if limit_lines != on_wire_l or limit_lines != LINE_CAP:
+        print('  *** the line notice should state the line cap verbatim ***')
+        ok = False
+    else:
+        print(f'  the answer {limit_lines} was a LITERAL in that arm\'s own prompt '
+              '-- nothing to reconstruct')
+
+    # Three figures on the line arm were PRINTED and never asserted, so mutating them survived
+    # (#724 review). A published-but-unchecked figure is the thing this file exists to prevent.
+    #
+    #   - the notice's stated line count must equal the fixture's line count;
+    #   - the fixture must be UNDER the size cap, or the arm does not isolate the line cap and
+    #     its registry comment ("over the LINE cap only") is false;
+    #   - and its width must therefore be small enough for the clamp to bind.
+    if shown_lines != wire_l[2]:
+        print(f'  *** notice says {shown_lines} lines, fixture has {wire_l[2]} ***')
+        ok = False
+    size_of_line_arm = int(wire_l[2] * wire_l[1]) - 1
+    print(f'  fixture size {size_of_line_arm} units vs cap {DOCUMENTED_CAP}: '
+          f'{"under -- line cap isolated" if size_of_line_arm < DOCUMENTED_CAP else "OVER"}')
+    if size_of_line_arm >= DOCUMENTED_CAP:
+        print('  *** the line arm must be UNDER the size cap, or it isolates nothing ***')
+        ok = False
+
     print('\nOK' if ok else '\nFAILED')
     return 0 if ok else 1
+
+
+# ── negative evidence ─────────────────────────────────────────────────────────
+# A --verify that has never been seen to FAIL is a green light of unknown wiring. This repo's
+# standing rule (CLAUDE.md, "Proving a Gate Can Fail") is to break the subject and watch the
+# check go red before trusting it. These mutations are applied to the module's own registries
+# in memory -- the file on disk is never touched, so there is no mutant to strand and no backup
+# to lose.
+#
+# Each entry names a recorded figure and a wrong value for it. Every one MUST make verify()
+# exit non-zero; a survivor means that figure is published but unchecked.
+MUTATIONS = [
+    ('WIRE over cut 124->125',        'WIRE',         lambda: _swap_wire('over 150x200', 125)),
+    ('WIRE lines cut 200->199',       'WIRE',         lambda: _swap_wire('lines 300x20', 199)),
+    ('WIRE under 100->99 (a cut)',    'WIRE',         lambda: _swap_wire('under 100x200', 99)),
+    ('notice size 29.4->29.5',        'NOTICE_SIZE',  lambda: ('over 150x200', 29.5, 24.4)),
+    ('notice limit 24.4->24.5',       'NOTICE_SIZE',  lambda: ('over 150x200', 29.4, 24.5)),
+    ('notice line limit 200->150',    'NOTICE_LINES', lambda: ('lines 300x20', 300, 150)),
+    # The three that SURVIVED before the #724 review, now covered.
+    ('notice shown lines 300->301',   'NOTICE_LINES', lambda: ('lines 300x20', 301, 200)),
+    ('WIRE lines fixture 300->301',   'WIRE',         lambda: _swap_wire_field('lines 300x20', 2, 301)),
+    ('WIRE lines u/l 21->200 (over)', 'WIRE',         lambda: _swap_wire_field('lines 300x20', 1, 200.0)),
+]
+
+
+def _swap_wire(label, on_wire):
+    return _swap_wire_field(label, 3, on_wire)
+
+
+def _swap_wire_field(label, index, value):
+    """Replace one field of one WIRE row. `index` is a position in
+    (label, units_per_line, fixture_lines, on_wire, build)."""
+    out = []
+    for row in WIRE:
+        if row[0] == label:
+            row = tuple(value if i == index else v for i, v in enumerate(row))
+        out.append(row)
+    return out
+
+
+def selftest_negative():
+    """Mutate each recorded figure and assert verify() goes red."""
+    import contextlib
+    import io
+
+    globals_ = globals()
+    survivors = []
+    print('=== negative evidence: each recorded figure, mutated ===\n')
+    for name, target, make in MUTATIONS:
+        original = globals_[target]
+        globals_[target] = make()
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                code = verify()
+        finally:
+            globals_[target] = original
+        killed = code != 0
+        print(f"  {name:32} -> {'KILLED (verify went red)' if killed else '*** SURVIVED ***'}")
+        if not killed:
+            survivors.append(name)
+
+    # And the baseline must still be green, or every kill above is meaningless.
+    with contextlib.redirect_stdout(io.StringIO()):
+        baseline = verify()
+    print(f"\n  baseline (unmutated) -> {'green' if baseline == 0 else '*** RED ***'}")
+    if baseline != 0:
+        survivors.append('baseline is not green -- kills above prove nothing')
+
+    if survivors:
+        print(f'\nFAILED: {len(survivors)} unchecked figure(s)')
+        for item in survivors:
+            print(f'  {item}')
+        return 1
+    print(f'\nOK -- {len(MUTATIONS)} of {len(MUTATIONS)} mutations killed')
+    return 0
 
 
 def main():
     a = sys.argv[1:]
     if not a or a[0] == '--verify':
         return verify()
+    if a[0] == '--selftest-negative':
+        return selftest_negative()
     if a[0] == '--arms':
         for row in ARMS:
+            print('\t'.join(str(x) for x in row))
+        return 0
+    if a[0] == '--wire':
+        for row in WIRE:
             print('\t'.join(str(x) for x in row))
         return 0
     if a[0] == '--span':
