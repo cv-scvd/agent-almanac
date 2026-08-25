@@ -186,6 +186,33 @@ WIRE = [
 NOTICE_SIZE = ('over 150x200', 29.4, 24.4)   # (arm, "MEMORY.md is X KB", "(limit: Y KB)")
 NOTICE_LINES = ('lines 300x20', 300, 200)    # (arm, "MEMORY.md is N lines", "(limit: M)")
 
+# #721: is a block-level HTML comment stripped before the caps apply, and does the fence's info
+# string change the answer? All arms are 150 canary lines at 201 units; `block` is the units
+# consumed before canary 1, INCLUDING the newline separating block from canaries (which is why
+# `bare` is 3024, not 3023 -- #721's published spec includes it and the two must not disagree).
+#
+# `comments` is the number of comment body lines that reached the wire, out of 15. It is the
+# column the behavioural protocol could not produce, and it is what separates "preserved and
+# counted" from "stripped but still charged".
+#
+# (arm, block_units, last_canary_on_wire, comments_on_wire, notice_kb, build)
+FENCE = [
+    ('ctrl',        0, 124,  0, 29.4, '2.1.245'),   # anchor
+    ('bare',     3024, 124,  0, 29.4, '2.1.245'),   # stripped, and not counted
+    ('text',     3036, 109, 15, 32.4, '2.1.245'),
+    ('yaml',     3036, 109, 15, 32.4, '2.1.245'),
+    ('bash',     3036, 109, 15, 32.4, '2.1.245'),
+    ('json',     3036, 109, 15, 32.4, '2.1.245'),
+    ('untagged', 3032, 109, 15, 32.4, '2.1.245'),   # the case the default-deny rule turns on
+]
+FENCE_CANARIES = 150
+FENCE_UNITS_PER_LINE = 201
+
+
+def fence_file_units(block):
+    """Total units of a #721 fixture, before any strip."""
+    return FENCE_CANARIES * FENCE_UNITS_PER_LINE - 1 + block
+
 
 def notice_kb(units):
     """The KB figure the notice displays for an index of `units` UTF-16 units.
@@ -354,6 +381,50 @@ def verify():
         print('  *** the line arm must be UNDER the size cap, or it isolates nothing ***')
         ok = False
 
+    print('\n=== #721 fence arms: does the info string change the strip? ===\n')
+    print(f"  {'arm':9} {'block':>5} {'cut':>4} {'cmt':>4} {'kb':>6}  verdict")
+    verdicts = {}
+    for arm, block, cut, comments, kb, build in FENCE:
+        stripped = DOCUMENTED_CAP // FENCE_UNITS_PER_LINE
+        counted = (DOCUMENTED_CAP - block) // FENCE_UNITS_PER_LINE
+        if cut == stripped and comments == 0:
+            verdict = 'stripped, not counted'
+        elif cut == counted and comments == 15:
+            verdict = 'preserved, counted'
+        else:
+            verdict = f'*** incoherent: cut {cut}, {comments} comment line(s) ***'
+            ok = False
+        verdicts[arm] = verdict
+
+        # The notice's own size figure must agree with the verdict, independently of the cut:
+        # a stripped arm reports the POST-strip size, a counted arm the whole file.
+        expect_units = (fence_file_units(block) - block if verdict.startswith('stripped')
+                        else fence_file_units(block))
+        if notice_kb(expect_units) != kb:
+            verdict += f'  *** notice says {kb}KB, verdict implies ' \
+                       f'{notice_kb(expect_units)}KB ***'
+            ok = False
+        print(f"  {arm:9} {block:5d} {cut:4d} {comments:4d} {kb:6.1f}  {verdict}  [{build}]")
+
+    fenced = [a for a, *_ in FENCE if a not in ('ctrl', 'bare')]
+    distinct = {verdicts[a] for a in fenced}
+    print(f'\n  {len(fenced)} fenced arms ({", ".join(fenced)}) -> '
+          f'{len(distinct)} distinct verdict(s)')
+
+    # Untagged-vs-text FIRST, then distinctness across all five. The other order made the
+    # untagged check unreachable by construction (#725 review): if the five share one verdict,
+    # untagged and text necessarily agree, so the `elif` could never fire -- a guard that can
+    # never fail, which reads as coverage it does not provide.
+    if verdicts['untagged'] != verdicts['text']:
+        print('  UNEXPECTED: untagged must match text -- it is the default-deny case')
+        ok = False
+    elif len(distinct) != 1:
+        print('  UNEXPECTED: the info string should not change the verdict')
+        ok = False
+    else:
+        print('  untagged is indistinguishable from every tagged arm, so an untagged fence '
+              'is a fence')
+
     print('\nOK' if ok else '\nFAILED')
     return 0 if ok else 1
 
@@ -378,6 +449,17 @@ MUTATIONS = [
     ('notice shown lines 300->301',   'NOTICE_LINES', lambda: ('lines 300x20', 301, 200)),
     ('WIRE lines fixture 300->301',   'WIRE',         lambda: _swap_wire_field('lines 300x20', 2, 301)),
     ('WIRE lines u/l 21->200 (over)', 'WIRE',         lambda: _swap_wire_field('lines 300x20', 1, 200.0)),
+    ('fence untagged cut 109->124',   'FENCE',        lambda: _swap_fence('untagged', cut=124)),
+    ('fence untagged comments 15->0', 'FENCE',        lambda: _swap_fence('untagged', comments=0)),
+    ('fence bare cut 124->109',       'FENCE',        lambda: _swap_fence('bare', cut=109)),
+    ('fence text notice 32.4->29.4',  'FENCE',        lambda: _swap_fence('text', kb=29.4)),
+    ('fence bare notice 29.4->32.4',  'FENCE',        lambda: _swap_fence('bare', kb=32.4)),
+    # CROSS-ARM. Every mutation above trips a PER-ARM check first, so neither cross-arm branch
+    # had any negative evidence (#725 review). This one is coherent as a single arm -- cut 124
+    # with 0 comment lines is a valid 'stripped' row, and 30,149 units displays as 29.4KB -- so
+    # it passes every per-arm test and can only be caught by `untagged != text`.
+    ('fence text made COHERENTLY stripped', 'FENCE',
+     lambda: _swap_fence('text', cut=124, comments=0, kb=29.4)),
 ]
 
 
@@ -392,6 +474,19 @@ def _swap_wire_field(label, index, value):
     for row in WIRE:
         if row[0] == label:
             row = tuple(value if i == index else v for i, v in enumerate(row))
+        out.append(row)
+    return out
+
+
+def _swap_fence(arm, cut=None, comments=None, kb=None):
+    out = []
+    for row in FENCE:
+        if row[0] == arm:
+            row = (row[0], row[1],
+                   row[2] if cut is None else cut,
+                   row[3] if comments is None else comments,
+                   row[4] if kb is None else kb,
+                   row[5])
         out.append(row)
     return out
 

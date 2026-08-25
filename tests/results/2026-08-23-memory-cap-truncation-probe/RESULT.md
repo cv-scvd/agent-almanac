@@ -165,6 +165,12 @@ direction: it reports headroom on an index that is already losing its tail. The 
 this as a labelled unmeasured boundary, so the label was right and the code was wrong.
 
 Boundaries: 2.1.241 only, linux-x64, `claude -p`, and ```text is the only fence tag exercised.
+
+**The tag boundary is retired (2026-08-25, #721).** Replicated on 2.1.245 across `text`, `yaml`,
+`bash`, `json` **and untagged**: all five return 109 with all 15 comment lines present in context,
+and `bare` returns 124 with none. The info string does not change the answer, and an untagged fence
+behaves as a fence — which is the case this repository's own default-deny i18n fence rule turns on.
+See [`2026-08-25-fence-strip-replication/RESULT.md`](../2026-08-25-fence-strip-replication/RESULT.md).
 Fixture directories removed afterwards — note they collect session transcripts as well as the
 `memory/` subdirectory, so removing only the index leaves the slug behind.
 
@@ -242,6 +248,12 @@ assuming it.
   here; CRLF — the obvious Windows-specific mechanism — moves the cut in the *other* direction.
 - The instrument is the model's own report of what it can see, not a captured wire trace. Two runs
   per cell agreed everywhere, which bounds flakiness, not systematic error.
+
+  **Retired 2026-08-25.** A captured wire trace now exists (#722, #721) and reads the loaded prefix
+  out of the request body instead of out of an answer. Where the two instruments overlap they agree
+  exactly — `ctrl`/`bare` at 124, `fenced` at 109 — so the systematic error this boundary warned
+  about did not materialise in the cut itself. The systematic error that *did* exist was elsewhere,
+  and is the subject of Addendum §1: the arms could not distinguish reading from reconstructing.
 - The cap bracket is a bound from four distinct line widths across seven arms, not a read constant. A fifth width would
   narrow it.
 - `~/.claude.json` was copied before invoking the older binaries in case a downgrade migrated
