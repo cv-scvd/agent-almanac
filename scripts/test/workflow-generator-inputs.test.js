@@ -84,6 +84,65 @@ test('a fully listed graph passes', () => {
   assert.match(output, /; 0 unlisted$/m);
 });
 
+test('an exported function whose body quotes a dotted string is not read as an import', () => {
+  // Found by #672. The specifier class spans newlines on purpose, so that multi-line
+  // `import {\n a,\n} from './x.js'` is covered without an `s` flag. Unanchored, it ran from
+  // the `export` keyword straight into the function BODY and took the first quoted string:
+  //
+  //     export function isExcludedId(id) {
+  //       const stem = id.endsWith('.md') ? …
+  //
+  // was read as an import of `./lib/.md`, which does not exist, so the check hard-refused --
+  // exit 1 even under `--warn`, in a REQUIRED context. Nothing in the repo had exported such a
+  // function before, so the bug shipped latent and fired on an unrelated PR.
+  const { output, status } = run({
+    ...BASE,
+    files: {
+      ...BASE.files,
+      'scripts/lib/a.js':
+        "export function a(id) {\n  const stem = id.endsWith('.md') ? id : id;\n  return stem;\n}\n",
+    },
+  });
+  assert.equal(status, 0, output);
+  assert.match(output, /; 0 unlisted$/m);
+  assert.doesNotMatch(output, /\.md/, 'a quoted literal in a function body reached the graph');
+});
+
+test('a MULTI-LINE import is still followed after that fix', () => {
+  // The narrowing direction, and the reason the fix anchors on `from` rather than forbidding
+  // the newline. A smaller reachable set means fewer required trigger paths -- a FALSE PASS on
+  // a gate whose header calls a wrong all-clear worse than no gate.
+  //
+  // The target must be UNLISTED. A first version imported a module `BASE.paths` already
+  // listed, so dropping the specifier changed no output and the naive `[^'"\n]*` narrowing
+  // SURVIVED this test. Measured, not assumed.
+  const { output, status } = run({
+    ...BASE,
+    files: {
+      ...BASE.files,
+      'scripts/generate-readmes.js':
+        "import {\n  m,\n} from './lib/multi.js';\nconsole.log(m);\n",
+      'scripts/lib/multi.js': 'export const m = 1;\n',
+    },
+  });
+  assert.equal(status, 1, output);
+  assert.match(output, /scripts\/lib\/multi\.js is imported by this workflow/);
+});
+
+test('a BARE side-effect import, which has no `from`, is still followed', () => {
+  // The reason the `from` group is optional rather than required. Same unlisted-target rule.
+  const { output, status } = run({
+    ...BASE,
+    files: {
+      ...BASE.files,
+      'scripts/generate-readmes.js': "import './lib/side.js';\nconsole.log(1);\n",
+      'scripts/lib/side.js': 'export const s = 1;\n',
+    },
+  });
+  assert.equal(status, 1, output);
+  assert.match(output, /scripts\/lib\/side\.js is imported by this workflow/);
+});
+
 test('a transitive import that nobody listed is reported', () => {
   // The #618 shape exactly: both endpoints listed, the middle skipped.
   const { output, status } = run({

@@ -302,7 +302,20 @@ function importGraph(entry, seen = new Set()) {
   // `export … from './x.js'` is an edge as much as `import` is: a re-exporting barrel module
   // sits in the graph and its own changes move generated output. The negated character class
   // spans newlines, so multi-line forms are covered without an `s` flag.
-  const specifiers = [...text.matchAll(/^\s*(?:import|export)\s[^'"]*['"](\.[^'"]+)['"]/gm)]
+  //
+  // The specifier is anchored on `from`, and that is load-bearing rather than tidy. Without it
+  // the class ran from an `export` keyword straight into the FUNCTION BODY below it and took
+  // the first quoted string it found:
+  //
+  //     export function isExcludedId(id) {
+  //       const stem = id.endsWith('.md') ? …
+  //
+  // read as an import of `./lib/.md`, which does not exist, so this check hard-refused —
+  // exiting non-zero even under `--warn`, in a REQUIRED context. It surfaced the first time a
+  // module in the healer's graph exported a function whose body's first quoted literal began
+  // with a dot (#672), and would have recurred for any future one. `import './side-effect.js'`
+  // has no `from`, hence the optional group rather than a required one.
+  const specifiers = [...text.matchAll(/^\s*(?:import|export)\s(?:[^'"]*?\bfrom\s*)?['"](\.[^'"]+)['"]/gm)]
     .map((m) => m[1]);
   for (const specifier of specifiers) {
     importGraph(relative(ROOT, resolvePath(dirname(absolute), specifier)), seen);
