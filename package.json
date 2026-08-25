@@ -67,6 +67,7 @@
     "check:bare-substitutions": "node scripts/check-bare-substitutions.js",
     "normalize:i18n-fences": "node scripts/normalize-i18n-fences.js",
     "backfill:fence-basis": "node scripts/backfill-fence-basis.js",
+    "validate:agent-parity": "node scripts/check-agent-registry-parity.js",
     "validate:content-style": "node scripts/check-content-style.js --all",
     "validate:line-endings": "node scripts/check-line-endings.js",
     "validate:skill-sections": "node scripts/audit-skill-sections.js --missing",
