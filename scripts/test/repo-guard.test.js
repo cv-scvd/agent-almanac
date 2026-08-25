@@ -667,6 +667,27 @@ test('REFUSES without --accept: the delta must be read before it is accepted', a
   assert.match(r.stderr, /commits added:/, 'it must print what it is asking about');
   assert.ok(r.stderr.includes(head), 'and the exact sha to paste back');
   assert.ok(existsSync(snapshotPath(dir)), 'the original baseline survives a refusal');
+
+  // The rationale, asserted across the line wrap. #699 rewrote this paragraph and dropped the
+  // word "IDENTICAL", leaving `...they may be / to yours, because...` -- and all 51 tests
+  // stayed green, because every assertion here is a substring and none of them spanned the
+  // break. Collapsing whitespace first is what makes the sentence visible: it is invariant
+  // under REFLOW (re-wrap the same words at any width and this still passes) while a dropped,
+  // duplicated or reordered word fails. That is the property the PR body claimed was
+  // unavailable -- it argued the choice was between break-blind substrings and pinning whole
+  // rendered messages, and this is neither.
+  //
+  // Pinning it deliberately: this sentence IS the correction #699 existed to install. The
+  // author line is only a HINT because a subagent commits through this repository's own git
+  // config, which is what happened in #493. A silent change to that reasoning should fail a
+  // test, and the five other lines of the paragraph remain free to reword.
+  const flat = r.stderr.replace(/\s+/g, ' ');
+  assert.match(
+    flat,
+    /they may be IDENTICAL to yours, because a subagent commits through this repository's own git config\./,
+    'the acknowledgement rationale must survive a reflow intact',
+  );
+  assert.match(flat, /The content is the test; the author is a hint\./);
 });
 
 test('REFUSES a sha that is not the current HEAD', async (t) => {
