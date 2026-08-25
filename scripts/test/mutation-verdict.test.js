@@ -120,16 +120,33 @@ test('parseFailCount and parsePassCount read node:test summaries', () => {
 
 // ── COLOUR: the dimension the #666 reporter measurement did not vary (#729) ──
 
-// #666 measured TAP against spec and pinned both. Both transcripts came from a PIPE, where node
-// disables colour — so the patterns were only ever seen without it, and on a TTY both parsers
-// returned null. `--expect-killed-by` therefore refused on every local run and worked only in
-// CI, which is the inverse of where it is needed.
+// #666 measured TAP against spec and pinned both, from PIPED transcripts. Colour was never
+// varied, and with colour both parsers returned null.
+//
+// The trigger is `FORCE_COLOR`, NOT a TTY: mutation-check captures through a pipe, node does
+// not colour a pipe, and `FORCE_COLOR` forces it in regardless. Measured on v25.9.0 — piped,
+// FORCE_COLOR=3 gives `"\x1b[34mℹ fail 0\x1b[39m"`; piped with it removed gives `"ℹ fail 0"`.
+// That distinction inverts the risk: a CI exporting FORCE_COLOR for readable logs hits this,
+// a plain local pipe does not.
 //
 // The escapes are written `\x1b`, NOT pasted. Typing the real bytes into a source file embeds
 // 0x1B directly, invisible in an editor and in review; that happened while fixing this and is
 // why the constant carries the same warning.
 const COLOURED_SPEC_FAIL = '\x1b[34mℹ fail 3\x1b[39m';
 const COLOURED_SPEC_PASS = '\x1b[34mℹ pass 20\x1b[39m';
+
+// Real bytes from `node --test` under FORCE_COLOR=3 on v25.9.0, reduced to the shape that
+// matters: what precedes the error name. The worry was that `\x1b[31mReferenceError` would put
+// a word character (`m`) before `R` and defeat `/\bReferenceError\b/`. It does not — the reset
+// is followed by a newline and indentation, so the preceding character is a space.
+const COLOURED_REFERENCE_ERROR = [
+  '\x1b[31m\x1b[39m',
+  '  ReferenceError: notDeclaredAnywhere is not defined',
+  '      at TestContext.<anonymous> (file:///tmp/boom.test.js:3:48)',
+  '\x1b[34mℹ tests 2\x1b[39m',
+  '\x1b[34mℹ pass 1\x1b[39m',
+  '\x1b[34mℹ fail 1\x1b[39m',
+].join('\n');
 
 test('coloured node:test output parses — the TTY case (#729)', () => {
   assert.equal(parseFailCount(COLOURED_SPEC_FAIL), 3);
@@ -162,8 +179,13 @@ test('the ESC byte is part of the sequence, not decoration around it', () => {
   );
 
   // And the parser does not paper over that either: an orphan ESC with no `[…m` after it is
-  // not an SGR sequence, so it is deliberately NOT stripped. Asserted so nobody "fixes" this
-  // by broadening the pattern to bare ESC, which would start eating real content.
+  // not an SGR sequence, so it is deliberately NOT stripped, and the parser reports null as its
+  // contract says ("null if the format is not recognised").
+  //
+  // Asserted so nobody "fixes" this by stripping bare ESC. The cost of that is not eating
+  // content — the strip works on a throwaway copy — it is FABRICATING a parse from mangled
+  // input, which is the invent-a-verdict direction this suite rejects everywhere else. A
+  // legitimate widening to full CSI (`\x1b\[[0-9;]*[A-Za-z]`) still satisfies this assertion.
   assert.equal(parseFailCount(halfStripped), null);
 
   // What works is stripping the WHOLE sequence, ESC included — from the original bytes.
@@ -172,6 +194,31 @@ test('the ESC byte is part of the sequence, not decoration around it', () => {
 
 test('colour does not make an unparseable line parseable', () => {
   assert.equal(parseFailCount('\x1b[34mℹ nothing here\x1b[39m'), null);
+});
+
+test('the CRASH half of the guard is not defeated by colour (#729)', () => {
+  // A review inferred that `\x1b[31m` abutting the error name would put a word character before
+  // `R` and defeat `\b`. Measured against real FORCE_COLOR=3 output: it does not, because node
+  // emits the reset, a newline and indentation first. Pinned so it stays true — the crash signal
+  // scans RAW output and would otherwise have no colour coverage at all.
+  assert.equal(/\bReferenceError\b/.test(COLOURED_REFERENCE_ERROR), true);
+  const reasons = crashSuspicion(COLOURED_REFERENCE_ERROR, 1, 1);
+  assert.equal(reasons.length, 1, 'the crash signature must still fire under colour');
+  assert.match(reasons[0], /runtime error/);
+});
+
+test('the SHARE half works on a coloured tail, end to end (#729)', () => {
+  // The share signal's only colour-sensitive step is the two parsers, and everything downstream
+  // is arithmetic — but that argument is exactly the kind #666 made about reporters, so drive it
+  // from coloured input rather than asserting the reasoning.
+  const failed = parseFailCount(COLOURED_SPEC_FAIL);       // 3
+  const passed = parsePassCount(COLOURED_SPEC_PASS);       // 20
+  assert.equal(failed, 3);
+  assert.equal(passed, 20);
+  // 3/20 = 15%, under the threshold and over the minimum baseline: no doubt raised.
+  assert.deepEqual(crashSuspicion(ASSERTION_FAILURE, failed, passed), []);
+  // And it still fires when the share is broad, from the same coloured parse.
+  assert.equal(crashSuspicion(ASSERTION_FAILURE, 15, passed).length, 1);
 });
 
 // ── the false SUSPECT that self-review caught (#621) ────────────────────────
