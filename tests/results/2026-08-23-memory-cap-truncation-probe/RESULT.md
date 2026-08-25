@@ -52,6 +52,16 @@ a clean, internally consistent, completely wrong table showing that truncation d
 `--tools` is also variadic and eats a positional prompt (`Error: Input must be provided either
 through stdin or as a prompt argument when using --print`), so the prompt goes on stdin.
 
+**`--tools ""` is not tool-zero, and this section overstated it (corrected 2026-08-25, #722).** A
+wire capture of the same invocation on 2.1.245 shows one tool still offered — `advisor`, type
+`advisor_20260301` — because `--tools` filters *client* tools while `advisor` is server-side,
+enabled by `advisorModel` in `~/.claude/settings.json`. `--strict-mcp-config` does not remove it
+either. The claim is therefore machine-dependent: true only for an operator who has not set that
+key. It does not affect this run's arms, since `advisor` cannot read a file off disk and the
+disk-read failure above is the one the flag exists to prevent — but "tools asserted zero" should be
+read as "no file-reading tool was offered", and the honest way to assert it is to read the `tools`
+array out of the request rather than to infer it from a decoy.
+
 ### Fixtures
 
 | arm | filler | width (code points) | lines | EOL | UTF-8 bytes | UTF-16 units | code points | astral | what it discriminates |
@@ -338,6 +348,27 @@ arithmetic over a width it can see. The probe asks for the highest visible canar
 `CANARY-NNN` sits on numbered lines, so reported-what-I-saw and computed-from-constants yield
 the identical number. The arm cannot separate them. That is the confound, and it is enough.
 
+**Superseded in the operator's favour on 2026-08-25 — the cap did not have to come from
+documentation either.** The paragraph above concedes that reconstruction needs *one* input from
+outside the model's own arithmetic: the line width, which only the index carries. It assumed the
+other input, the cap itself, reaches the model from documentation outside the run. A wire capture
+of the request body — not a question put to the model — shows that it does not:
+
+```
+> WARNING: MEMORY.md is 29.4KB (limit: 24.4KB) — index entries are too long. Only part of it was loaded. …
+> WARNING: MEMORY.md is 300 lines (limit: 200). Only part of it was loaded. …
+```
+
+The harness appends one of these **inside the same `<system-reminder>` as the index**, at read time,
+in a session with no file tools. So every over-cap arm in this run carried its own answer key:
+the cap stated in the notice, the width visible in the index, and `floor(24.4 × 1024 / 201) = 124`
+— the measured cut, exactly. `lines300` is the starkest case; its notice reads `is 300 lines
+(limit: 200)`, so the answer `200` was a literal in its own prompt.
+
+This makes reconstruction **cheaper** than this section claims, so it strengthens every downgrade
+below rather than softening one. Full method, both verbatim strings, the delivery path and the
+limits of the finding: [`2026-08-25-truncation-notice-probe/RESULT.md`](../2026-08-25-truncation-notice-probe/RESULT.md) (#722).
+
 **Consequence for the Verdicts table above.** Verdicts 1, 4 and 5 are downgraded from
 CONFIRMED/MEASURED to **consistent-with, and refuting the naive alternatives**. That is not
 nothing: a model reconstructing from the *documented* figure — 25KB, bytes — gives `cjk` ≈ 70,
@@ -368,7 +399,8 @@ do while applying the same standard to an external party's bracket. They rest on
   reconstructible cells — reconstructible *and* whole-line-dependent, precisely the combination
   criticised elsewhere in this document. §2's `[24999, 25023)` is therefore this run's only sound
   bracket, and verdict 2 should not be quoted beside it as though the two were peers.
-- **Verdict 3** rests on `lines300`, whose answer is the documented 200-line cap.
+- **Verdict 3** rests on `lines300`, whose answer is the documented 200-line cap — and which #722
+  showed was additionally handed that number verbatim, as `(limit: 200)` in its own prompt.
 - **Verdict 6** is the sharpest: an instrument that reconstructs is *insensitive to a boundary
   change*, so identical tables across three versions cannot refute one. It weakens from REFUTED to
   **no change detected, by an instrument not shown sensitive to change.**

@@ -18,16 +18,29 @@ with a `--verify` mode can be re-run by anyone, including the next session.
 | Tool | Purpose |
 |---|---|
 | `capgeom.py` | Geometry and reconstruction arithmetic for auto-memory index cap probes. Holds the arm registry from `tests/results/2026-08-23-memory-cap-truncation-probe/`, derives every published bound from it, and refuses to agree with a figure that no longer follows from its recorded arm |
+| `wirecap.py` | Captures the request body a Claude Code session actually sends, by standing in as `ANTHROPIC_BASE_URL`. Answers locally — nothing is forwarded — and redacts credential headers before anything reaches disk. Use it when the question is "what is in the context?", which a session cannot be asked, because its self-report on that is unsound in both directions |
 
 ## Running
 
 Everything here is dependency-free and runnable from the repository root:
 
 ```bash
-python3 tools/capgeom.py --verify     # re-derive every published figure, assert, print counts
-python3 tools/capgeom.py --arms       # the arm registry as a table
+python3 tools/capgeom.py --verify             # re-derive every published figure, assert, print counts
+python3 tools/capgeom.py --selftest-negative  # mutate each recorded figure, assert --verify goes red
+python3 tools/capgeom.py --arms               # the echo/behavioural arm registry as a table
+python3 tools/capgeom.py --wire               # the wire-measured arms (#722)
 python3 tools/capgeom.py --span 170 147
+
+python3 tools/wirecap.py --verify                       # self-test: capture verbatim, redact secrets
+python3 tools/wirecap.py --port 8788 --out over.jsonl   # then point ANTHROPIC_BASE_URL at it
+python3 tools/wirecap.py --diff over.jsonl under.jsonl
 ```
+
+**A `--verify` nobody has watched fail is a green light of unknown wiring.** `capgeom.py
+--selftest-negative` is the answer to that for this directory: it mutates each recorded figure in
+memory — never the file on disk, so there is no mutant to strand — and asserts `--verify` exits
+non-zero for every one, plus that the unmutated baseline is still green. A survivor means that
+figure is published but unchecked.
 
 ## Adding one
 
