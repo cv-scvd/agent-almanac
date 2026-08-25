@@ -53,6 +53,50 @@ Guides, skills, agents, and teams are cross-referenced. The parent project `CLAU
 - Guides use GitHub-flavored markdown with code blocks for all commands
 - All R examples use `::` for package-qualified calls (e.g., `devtools::check()`) rather than `library()` calls
 
+## Excluding a Template, a README, or a Non-Shipped File
+
+Three questions look like one and are not. Picking the wrong predicate has shipped a bug in
+each direction, so choose by the QUESTION, never by which import is already in the file:
+
+| Ask | Use | Where |
+|---|---|---|
+| is this author scaffolding? | `isTemplate(path)` / `isTemplateSegment(name)` | `scripts/lib/content-paths.js` |
+| is this non-content? (`_`-prefix **or** `README` — a superset) | `isExcludedId(id)` | `scripts/lib/content-paths.js` |
+| does npm ship it? | `isExcludedFromPackage` | `scripts/lib/skills-inventory.js` |
+
+`isExcludedId` is wrong for the package question — its `_`-prefix rule would skip
+`skills/_experimental/tool.py`, which ships. A name test is wrong too, in the other direction:
+npm's `files` negations are **root-anchored**, so `skills/<id>/_template/helper.py` also ships,
+and a depth-agnostic `includes('_template')` was measured wrong against `npm pack` and reverted.
+`isTemplate` is root-anchored for the same reason (an `i18n/<locale>/` prefix is stripped first,
+so a mirror anchors like its English source). Do not collapse the three.
+
+`_template` exists in **three spellings** — `_template`, `_template.md`, `_template.mjs` — across
+six paths in six trees, two of which (`tests/`, `workflows/`) are not `CONTENT_TYPES`. The set is
+EXACT, not a `_template*` prefix: a prefix silently absorbs a new spelling, which would make the
+drift check unable to fail at all.
+
+That set exists **twice**, because a bash script cannot import an ES module:
+
+```
+scripts/lib/content-paths.js   TEMPLATE_SEGMENTS   the JS half
+scripts/lib/template-names.sh  TEMPLATE_NAMES      the shell half, sourced by
+                                                   validate-integrity.sh,
+                                                   sync-discovery-symlinks.sh
+                                                   and validate-skills.yml
+```
+
+**Adding a spelling means editing both, in the same commit.** `template-predicate.test.js`
+asserts set equality in both directions and separately drives the shell function name by name,
+so a one-sided edit fails naming the other side. `templateSpellingDrift` checks the sets against
+what is actually tracked, also in both directions — a spelling on disk the predicate misses, and
+a declared member no path uses.
+
+A `run:` block in a workflow is bash executing in the checkout and can `source` that file; "a
+workflow cannot import" is an assumption, not a constraint. What genuinely cannot be routed is a
+`find -not -path` prune, whose anchor is tree-specific — those two sites carry their reason
+inline.
+
 ## Skill Validation
 
 - SKILL.md files must stay under 500 lines; extract extended examples to `references/EXAMPLES.md` using the progressive disclosure pattern
