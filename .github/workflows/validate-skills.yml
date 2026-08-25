@@ -175,6 +175,29 @@ jobs:
       - name: Check i18n code-fence parity (warn only until #477)
         run: node scripts/check-i18n-fence-parity.js --warn
 
+      # #629. BLOCKING, unlike the two warn-only gates below it, and the difference is that this
+      # one shipped on a clean corpus: 558 English content files, 0 untagged openers, templates
+      # included. A gate that ships clean can block; one that ships dirty needs a ratchet first.
+      #
+      # What it protects: `foldedTagSequence` folds an untagged English fence to `text`. Under
+      # default-deny an untagged fence is FROZEN, so the fold means a translation may replace an
+      # untagged English fence with a localised ```text one and produce an IDENTICAL folded
+      # sequence -- no tag-sequence finding, no tag-drift finding, and the body check skips it
+      # because gating is read off the translated file. That is the #481 escape surviving through
+      # the check built to close it.
+      #
+      # The fold is not the bug and must stay (removing it makes every untagged-vs-`text` pairing
+      # from `normalize-content-style.js --mode fences` read as a retag -- the false-positive
+      # class that stranded 169 repairable fences across 73 files). The bug is that the fold's
+      # safety rested on a REMEMBERED measurement in a comment. This is that measurement, checked.
+      #
+      # It lives in this workflow, not validate-content-style.yml, because that workflow is
+      # path-filtered and a path-filtered workflow cannot be a required check -- it does not
+      # report outside its filter, so a required context would sit on "Expected" forever. This
+      # job is one of the five required contexts and carries no `paths:`.
+      - name: Check for untagged code fences in the English trees (#629)
+        run: npm run validate:untagged-fences
+
       # Node-set parity between the viz PUT annotations and the committed
       # `viz/public/data/workflow.mmd` (#590, dependency-free slice).
       #
