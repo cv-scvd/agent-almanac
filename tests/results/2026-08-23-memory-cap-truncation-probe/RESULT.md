@@ -82,14 +82,19 @@ three versions); two runs per cell, zero disagreement anywhere. Auto-memory does
 
 ### Verdicts
 
+> **Verdicts 1–6 were all revised on 2026-08-25 — read the Addendum §1 before
+> quoting any of them.** The observations below stand exactly as recorded; what changed is the
+> confidence attachable to them, because every cell but `fenced` is reproducible by arithmetic
+> over documented constants.
+
 | # | Claim | Verdict | Evidence |
 |---|---|---|---|
-| 1 | The cap counts UTF-16 code units | **CONFIRMED** | `cjk` cuts at the same line as `ascii` while carrying 2.81x the UTF-8 bytes, so not bytes. `astral` cuts at 103 against `ascii`'s 196 — ratio 1.903 against a UTF-16-per-line ratio of 242/127 = 1.906 — while holding the same code-point count as `cjk`, so not code points. |
-| 2 | The size cap is ~25,000 | **BRACKETED** to [24,958, 25,018) | Kept-prefix lengths for N whole lines: `ascii`/`cjk` 127N−1, `ascii200` 201N−1, `astral` 242N−1, `crlf` 128N−2. Intersecting `L(kept) <= cap < L(kept+1)` over those four distinct widths — `ascii` and `cjk` share one — gives the bracket; 25,000 sits inside it. Counting the trailing EOL shifts it to [24,960, 25,019) — same conclusion. |
-| 3 | Whichever cap binds first applies | **CONFIRMED, both directions** | `lines300` is 300 lines / 6,299 units and cuts at 200 — the line cap biting alone. The other six arms sit exactly AT 200 lines and over the size cap, so the line cap never bites on them and every one cuts on size. |
-| 4 | **Truncation is whole-line** | **MEASURED** | `wide2000` settles it with a large margin: lines are 2,001 units, the cap lands deep inside line 13, and that line's canary occupies units 24,012–24,022 — comfortably under the cap. Line 13 is absent. A partial-line-kept implementation cannot produce that. |
-| 5 | **Carriage returns count toward the cap** | **MEASURED** | `crlf` cuts one line earlier than `ascii` on identical visible content — 199 extra CR units, one line lost. A budget quoted in lines is therefore EOL-dependent. At this line width a CRLF index loses roughly one line per 128; the penalty grows as lines get shorter, since the EOL's share of the budget scales inversely with width — 2/128 against 1/127 at 126 code points, but 2/22 against 1/21 at 20. |
-| 6 | The boundary changed between releases | **REFUTED for linux-x64 across 2.1.237–2.1.241** | Identical results on all three, byte-identical fixtures (sha256-checked before probing). Scope note: the external Linux replication reports `ccd-cli 2.1.237` while this run used the official Claude Code 2.1.237 build; if those are not the same artifact, "same version" is carrying more weight than it should. |
+| 1 | The cap counts UTF-16 code units | **CONFIRMED** → *downgraded, Addendum §1* | `cjk` cuts at the same line as `ascii` while carrying 2.81x the UTF-8 bytes, so not bytes. `astral` cuts at 103 against `ascii`'s 196 — ratio 1.903 against a UTF-16-per-line ratio of 242/127 = 1.906 — while holding the same code-point count as `cjk`, so not code points. |
+| 2 | The size cap is ~25,000 | **BRACKETED** to [24,958, 25,018) → *downgraded, Addendum §1* | Kept-prefix lengths for N whole lines: `ascii`/`cjk` 127N−1, `ascii200` 201N−1, `astral` 242N−1, `crlf` 128N−2. Intersecting `L(kept) <= cap < L(kept+1)` over those four distinct widths — `ascii` and `cjk` share one — gives the bracket; 25,000 sits inside it. Counting the trailing EOL shifts it to [24,960, 25,019) — same conclusion. |
+| 3 | Whichever cap binds first applies | **CONFIRMED, both directions** → *downgraded, Addendum §1* | `lines300` is 300 lines / 6,299 units and cuts at 200 — the line cap biting alone. The other six arms sit exactly AT 200 lines and over the size cap, so the line cap never bites on them and every one cuts on size. |
+| 4 | **Truncation is whole-line** | **MEASURED** → *downgraded, Addendum §1* | `wide2000` settles it with a large margin: lines are 2,001 units, the cap lands deep inside line 13, and that line's canary occupies units 24,012–24,022 — comfortably under the cap. Line 13 is absent. A partial-line-kept implementation cannot produce that. |
+| 5 | **Carriage returns count toward the cap** | **MEASURED** → *downgraded, Addendum §1* | `crlf` cuts one line earlier than `ascii` on identical visible content — 199 extra CR units, one line lost. A budget quoted in lines is therefore EOL-dependent. At this line width a CRLF index loses roughly one line per 128; the penalty grows as lines get shorter, since the EOL's share of the budget scales inversely with width — 2/128 against 1/127 at 126 code points, but 2/22 against 1/21 at 20. |
+| 6 | The boundary changed between releases | **REFUTED** → *weakened to "no change detected", Addendum §1* | Identical results on all three, byte-identical fixtures (sha256-checked before probing). Scope note: the external Linux replication reports `ccd-cli 2.1.237` while this run used the official Claude Code 2.1.237 build; if those are not the same artifact, "same version" is carrying more weight than it should. |
 
 ### What the skills ship, checked against this run
 
@@ -138,7 +143,7 @@ by the wrong mechanism.
 | arm | comment | if stripped | if counted | measured (2 runs) |
 |---|---|---:|---:|---:|
 | `ctrl` | none | 124 | 124 | **124** |
-| `bare` | ~1.9k units, unfenced | 124 | ~109 | **124** |
+| `bare` | 3,024 units, unfenced | 124 | 109 | **124** |
 | `fenced` | same bytes, inside a ```text fence | 124 | ~109 | **109** |
 
 **An unfenced block comment is stripped and excluded, as documented. A comment inside a fence is
@@ -317,11 +322,21 @@ documented cap and the fixture's own line width, without reading anything?
 | `wide2000` | 2000.995 | 12 | 12 | reconstructible |
 | `ctrl` | 201.000 | 124 | 124 | reconstructible |
 | `bare` | 201.000 | 124 | 124 | reconstructible |
-| **`fenced`** | 201.000 | 124 | **109** | **not reconstructible** |
+| `lines300` | 21.000 | 200 (line cap) | 200 | reconstructible |
+| **`fenced`** | 201.000 | 124 | **109** | **see below** |
 
-**Every arm but `fenced` returns exactly `floor(25000 / units-per-line)`.** A model that never
-read the index produces this table. The probe asks for the highest visible canary, and
-`CANARY-NNN` on numbered lines makes the answer derivable arithmetic rather than an observation.
+**Every arm but `fenced` returns exactly `min(floor(25000 / units-per-line), 200)`** — the
+size cut, clamped by the documented line cap. The clamp matters for `lines300`, whose raw size
+cut is 1,190; an earlier revision of this table omitted that row and stated the formula without
+it, which made the sentence false for the one arm that breaks it.
+
+**The claim this supports, stated carefully, because an earlier revision overstated it.** It is
+*not* that a model which never read the index produces this table — computing the prediction
+needs the line width in UTF-16 units, and nothing but the index carries that. It is that **a
+model which read the index and never attended to where it was cut produces the same table**, by
+arithmetic over a width it can see. The probe asks for the highest visible canary and
+`CANARY-NNN` sits on numbered lines, so reported-what-I-saw and computed-from-constants yield
+the identical number. The arm cannot separate them. That is the confound, and it is enough.
 
 **Consequence for the Verdicts table above.** Verdicts 1, 4 and 5 are downgraded from
 CONFIRMED/MEASURED to **consistent-with, and refuting the naive alternatives**. That is not
@@ -330,10 +345,37 @@ not 196; code-points gives `astral` 196, not 103; a CR-blind rule gives `crlf` 1
 Each of those three cells is wrong under a plausible wrong model and right under the true one.
 What the arms cannot do is exclude a model that already holds the correct rule.
 
-`fenced` is the exception and the reason is structural: `ctrl` and `fenced` share a geometry, so
-reading *and* every reconstruction predict 124 for both. Producing 109 requires the content to
-have told the model that ~1.9k units of fenced comment consumed budget — which is the thing
-being measured. That arm was well-designed by accident.
+`fenced` is the closest thing to an exception, and it is weaker than an earlier revision of this
+addendum claimed. `ctrl` and `fenced` share a geometry, so a reconstruction from the cap and the
+width alone predicts 124 for both, and 109 is not on that path.
+
+But a second path exists. The documentation states that comments inside code blocks are preserved
+— for `CLAUDE.md`, not `MEMORY.md`, which is exactly the fork this arm was built to resolve. A
+model transferring that rule and counting the block's 3,036 units also predicts
+`floor((25000 - 3036) / 201) = 109`. That path needs the comment's size, so it needs reading, and
+it needs the rule transferred across a file type the docs do not cover — materially harder than
+dividing two constants, but not nothing.
+
+So `fenced` discriminates *strip-belief from preserve-belief*. It discriminates *harness behaviour
+from model belief* only on the assumption that the transfer did not happen. "Well-designed by
+accident" was an overclaim; "the least reconstructible cell in the run" is the honest description,
+and the fence-state repair to the shipped skill block rests on this one cell.
+
+**Verdicts 2, 3 and 6 are downgraded too**, which an earlier revision of this addendum failed to
+do while applying the same standard to an external party's bracket. They rest on the same cells:
+
+- **Verdict 2** builds `[24,958, 25,018)` from whole-line kept-prefix arithmetic over four
+  reconstructible cells — reconstructible *and* whole-line-dependent, precisely the combination
+  criticised elsewhere in this document. §2's `[24999, 25023)` is therefore this run's only sound
+  bracket, and verdict 2 should not be quoted beside it as though the two were peers.
+- **Verdict 3** rests on `lines300`, whose answer is the documented 200-line cap.
+- **Verdict 6** is the sharpest: an instrument that reconstructs is *insensitive to a boundary
+  change*, so identical tables across three versions cannot refute one. It weakens from REFUTED to
+  **no change detected, by an instrument not shown sensitive to change.**
+
+And the shipped skill block inherits whole-line semantics from verdict 4 — "the first line dropped
+is the first whose cumulative size exceeds the cap." That dependency is flagged here for the same
+reason it is flagged against the external bracket.
 
 **The rule this yields:** an arm is informative only where reading and reconstructing predict
 *different* numbers. State the reconstruction-predicted value beside every measurement.

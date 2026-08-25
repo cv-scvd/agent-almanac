@@ -71,8 +71,19 @@ def reconstructed_cut(units_per_line, cap=DOCUMENTED_CAP, header=0, line_cap=LIN
     """The last kept line a pure-arithmetic RECONSTRUCTION predicts, having read nothing.
 
     This is the ruler. If an arm's measured answer equals this, the arm cannot distinguish a
-    subject that read the content from one that computed the answer from documented constants
-    -- whatever else it appears to show.
+    subject that reported where the index was cut from one that computed the same number by
+    arithmetic -- whatever else it appears to show.
+
+    Note what the reconstruction still requires: the line width in UTF-16 units, which nothing
+    but the index carries. So the claim is never "a subject that read nothing produces this"; it
+    is "a subject that read the index and never attended to the cut produces this". Enough to
+    void the arm, and the stronger phrasing was an overclaim (#717 review).
+
+    The `line_cap` clamp is load-bearing for short-line arms: `lines300` at 21 units/line has a
+    raw size cut of 1,190 and is bound by the documented 200-line rule instead. Such a row is
+    reconstructible in a WEAKER sense -- its prediction is width-insensitive, so it cannot fail
+    this test under any harness behaviour. It says nothing about UTF-16 units or 25,000, and
+    should be read as a different claim shape from the size-bound rows.
     """
     return int(min((cap - header) // units_per_line, line_cap))
 
@@ -121,6 +132,7 @@ ARMS = [
     ('pjt222',     'wide2000 200x2000',   400199 / 200,  0,  12, '2.1.237-241', 'echo'),
     ('pjt222',     'ctrl 150x200',              201.0,   0, 124, '2.1.241',     'echo'),
     ('pjt222',     'bare 150x200',              201.0,   0, 124, '2.1.241',     'echo'),
+    ('pjt222',     'lines300 300x20',            21.0,   0, 200, '2.1.241',     'echo'),
     ('pjt222',     'fenced 150x200',            201.0,   0, 109, '2.1.241',     'echo'),
     ('DanceNitra', 'ASCII 200x125',             126.0,   0, 198, '2.1.241',     'echo'),
     ('DanceNitra', 'CJK 200x125',               126.0,   0, 198, '2.1.241',     'echo'),
@@ -172,8 +184,12 @@ def verify():
     total = len(ARMS)
     print(f'\n  {recon} of {total} reconstructible '
           f'({total - recon} informative) -- counted, not eyeballed')
+    size_bound = [a for a in ARMS if reconstructed_cut(a[2], header=a[3]) < LINE_CAP]
+    sb_recon = sum(reconstructed_cut(a[2], header=a[3]) == a[4] for a in size_bound)
+    print(f'  of which size-bound (the rows that say anything about 25000 or UTF-16): '
+          f'{sb_recon} of {len(size_bound)}')
     if recon != total - 1:
-        print('  UNEXPECTED: exactly one arm (fenced) should resist reconstruction')
+        print('  UNEXPECTED: exactly one arm (fenced) should resist width-only reconstruction')
         ok = False
 
     print('\n=== bracket provenance: which arm sources which END? ===\n')
