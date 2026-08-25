@@ -421,8 +421,8 @@ Two hazards found while doing it, both about classification rather than the cap:
   target, which is the same shape as the thing it was checking for. Fixed to derive the pattern
   from the root.
 - Both generators hand-roll the project-slug transform, whose own history this document records
-  as having *changed*. `CLAUDE_CODE_PROJECT_DIR_NAME` removes the guess; adopting it is filed
-  rather than done here.
+  as having *changed*. `CLAUDE_CODE_PROJECT_DIR_NAME` removes the guess; adopting it is filed as
+  #720, together with the cleanup's non-fail-closed `KEPT` path.
 
 ### 4. `capgeom.py` — the arithmetic, once, checkable
 
