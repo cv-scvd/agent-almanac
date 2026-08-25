@@ -8,7 +8,7 @@ HTML comments are stripped before the index is loaded, so they're excluded from 
 Not documented: whether a comment inside a fence survives that strip. The nearest documented
 behaviour — for CLAUDE.md, not MEMORY.md — says comments inside code blocks ARE preserved.
 
-Three arms, identical canary bodies, differing only in whether a ~1.9k-unit comment is present and
+Three arms, identical canary bodies, differing only in whether a ~3.0k-unit comment is present and
 whether it sits inside a fence.
 
 Line geometry is chosen so the LINE cap can never bind in any arm (167 lines max, cap is 200), so
@@ -18,7 +18,8 @@ line cap fire in the comment-counted case and produce the same shift for the wro
   canary line   = 200 code points -> 201 UTF-16 units incl. newline
   150 canaries  = 30,150 units    -> over the 25,000 cap in every arm
   cut, stripped -> first dropped line 125  (last visible CANARY-124)
-  cut, counted  -> ~1,915 units of comment eaten first, so ~10 lines earlier
+  cut, counted  -> 3,024 units of comment eaten first (17 lines x 201 minus the short
+                   delimiters; 3,036 with the fence), so 15 lines earlier -> canary 109
 """
 import os
 import pathlib
@@ -84,14 +85,34 @@ def main():
             print(f"{name:8} run{r}  {answer}", flush=True)
 
     print("\n--- cleanup ---", flush=True)
+    # Report what the slug directory still holds before removing it. Whether `claude -p` leaves
+    # a session transcript beside `memory/` decides whether `d.rmdir()` can succeed at all, and
+    # the 2026-08-23 run did not preserve the answer -- so the record could not settle it when
+    # asked. Print the residue instead of assuming an empty directory.
     for d in made:
         for f in (d / "memory").glob("*"):
             f.unlink()
         (d / "memory").rmdir()
+        residue = sorted(p.name for p in d.iterdir())
+        if residue:
+            print(f"KEPT    {d} -- not empty after removing memory/: {residue}", flush=True)
+            continue
         d.rmdir()
         print(f"removed {d}", flush=True)
-    left = list((HOME / ".claude" / "projects").glob("*f2probe*"))
-    print(f"fixture dirs remaining: {len(left)}")
+    # Derive the pattern from the root actually used. Globbing a hardcoded token while the root
+    # comes from argv means any other root prints `0` having examined nothing -- a check that
+    # cannot see its target, which is the same shape as the thing it is checking for.
+    # Through `slug`, not raw. The directories were created as slug(proj), and that transform
+    # maps `_` -> `-` -- so globbing the raw basename of a root like /tmp/cap_test searches for
+    # *cap_test* over directories named -tmp-cap-test-*, finds nothing, and reports 0 remaining.
+    # That is the very defect this check was repaired for, reproduced for the one input family
+    # this probe's own RESULT.md is about (#717 review).
+    token = slug(os.path.basename(root))
+    left = list((HOME / ".claude" / "projects").glob(f"*{token}*"))
+    print(f"fixture dirs remaining: {len(left)}  (pattern: *{token}*)")
+    if left:
+        for d in left:
+            print(f"  LEFT BEHIND: {d}")
 
 
 if __name__ == "__main__":
