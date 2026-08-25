@@ -37,6 +37,53 @@ test('untagged folds to `text`, and the fold is not optional', () => {
   assert.deepEqual(foldedTagSequence('```yaml\nx\n```\n\n```\ny\n```\n'), ['yaml', 'text']);
 });
 
+test('an equidistant tie is broken toward the ESCAPE, not toward walk order (#630)', () => {
+  // Two count-matched English revisions, each differing from the translation in EXACTLY ONE
+  // position, and they disagree about what that means:
+  //
+  //   candidate A   ['python', 'bash']  ->  #1 python->text   an ESCAPE   (frozen fence freed)
+  //   candidate B   ['text',   'yaml']  ->  #2 yaml->bash     drift       (both stay frozen)
+  //
+  // Before #630 the winner was whichever the history walk reached first, because the loop used a
+  // strict `<`. Since #598 that also decided whether the finding BLOCKS. So the tie is asserted
+  // by VERDICT here, not merely by "a verdict exists".
+  const translated = ['text', 'bash'];
+  const escapeFirst = new Set(['python,bash', 'text,yaml']);
+  const driftFirst = new Set(['text,yaml', 'python,bash']);
+
+  for (const [label, sequences] of [['escape walked first', escapeFirst],
+                                    ['drift walked first', driftFirst]]) {
+    const verdict = compareTagSequence(translated, sequences);
+    assert.equal(verdict.minimalCandidates, 2, `${label}: the fixture must actually tie`);
+    assert.equal(isRetagEscape(verdict.positions), true,
+      `${label}: an equidistant escape reading must win, so the tie fails safe`);
+    assert.deepEqual(verdict.positions,
+      [{ index: 1, english: 'python', translated: 'text' }],
+      `${label}: and it must report the escape's positions, not the drift's`);
+  }
+
+  // Insertion order is the only thing that differs between the two Sets above, so this is the
+  // property that was broken: the answer must not depend on it.
+  assert.deepEqual(compareTagSequence(translated, escapeFirst),
+    compareTagSequence(translated, driftFirst),
+    'walk order must not change the verdict');
+});
+
+test('a tie among equals that are ALL drift stays drift, and reports the ambiguity (#630)', () => {
+  // The fail-safe rule must not manufacture an escape where no legal reading is one. Both
+  // candidates differ in one position and neither frees a frozen fence.
+  const verdict = compareTagSequence(['bash', 'yaml'], new Set(['yaml,yaml', 'bash,bash']));
+  assert.equal(verdict.minimalCandidates, 2);
+  assert.equal(isRetagEscape(verdict.positions), false,
+    'no candidate is an escape, so the finding must stay drift');
+});
+
+test('a lone minimal candidate reports one, so ambiguity is distinguishable (#630)', () => {
+  const verdict = compareTagSequence(['text', 'bash'], new Set(['python,bash', 'json,json']));
+  assert.equal(verdict.minimalCandidates, 1);
+  assert.equal(isRetagEscape(verdict.positions), true);
+});
+
 test('ALL fences are sequenced, not only gated ones — that is the whole point', () => {
   // A gated-only sequence cannot see a retag, because the retag is precisely a fence LEAVING the
   // gated set. This is the property #582 removed from `fenceShape` and #583 records the loss of.
@@ -79,6 +126,11 @@ test('an empty English revision has length 0, not 1', () => {
   assert.equal(compareTagSequence(['markdown'], english), null, 'the 1-fence revision matches');
   assert.deepEqual(compareTagSequence(['r'], english), {
     positions: [{ index: 1, english: 'markdown', translated: 'r' }],
+    // `minimalCandidates` since #630. It is 1 here precisely because the empty revision is
+    // excluded from `sameLength` — if the length-0 regression came back, the empty revision
+    // would tie and this would read 2, so the field doubles as a second witness for the bug
+    // this test is named after.
+    minimalCandidates: 1,
   }, 'the empty revision must not be offered as a 1-fence basis');
   assert.deepEqual(compareTagSequence([], english), null, 'an empty translation matches the empty revision');
 });

@@ -53,10 +53,42 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
  * would fire 268 times to catch 3 real defects and would forbid the thing the
  * locale exists for.
  *
- * Untagged fences are frozen, not exempt. Measured cost: zero — there are no
- * untagged fence openers in either tree, because `guides/content-styleguide.md`
- * already requires a tag. The remedy for a future one is to tag the English
- * source.
+ * Untagged fences are frozen, not exempt — but that is not what makes the fold
+ * below safe. The fold maps an untagged English fence to `text`, so a
+ * translation could replace it with a localised ```text fence and produce an
+ * IDENTICAL folded sequence: no tag-sequence finding, no tag-drift finding, and
+ * the body check skips it because gating is read off the translated file. The
+ * #481 escape, surviving through the check built to close it (#629).
+ *
+ * What makes it safe is that no untagged English opener exists **in the working
+ * tree**. That was a measurement taken once and written here, and a style rule
+ * in prose is exactly what this repo violated 1,220 times (#472). It is now
+ * CHECKED, blocking, in the required `skills` job:
+ *
+ *     npm run validate:untagged-fences
+ *
+ * Do not restore a count to this comment. Ask the gate — a number here is a
+ * number that can go stale without anything noticing, which is the failure this
+ * paragraph used to be an instance of.
+ *
+ * **The gate stops the escape surface GROWING; it does not close it.** The
+ * sequence check accepts a match against ANY pooled revision, and the pool
+ * stores FOLDED joins — so a historical English revision carrying an untagged
+ * fence pools `text` at that ordinal permanently, indistinguishable from a
+ * literal ```text fence, and `git ls-files` cannot see history. A translation
+ * posing as stale against such a revision can carry a localised ```text fence
+ * where English is frozen today, and every check reads green.
+ *
+ * Historical untagged English openers are not hypothetical: the fold exists
+ * precisely because `normalize-content-style.js --mode fences` retro-tagged
+ * untagged blocks, so history demonstrably contains them. The harmful
+ * subpopulation — untagged then, frozen-tagged now — is UNMEASURED and cannot
+ * be measured from the pool, which has already folded the evidence away; it
+ * needs a history re-walk keeping raw info strings. Filed as its own issue.
+ *
+ * One corollary worth stating: the guarantee decays monotonically under bypass.
+ * A violation pushed straight to `main` is pooled before any fix lands, and
+ * widens the surface permanently.
  *
  * Adding a tag here requires naming which machine consumes that fence.
  *
@@ -411,7 +443,7 @@ export function extractFences(text) {
  *
  * @param {string[]} mine folded tag sequence of the translation
  * @param {Set<string>|undefined} englishSequences joined folded sequences from every revision
- * @returns {null | {unalignable: true} | {positions: {index: number, english: string, translated: string}[]}}
+ * @returns {null | {unalignable: true} | {positions: {index: number, english: string, translated: string}[], minimalCandidates: number}}
  */
 export function compareTagSequence(mine, englishSequences) {
   if (!englishSequences || englishSequences.has(mine.join(','))) return null;
@@ -431,15 +463,62 @@ export function compareTagSequence(mine, englishSequences) {
 
   // Report against the count-matched revision differing in the FEWEST positions — the nearest
   // legal basis. An arbitrary one inflates a single retag into wholesale divergence.
+  //
+  // TIE-BREAK: prefer a reading that is an ESCAPE. Deterministic, and it fails SAFE (#630).
+  //
+  // Two count-matched revisions can differ from the translation in the same NUMBER of positions
+  // while differing in WHICH positions, so `#4 bash->yaml` and `#4 python->text` can both be
+  // minimal. Since #598 that choice is not cosmetic: `isRetagEscape` classifies from
+  // `positions`, an escape BLOCKS and drift does not, so the tie decides a build outcome.
+  //
+  // This used to be `diff.length < best.length` — a strict `<`, so the FIRST minimal candidate
+  // won, and `sameLength` derives from a Set whose insertion order is the history-walk order.
+  // That is stable for a given history, so it never flickered run to run; it is unstable across
+  // ENGLISH edits, because a new revision landing earlier in the walk can flip an existing
+  // finding's kind without the translation changing at all. And `debt-ratchet.yml` keys members
+  // on file+kind, so such a flip reads as a simultaneous stale-member and added-debt pair whose
+  // message explains neither.
+  //
+  // "Some legal basis says this fence left the gated set" is the safe reading: the gate's job is
+  // to catch a fence leaving, and refusing to look away when one candidate says it did costs a
+  // false positive at worst, where the other direction costs the escape the gate exists for.
+  //
+  // TWO LIMITS, both narrower than "deterministic" sounds:
+  //
+  //   1. Deterministic in the KIND, not in the POSITIONS. Once `best` is an escape nothing
+  //      displaces it, so a tie among two escape candidates -- or among all-drift ones -- still
+  //      resolves by Set insertion order. That is bounded to the finding's message text, since
+  //      `debt-ratchet.yml` keys on file+kind and the kind is now order-independent.
+  //   2. This removes the ARBITRARINESS of the kind flip, not the flip. An English edit that
+  //      creates a new equidistant escape reading still deterministically moves a drift member
+  //      to escape, reddening `npm run ratchet` on a PR that touched only English. The old code
+  //      had the same exposure and picked a direction by walk order; this one picks it by rule.
+  //
+  // Measured before changing it, on the whole corpus: 6 tag-sequence findings, 0 with more than
+  // one minimal candidate, 0 whose verdict a tie could change. So this alters no current member
+  // and the fixture pinning it is necessarily synthetic — which is exactly why it needs a
+  // fixture, since the corpus cannot notice a regression here.
   let best = null;
+  let minimal = 0;
   for (const candidate of sameLength) {
     const other = candidate === '' ? [] : candidate.split(',');
     const diff = mine
       .map((tag, i) => ({ index: i + 1, english: other[i], translated: tag }))
       .filter((d) => d.english !== d.translated);
-    if (!best || diff.length < best.length) best = diff;
+    if (!best || diff.length < best.length) {
+      best = diff;
+      minimal = 1;
+    } else if (diff.length === best.length) {
+      minimal += 1;
+      // Only an escape displaces an incumbent of equal distance. Without this the loop would
+      // keep the first again, and a `<=` would keep the LAST — equally arbitrary, and it would
+      // additionally make the result depend on Set order in the opposite direction.
+      if (!isRetagEscape(best) && isRetagEscape(diff)) best = diff;
+    }
   }
-  return { positions: best };
+  // `minimalCandidates` is reported so a caller can say the basis was ambiguous rather than
+  // presenting one arbitrary reading as the only one. Nothing gates on it today.
+  return { positions: best, minimalCandidates: minimal };
 }
 
 /**
