@@ -84,14 +84,29 @@ def main():
             print(f"{name:8} run{r}  {answer}", flush=True)
 
     print("\n--- cleanup ---", flush=True)
+    # Report what the slug directory still holds before removing it. Whether `claude -p` leaves
+    # a session transcript beside `memory/` decides whether `d.rmdir()` can succeed at all, and
+    # the 2026-08-23 run did not preserve the answer -- so the record could not settle it when
+    # asked. Print the residue instead of assuming an empty directory.
     for d in made:
         for f in (d / "memory").glob("*"):
             f.unlink()
         (d / "memory").rmdir()
+        residue = sorted(p.name for p in d.iterdir())
+        if residue:
+            print(f"KEPT    {d} -- not empty after removing memory/: {residue}", flush=True)
+            continue
         d.rmdir()
         print(f"removed {d}", flush=True)
-    left = list((HOME / ".claude" / "projects").glob("*f2probe*"))
-    print(f"fixture dirs remaining: {len(left)}")
+    # Derive the pattern from the root actually used. Globbing a hardcoded token while the root
+    # comes from argv means any other root prints `0` having examined nothing -- a check that
+    # cannot see its target, which is the same shape as the thing it is checking for.
+    token = os.path.basename(root)
+    left = list((HOME / ".claude" / "projects").glob(f"*{token}*"))
+    print(f"fixture dirs remaining: {len(left)}  (pattern: *{token}*)")
+    if left:
+        for d in left:
+            print(f"  LEFT BEHIND: {d}")
 
 
 if __name__ == "__main__":
