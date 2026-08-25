@@ -11,6 +11,7 @@
 
 import { CONTENT_TYPES } from './content-types.js';
 
+
 /**
  * Repo-relative English content path -> stable `<tree>/<id>` key, or null when
  * the path is not translatable content.
@@ -53,17 +54,6 @@ export function contentKey(relPath) {
   return null;
 }
 
-/**
- * Names that live inside a content tree without being content.
- *
- * Takes a RAW path segment and strips a `.md` suffix itself, so the two branches above can
- * hand it the same kind of thing. They could not before: the flat branch stripped the
- * extension before testing while the nested branch passed a bare directory segment, which
- * made `contentKey('skills/README.md/SKILL.md')` return `skills/README.md` instead of null
- * while `contentKey('skills/README.md')` correctly returned null. Unreachable today only
- * because every caller happens to `statSync(...).isFile()` afterwards — which is the
- * "unreachable because of ambient state" framing #519 exists to reject.
- */
 /**
  * Every path shape a `git log` pathspec must carry to see one key's whole history (#682).
  *
@@ -144,7 +134,45 @@ export function historicalPathspecs(englishRel) {
   return [englishRel];
 }
 
-function isExcludedId(id) {
+/**
+ * Names that live inside a content tree without being content.
+ *
+ * Takes a RAW path segment and strips a `.md` suffix itself, so both branches of `contentKey`
+ * can hand it the same kind of thing. They could not before: the flat branch stripped the
+ * extension before testing while the nested branch passed a bare directory segment, which
+ * made `contentKey('skills/README.md/SKILL.md')` return `skills/README.md` instead of null
+ * while `contentKey('skills/README.md')` correctly returned null. Unreachable today only
+ * because every caller happens to `statSync(...).isFile()` afterwards — which is the
+ * "unreachable because of ambient state" framing #519 exists to reject.
+ *
+ * (This docblock spent several revisions stranded ~80 lines above the function, immediately
+ * followed by a second `/**`, so every reader and every JSDoc tool attached it to
+ * `historicalPathspecs` instead. Restored here in #546.)
+ *
+ * EXPORTED for #546, so the `_`-prefix guards that shadow it cannot narrow independently.
+ * Two callers — `check-yaml-fences.js` and the working-tree arm of `walkEnglishHistory` —
+ * short-circuit on the prefix before `contentKey` is ever consulted. Those guards are
+ * deliberate defence in depth and are KEPT: `check-yaml-fences.js` never had the #519 bug
+ * precisely because it skips `_template` before the flat/nested asymmetry can reach it.
+ *
+ * The redundancy is only safe in one direction. This predicate is a strict superset of
+ * `startsWith('_')`, so WIDENING it propagates to the shadowing guards correctly. NARROWING
+ * it would not, and the failure is nastier than #519's: if `_`-prefixed content were ever
+ * declared to be content, the working-tree arm would still skip it while the git-log arm
+ * included it — a PARTIAL basis, which yields false-positive violations only for fences added
+ * since the last commit. Intermittent, content-dependent, and it reads as a translation
+ * defect rather than a tooling one. Routing both guards through this function is what makes
+ * that unrepresentable.
+ *
+ * NOT the package's exclusion rule, and not a template test. `skills-inventory.js` measured
+ * both differences: this rule would skip `skills/_experimental/tool.py`, which SHIPS, and it
+ * says nothing about `_template` specifically. Use `isTemplate` for the scaffolding question
+ * and `isExcludedFromPackage` for the npm one.
+ *
+ * @param {string} id a raw path segment, with or without a `.md` suffix
+ * @returns {boolean} true when the segment names something that is not content
+ */
+export function isExcludedId(id) {
   const stem = id.endsWith('.md') ? id.slice(0, -3) : id;
   return stem.startsWith('_') || stem === 'README';
 }

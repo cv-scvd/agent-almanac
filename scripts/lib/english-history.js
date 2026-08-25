@@ -42,7 +42,7 @@ import { readFileSync, readdirSync, existsSync, statSync } from 'fs';
 import { join } from 'path';
 import { execFileSync } from 'child_process';
 import { CONTENT_TYPES } from './content-types.js';
-import { contentKey } from './content-paths.js';
+import { contentKey, isExcludedId } from './content-paths.js';
 import { catFileBatch, GIT_BUFFER } from './git-batch.js';
 
 /**
@@ -306,7 +306,12 @@ export function walkEnglishHistory(root, onBlob, { paths = null } = {}) {
     const base = join(root, tree);
     if (!existsSync(base)) continue;
     for (const entry of readdirSync(base)) {
-      if (entry.startsWith('_')) continue;
+      // Through the predicate, never an inline `startsWith('_')` (#546). This guard shadows
+      // the `contentKey` call eight lines below, and a shadow that can narrow independently
+      // is how the two arms of this walk would come to disagree: git-log revisions carrying a
+      // key the working tree omits is a PARTIAL basis, and a partial basis accuses only the
+      // fences added since the last commit.
+      if (isExcludedId(entry)) continue;
       const path = tree === 'skills' ? join(base, entry, 'SKILL.md') : join(base, entry);
       if (!existsSync(path) || !statSync(path).isFile()) continue;
       const rel = tree === 'skills' ? `${tree}/${entry}/SKILL.md` : `${tree}/${entry}`;
