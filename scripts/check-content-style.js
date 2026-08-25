@@ -19,6 +19,7 @@ import { readFileSync, existsSync } from "node:fs";
 // The shared extractor, so `--untagged-strict` cannot drift from the fold it protects (#629).
 // Node builtins and local libs only — no package dependency is added to this script.
 import { extractFences } from "./lib/fences.js";
+import { isTemplate } from "./lib/content-paths.js";
 
 const CONTENT_GLOBS = ["skills/", "agents/", "teams/", "guides/", "i18n/"];
 
@@ -31,7 +32,12 @@ const ENGLISH_TREES = ["skills/", "agents/", "teams/", "guides/"];
 
 function isContentFile(p) {
   if (!CONTENT_GLOBS.some((g) => p.startsWith(g))) return false;
-  if (p.includes("/_template")) return false; // templates are author scaffolding
+  if (isTemplate(p)) return false; // templates are author scaffolding
+  // Was `p.includes("/_template")` (#672). Same verdict on every path in this corpus,
+  // and two differences that matter: the substring also excluded
+  // `guides/my_template_notes.md`, and it matched at any depth, where npm's own
+  // negations are root-anchored. `isTemplate` strips an `i18n/<locale>/` prefix, which
+  // is what keeps the mirror templates this glob list reaches excluded as before.
   return p.endsWith(".md");
 }
 

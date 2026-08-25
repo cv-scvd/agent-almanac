@@ -80,7 +80,7 @@ import { readFileSync, readdirSync, existsSync, statSync } from 'fs';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import * as yaml from 'js-yaml';
-import { extractFences, TREES, contentKey } from './lib/fences.js';
+import { extractFences, TREES, contentKey, isExcludedId } from './lib/fences.js';
 
 const argv = process.argv.slice(2);
 let JSON_OUT = false;
@@ -117,8 +117,17 @@ if (!existsSync(ROOT) || !statSync(ROOT).isDirectory()) {
 }
 
 /**
- * Every content file under one root: the four trees, `_`-prefixed ids skipped
- * the way `buildEnglishFenceHistory` skips them.
+ * Every content file under one root: the four trees, non-content ids skipped via
+ * `isExcludedId`.
+ *
+ * That skip is REDUNDANT with the `contentKey` call below, and deliberately kept. It is why
+ * this tool never had the #519 bug: it drops `_template` before `contentKey` is consulted, so
+ * the flat/nested asymmetry could not reach it. It also short-circuits two `existsSync` calls.
+ *
+ * The previous wording — "`_`-prefixed ids skipped the way `buildEnglishFenceHistory` skips
+ * them" — described a redundancy as if it were the mechanism, inviting a reader to believe the
+ * skip works BECAUSE the history builder does the same thing. Post-#546 both go through the one
+ * predicate, so they cannot drift; before it, that sentence was the drift's alibi.
  */
 function contentFiles(base, prefix = '') {
   const out = [];
@@ -126,7 +135,7 @@ function contentFiles(base, prefix = '') {
     const dir = join(base, tree);
     if (!existsSync(dir) || !statSync(dir).isDirectory()) continue;
     for (const entry of readdirSync(dir)) {
-      if (entry.startsWith('_')) continue;
+      if (isExcludedId(entry)) continue;
       const rel = tree === 'skills' ? `${tree}/${entry}/SKILL.md` : `${tree}/${entry}`;
       if (contentKey(rel) === null) continue;
       const abs = join(base, rel);

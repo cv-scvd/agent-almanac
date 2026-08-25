@@ -41,9 +41,13 @@ jobs:
 
       - name: Validate all skills
         run: |
+          # One definition of "is this scaffolding", shared with validate-integrity.sh and
+          # sync-discovery-symlinks.sh (#672). A `run:` block is bash in the checkout, so it
+          # sources like any other script -- it is not the import-less case.
+          source scripts/lib/template-names.sh
           failed=0
           for dir in skills/*/; do
-            [ "$(basename "$dir")" = "_template" ] && continue
+            is_template "$(basename "$dir")" && continue
             if [ -f "$dir/SKILL.md" ]; then
               if ! skills-ref validate "$dir"; then
                 failed=1
@@ -73,6 +77,14 @@ jobs:
 
       - name: Verify registry count
         run: |
+          # NOT routed through TEMPLATE_FIND_PRUNE, deliberately (#672 AC4). That array holds
+          # `-not -name` predicates over basenames; this is an anchored `-not -path` whose
+          # generic form `*/_template/*` would be depth-agnostic -- the direction
+          # content-paths.js records as measured-wrong, since a nested `_template/` WOULD ship.
+          # (No nested `_template/` exists on this tree; it is a fact about npm's root-anchored
+          # negations, pinned by a fixture in skills-inventory.test.js, not a fact about the
+          # corpus. An earlier wording read as the latter.)
+          # A new spelling is caught by templateSpellingDrift, not by this line.
           disk_count=$(find skills -name SKILL.md -not -path "skills/_template/*" | wc -l)
           reg_count=$(grep 'total_skills:' skills/_registry.yml | tr -d '\r' | awk '{print $2}')
           if [ "$disk_count" != "$reg_count" ]; then

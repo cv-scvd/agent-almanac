@@ -12,6 +12,173 @@
 import { CONTENT_TYPES } from './content-types.js';
 
 /**
+ * The exact names a template goes by, one per spelling that exists on disk (#672).
+ *
+ * ## Why an exact set and not a prefix test
+ *
+ * `startsWith('_template')` would be shorter and would auto-cover a future `_template.yml`.
+ * That is precisely the objection: a predicate that silently absorbs a new spelling cannot be
+ * checked, so `templateSpellingDrift` below could never fail, and the fourth acceptance
+ * criterion of #672 — "a check fails when a new `_template*` spelling appears that the
+ * predicate does not cover" — would be unsatisfiable by construction. An exact set plus a
+ * discovery check is the trade the debt ratchet already makes here: enumerate the members,
+ * and let the arrival of a new one be an event rather than a silent absorption.
+ *
+ * Measured on this tree — six paths, three spellings, and note the SIXTH tree:
+ *
+ *   agents/_template.md          teams/_template.md
+ *   guides/_template.md          tests/_template.md      <- not a CONTENT_TYPE
+ *   skills/_template/SKILL.md    workflows/_template.mjs
+ *
+ * Hence tree-agnostic below. Hard-coding `CONTENT_TYPES` would have missed `tests/` and
+ * `workflows/`, which is the drift-pair shape this module already carries two warnings about.
+ */
+export const TEMPLATE_SEGMENTS = Object.freeze(['_template', '_template.md', '_template.mjs']);
+
+/**
+ * What a template's name could plausibly be spelled as — the DISCOVERY ruler for
+ * `templateSpellingDrift`, never the membership test.
+ *
+ * Looser than `TEMPLATE_SEGMENTS` on purpose: finding a spelling the exact set has never seen
+ * is the whole job. Tighter than `startsWith('_template')`, because that also matches
+ * `_templates.md` and `_template_backup` — see `templateSpellingDrift`'s docblock for the
+ * deadlock that produced.
+ */
+const TEMPLATE_SPELLING = /^_template(\.[a-z0-9]+)?$/;
+
+/**
+ * Is this single path SEGMENT a template's name?
+ *
+ * For callers that already hold a bare name — a `readdirSync` entry, a `basename`. Callers
+ * holding a path want `isTemplate`, which anchors.
+ *
+ * @param {string} segment one path segment
+ * @returns {boolean}
+ */
+export function isTemplateSegment(segment) {
+  return TEMPLATE_SEGMENTS.includes(segment);
+}
+
+/**
+ * Is this repo-relative path a template — author scaffolding rather than real content?
+ *
+ * ROOT-ANCHORED: the template must be the second segment, `<tree>/_template*`. Not a stylistic
+ * choice; it is the one direction that was MEASURED wrong. `skills-inventory.js`'s first
+ * version skipped any entry named `_template` at any depth, which #672 itself counts as its
+ * own 55th hand-rolled site, and it disagreed with npm: the `files` negations are
+ * root-anchored gitignore-style patterns, so `skills/<id>/_template/helper.py` WOULD ship.
+ * `skills-inventory.test.js` pins that with a fixture built at test time. Note the tense: no
+ * nested `_template/` exists on this tree, so this is a fact about npm's matching rules rather
+ * than about the corpus, and an earlier wording ("SHIPS", "a live fixture") read as the latter
+ * on both counts. A depth-agnostic test here would re-introduce that bug one directory over.
+ *
+ * Equally not `includes('_template')`, the spelling three call sites used before this: that
+ * also matches `guides/my_template_notes.md` and `agents/_templates.md`, neither of which is
+ * a template.
+ *
+ * ## What it deliberately does NOT answer
+ *
+ * - **Does this ship to npm?** No. That is `isExcludedFromPackage` in `skills-inventory.js`,
+ *   derived from `package.json`'s own negations. Its JSDoc records that BOTH hand-rolled
+ *   rules — a name test and `isExcludedId` — are wrong against npm, in opposite directions.
+ * - **Is this non-content?** No. That is `isExcludedId`, which is `_`-prefix-or-README and so
+ *   also covers `_registry.yml` and `README.md`. A template is a strict subset.
+ * - **Is this a mirror's template?** YES — `i18n/<locale>/` is stripped first, so
+ *   `i18n/de/skills/_template/SKILL.md` is a template. An earlier draft of this returned false
+ *   and wrote the limitation up as a principle ("mirrors are not scaffolding"), which is
+ *   backwards: the German mirror of a template is a template. It also silently changed
+ *   `check-content-style.js`, whose `isContentFile` lists `i18n/` among its globs and has
+ *   always excluded mirror templates via `includes('/_template')`. Zero mirror templates are
+ *   tracked today, so nothing on this corpus would have caught it.
+ *
+ * @param {string} relPath repo-relative path, as the tracked-file list prints it
+ * @returns {boolean}
+ */
+export function isTemplate(relPath) {
+  return isTemplateSegment(anchoredSegment(relPath));
+}
+
+/**
+ * The segment a template would occupy in this path, or `undefined`.
+ *
+ * `<tree>/HERE/...`, with a leading `i18n/<locale>/` stripped so a mirror anchors like its
+ * English source. Factored out because `isTemplate` and `templateSpellingDrift` must agree on
+ * WHERE to look while disagreeing on WHAT counts — exact set versus prefix. Two copies of
+ * "where" is how the pair would come to disagree, which is the whole subject of #672.
+ *
+ * The locale is matched structurally (any single segment under `i18n/`) rather than against
+ * the configured locale list. Importing that list would give this module a dependency, and
+ * `content-types.js`'s header records why the modules on the B13 path must reach nothing but
+ * node builtins.
+ */
+function anchoredSegment(relPath) {
+  let parts = String(relPath).split('/');
+  // A leading `./` would shift every index by one and return a SILENT wrong answer -- the
+  // anchored segment would be the tree name, so `./agents/_template.md` reads as not a
+  // template. No caller passes that shape today; all four feed it `git ls-files` output or a
+  // `readdirSync` entry. It is handled anyway because `fences.js` already carries the lesson
+  // in its own margin: "a 'cannot happen' margin is exactly how this module keeps getting
+  // bypassed". Repeated `./` is not handled and does not occur.
+  if (parts[0] === '.') parts = parts.slice(1);
+  if (parts[0] === 'i18n' && parts.length > 2) parts = parts.slice(2);
+  return parts.length >= 2 ? parts[1] : undefined;
+}
+
+/**
+ * Both directions of drift between `TEMPLATE_SEGMENTS` and what is on disk (#672 AC4).
+ *
+ * Returns `{ uncovered, dead }`. `uncovered` is a `_template*` path the predicate does not
+ * match — a new spelling every exclusion site would silently stop excluding. `dead` is a
+ * declared member no path uses, which is how a set stays green while describing a corpus that
+ * has moved on. Exact-set, never "observed is a subset of declared": a subset check is green
+ * when one member is removed and another appears, which is the shape that keeps deletions
+ * green forever.
+ *
+ * Takes the path list rather than reading the filesystem, so the caller supplies the tracked
+ * ruler rather than a walk that would descend into `node_modules` and `i18n/`.
+ *
+ * ## The discovery ruler, and the deadlock it used to create
+ *
+ * Discovery is `TEMPLATE_SPELLING`, deliberately LOOSER than membership but not merely a
+ * prefix. `startsWith('_template')` was the first version and two reviewers independently
+ * found the same defect in it: it is also true of `_templates.md` and `_template_backup`.
+ * Neither is a template, and the unit tests say so — so the day one was tracked, this check
+ * would go red reporting it `uncovered`, i.e. demanding the predicate absorb a path a sibling
+ * test forbids it to absorb. No waiver existed; the only exit was renaming the file.
+ *
+ * `^_template(\.[a-z0-9]+)?$` is the whole of it: the bare name, or the bare name plus one
+ * extension. A genuinely new spelling (`_template.yml`) still lands as `uncovered`, which is
+ * the entire job; a lookalike is simply not a candidate.
+ *
+ * ## What it still cannot see, stated rather than left to be found
+ *
+ * A path with fewer than two segments after normalisation has no anchored position, so a
+ * repo-root `_template.md` and a locale-root `i18n/de/_template.md` are invisible here —
+ * neither covered nor uncovered. Both are outside every content tree, so neither is scaffolding
+ * in the sense any consumer means, and treating them as findings would report drift against
+ * files no exclusion site would ever consult. The boundary is recorded because "the check did
+ * not fire" and "the check cannot see it" read identically in a green run.
+ *
+ * @param {string[]} paths every repo-relative tracked path
+ * @returns {{uncovered: string[], dead: string[]}}
+ */
+export function templateSpellingDrift(paths) {
+  // Discovery is deliberately LOOSER than membership, and only at the anchored position.
+  //
+  // Loose, because a prefix is what finds a spelling the exact set has never seen — that is
+  // the whole job. Anchored, because a nested `skills/<id>/_template/helper.py` is a
+  // deliberate non-match rather than an uncovered one: npm ships it, and
+  // `skills-inventory.test.js` pins that it must be counted. Scanning every segment reported
+  // it as `uncovered`, so this check would have gone red demanding the predicate absorb a path
+  // the predicate is right to reject. Caught by its own test before it ever ran in CI.
+  const anchored = paths.filter((p) => TEMPLATE_SPELLING.test(anchoredSegment(p) ?? ''));
+  const uncovered = anchored.filter((p) => !isTemplate(p)).sort();
+  const used = new Set(anchored.filter((p) => isTemplate(p)).map((p) => anchoredSegment(p)));
+  const dead = TEMPLATE_SEGMENTS.filter((s) => !used.has(s));
+  return { uncovered, dead };
+}
+
+/**
  * Repo-relative English content path -> stable `<tree>/<id>` key, or null when
  * the path is not translatable content.
  *
@@ -53,17 +220,6 @@ export function contentKey(relPath) {
   return null;
 }
 
-/**
- * Names that live inside a content tree without being content.
- *
- * Takes a RAW path segment and strips a `.md` suffix itself, so the two branches above can
- * hand it the same kind of thing. They could not before: the flat branch stripped the
- * extension before testing while the nested branch passed a bare directory segment, which
- * made `contentKey('skills/README.md/SKILL.md')` return `skills/README.md` instead of null
- * while `contentKey('skills/README.md')` correctly returned null. Unreachable today only
- * because every caller happens to `statSync(...).isFile()` afterwards — which is the
- * "unreachable because of ambient state" framing #519 exists to reject.
- */
 /**
  * Every path shape a `git log` pathspec must carry to see one key's whole history (#682).
  *
@@ -144,7 +300,45 @@ export function historicalPathspecs(englishRel) {
   return [englishRel];
 }
 
-function isExcludedId(id) {
+/**
+ * Names that live inside a content tree without being content.
+ *
+ * Takes a RAW path segment and strips a `.md` suffix itself, so both branches of `contentKey`
+ * can hand it the same kind of thing. They could not before: the flat branch stripped the
+ * extension before testing while the nested branch passed a bare directory segment, which
+ * made `contentKey('skills/README.md/SKILL.md')` return `skills/README.md` instead of null
+ * while `contentKey('skills/README.md')` correctly returned null. Unreachable today only
+ * because every caller happens to `statSync(...).isFile()` afterwards — which is the
+ * "unreachable because of ambient state" framing #519 exists to reject.
+ *
+ * (This docblock spent several revisions stranded ~80 lines above the function, immediately
+ * followed by a second `/**`, so every reader and every JSDoc tool attached it to
+ * `historicalPathspecs` instead. Restored here in #546.)
+ *
+ * EXPORTED for #546, so the `_`-prefix guards that shadow it cannot narrow independently.
+ * Two callers — `check-yaml-fences.js` and the working-tree arm of `walkEnglishHistory` —
+ * short-circuit on the prefix before `contentKey` is ever consulted. Those guards are
+ * deliberate defence in depth and are KEPT: `check-yaml-fences.js` never had the #519 bug
+ * precisely because it skips `_template` before the flat/nested asymmetry can reach it.
+ *
+ * The redundancy is only safe in one direction. This predicate is a strict superset of
+ * `startsWith('_')`, so WIDENING it propagates to the shadowing guards correctly. NARROWING
+ * it would not, and the failure is nastier than #519's: if `_`-prefixed content were ever
+ * declared to be content, the working-tree arm would still skip it while the git-log arm
+ * included it — a PARTIAL basis, which yields false-positive violations only for fences added
+ * since the last commit. Intermittent, content-dependent, and it reads as a translation
+ * defect rather than a tooling one. Routing both guards through this function is what makes
+ * that unrepresentable.
+ *
+ * NOT the package's exclusion rule, and not a template test. `skills-inventory.js` measured
+ * both differences: this rule would skip `skills/_experimental/tool.py`, which SHIPS, and it
+ * says nothing about `_template` specifically. Use `isTemplate` for the scaffolding question
+ * and `isExcludedFromPackage` for the npm one.
+ *
+ * @param {string} id a raw path segment, with or without a `.md` suffix
+ * @returns {boolean} true when the segment names something that is not content
+ */
+export function isExcludedId(id) {
   const stem = id.endsWith('.md') ? id.slice(0, -3) : id;
   return stem.startsWith('_') || stem === 'README';
 }

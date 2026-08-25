@@ -302,7 +302,35 @@ function importGraph(entry, seen = new Set()) {
   // `export … from './x.js'` is an edge as much as `import` is: a re-exporting barrel module
   // sits in the graph and its own changes move generated output. The negated character class
   // spans newlines, so multi-line forms are covered without an `s` flag.
-  const specifiers = [...text.matchAll(/^\s*(?:import|export)\s[^'"]*['"](\.[^'"]+)['"]/gm)]
+  //
+  // Two constraints on the span before the specifier, and both are load-bearing.
+  //
+  // ANCHORED ON `from`, because without it the class ran from an `export` keyword straight into
+  // the FUNCTION BODY below and took the first quoted string it found:
+  //
+  //     export function isExcludedId(id) {
+  //       const stem = id.endsWith('.md') ? …
+  //
+  // read as an import of `./lib/.md`, which does not exist, so this check hard-refused —
+  // exiting non-zero even under `--warn`, in a REQUIRED context. It surfaced the first time a
+  // module in the healer's graph exported a function whose body's first quoted literal began
+  // with a dot (#672), and would have recurred for any future one. `import './side-effect.js'`
+  // has no `from`, hence the optional group rather than a required one.
+  //
+  // And the span is `[\w$*,{}\s]`, not `[^'"]`, because anchoring alone did NOT close the
+  // class -- it only narrowed it. Any line-start `export`/`import` whose text contains the word
+  // `from` before a dotted quoted string still matched, so
+  //
+  //     export const probe = 1; // adapted from './old.js'
+  //
+  // reproduced the same hard refusal. Measured on this tree, not argued. The character class
+  // is what an import CLAUSE can actually contain -- identifiers, `*`, `as`, commas, braces,
+  // whitespace -- and it admits the multi-line form (a newline is `\s`) while excluding the
+  // `=`, `;`, `(` and `/` that any statement or comment carrying a stray `from` must have.
+  //
+  // Found by an adversarial reviewer, who named the experiment rather than asserting it; the
+  // planted line refused exactly as predicted.
+  const specifiers = [...text.matchAll(/^\s*(?:import|export)\s(?:[\w$*,{}\s]*?\bfrom\s*)?['"](\.[^'"]+)['"]/gm)]
     .map((m) => m[1]);
   for (const specifier of specifiers) {
     importGraph(relative(ROOT, resolvePath(dirname(absolute), specifier)), seen);

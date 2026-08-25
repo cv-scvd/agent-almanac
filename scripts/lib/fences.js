@@ -26,7 +26,7 @@
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { CONTENT_TYPES } from './content-types.js';
-import { contentKey } from './content-paths.js';
+import { contentKey, isExcludedId } from './content-paths.js';
 import { walkEnglishHistory } from './english-history.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -129,6 +129,13 @@ export const TREES = CONTENT_TYPES;
  * the same caveat: nothing in this module reads `contentKey` internally today either.
  */
 export { contentKey };
+
+/**
+ * Re-exported for the same reason `contentKey` is: #546 names this module as the place callers
+ * reach for the exclusion, and `check-yaml-fences.js` already imports from here. One import
+ * line, one predicate, no third spelling.
+ */
+export { isExcludedId };
 
 /**
  * Union of every fence body that has ever appeared in each English SKILL.md,

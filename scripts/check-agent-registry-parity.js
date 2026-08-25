@@ -29,6 +29,7 @@
 import * as yaml from 'js-yaml';
 import { readFileSync, existsSync } from 'node:fs';
 import { execSync } from 'node:child_process';
+import { isTemplate } from './lib/content-paths.js';
 
 const FIELDS = ['skills', 'tools'];
 
@@ -64,7 +65,10 @@ function listAgentFiles() {
   return out
     .split('\n')
     .filter(Boolean)
-    .filter((p) => !p.includes('_template') && !p.endsWith('README.md'));
+    // `!p.includes('_template')` before #672, which also dropped a hypothetical
+    // `agents/my_template_notes.md` from the parity comparison — silently, since a file
+    // absent from BOTH sides of a set comparison is invisible rather than red.
+    .filter((p) => !isTemplate(p) && !p.endsWith('README.md'));
 }
 
 function loadRegistry() {
