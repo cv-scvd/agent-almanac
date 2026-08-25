@@ -222,10 +222,16 @@ def notice_kb(units):
 
 
 def kb_bracket(displayed):
-    """The unit range consistent with a one-decimal KB figure.
+    """The unit range consistent with a one-decimal KB figure, ASSUMING round-half.
 
-    This is what the notice's rounding permits, and the reason the notice CANNOT sharpen the
-    cap estimate even though it names it."""
+    This is what the notice's rounding permits, and the reason the notice CANNOT sharpen the cap
+    estimate even though it names it.
+
+    The mode is ASSUMED, not measured. If the harness TRUNCATES to one decimal the range is
+    [24985.6, 25088) instead, and the single calibration point available (29.4423 -> 29.4) reads
+    the same under both. No conclusion moves: both variants contain 25,000, and both sit inside
+    [24924, 25125), the preimage of 124 under floor(./201) -- which is the only property the
+    reconstruction argument needs."""
     return ((displayed - 0.05) * 1024, (displayed + 0.05) * 1024)
 
 
@@ -347,7 +353,8 @@ def verify():
         ok = False
 
     arm_l, shown_lines, limit_lines = NOTICE_LINES
-    on_wire_l = next(w[3] for w in WIRE if w[0] == arm_l)
+    wire_l = next(w for w in WIRE if w[0] == arm_l)
+    on_wire_l = wire_l[3]
     print(f'\n  line variant states "is {shown_lines} lines (limit: {limit_lines})"; '
           f'wire cut = {on_wire_l}')
     if limit_lines != on_wire_l or limit_lines != LINE_CAP:
@@ -356,6 +363,23 @@ def verify():
     else:
         print(f'  the answer {limit_lines} was a LITERAL in that arm\'s own prompt '
               '-- nothing to reconstruct')
+
+    # Three figures on the line arm were PRINTED and never asserted, so mutating them survived
+    # (#724 review). A published-but-unchecked figure is the thing this file exists to prevent.
+    #
+    #   - the notice's stated line count must equal the fixture's line count;
+    #   - the fixture must be UNDER the size cap, or the arm does not isolate the line cap and
+    #     its registry comment ("over the LINE cap only") is false;
+    #   - and its width must therefore be small enough for the clamp to bind.
+    if shown_lines != wire_l[2]:
+        print(f'  *** notice says {shown_lines} lines, fixture has {wire_l[2]} ***')
+        ok = False
+    size_of_line_arm = int(wire_l[2] * wire_l[1]) - 1
+    print(f'  fixture size {size_of_line_arm} units vs cap {DOCUMENTED_CAP}: '
+          f'{"under -- line cap isolated" if size_of_line_arm < DOCUMENTED_CAP else "OVER"}')
+    if size_of_line_arm >= DOCUMENTED_CAP:
+        print('  *** the line arm must be UNDER the size cap, or it isolates nothing ***')
+        ok = False
 
     print('\n=== #721 fence arms: does the info string change the strip? ===\n')
     print(f"  {'arm':9} {'block':>5} {'cut':>4} {'cmt':>4} {'kb':>6}  verdict")
@@ -386,11 +410,16 @@ def verify():
     distinct = {verdicts[a] for a in fenced}
     print(f'\n  {len(fenced)} fenced arms ({", ".join(fenced)}) -> '
           f'{len(distinct)} distinct verdict(s)')
-    if len(distinct) != 1:
-        print('  UNEXPECTED: the info string should not change the verdict')
-        ok = False
-    elif verdicts['untagged'] != verdicts['text']:
+
+    # Untagged-vs-text FIRST, then distinctness across all five. The other order made the
+    # untagged check unreachable by construction (#725 review): if the five share one verdict,
+    # untagged and text necessarily agree, so the `elif` could never fire -- a guard that can
+    # never fail, which reads as coverage it does not provide.
+    if verdicts['untagged'] != verdicts['text']:
         print('  UNEXPECTED: untagged must match text -- it is the default-deny case')
+        ok = False
+    elif len(distinct) != 1:
+        print('  UNEXPECTED: the info string should not change the verdict')
         ok = False
     else:
         print('  untagged is indistinguishable from every tagged arm, so an untagged fence '
@@ -416,16 +445,37 @@ MUTATIONS = [
     ('notice size 29.4->29.5',        'NOTICE_SIZE',  lambda: ('over 150x200', 29.5, 24.4)),
     ('notice limit 24.4->24.5',       'NOTICE_SIZE',  lambda: ('over 150x200', 29.4, 24.5)),
     ('notice line limit 200->150',    'NOTICE_LINES', lambda: ('lines 300x20', 300, 150)),
+    # The three that SURVIVED before the #724 review, now covered.
+    ('notice shown lines 300->301',   'NOTICE_LINES', lambda: ('lines 300x20', 301, 200)),
+    ('WIRE lines fixture 300->301',   'WIRE',         lambda: _swap_wire_field('lines 300x20', 2, 301)),
+    ('WIRE lines u/l 21->200 (over)', 'WIRE',         lambda: _swap_wire_field('lines 300x20', 1, 200.0)),
     ('fence untagged cut 109->124',   'FENCE',        lambda: _swap_fence('untagged', cut=124)),
     ('fence untagged comments 15->0', 'FENCE',        lambda: _swap_fence('untagged', comments=0)),
     ('fence bare cut 124->109',       'FENCE',        lambda: _swap_fence('bare', cut=109)),
     ('fence text notice 32.4->29.4',  'FENCE',        lambda: _swap_fence('text', kb=29.4)),
     ('fence bare notice 29.4->32.4',  'FENCE',        lambda: _swap_fence('bare', kb=32.4)),
+    # CROSS-ARM. Every mutation above trips a PER-ARM check first, so neither cross-arm branch
+    # had any negative evidence (#725 review). This one is coherent as a single arm -- cut 124
+    # with 0 comment lines is a valid 'stripped' row, and 30,149 units displays as 29.4KB -- so
+    # it passes every per-arm test and can only be caught by `untagged != text`.
+    ('fence text made COHERENTLY stripped', 'FENCE',
+     lambda: _swap_fence('text', cut=124, comments=0, kb=29.4)),
 ]
 
 
 def _swap_wire(label, on_wire):
-    return [(w[0], w[1], w[2], on_wire if w[0] == label else w[3], w[4]) for w in WIRE]
+    return _swap_wire_field(label, 3, on_wire)
+
+
+def _swap_wire_field(label, index, value):
+    """Replace one field of one WIRE row. `index` is a position in
+    (label, units_per_line, fixture_lines, on_wire, build)."""
+    out = []
+    for row in WIRE:
+        if row[0] == label:
+            row = tuple(value if i == index else v for i, v in enumerate(row))
+        out.append(row)
+    return out
 
 
 def _swap_fence(arm, cut=None, comments=None, kb=None):

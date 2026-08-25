@@ -366,15 +366,36 @@ outside the model's own arithmetic: the line width, which only the index carries
 other input, the cap itself, reaches the model from documentation outside the run. A wire capture
 of the request body — not a question put to the model — shows that it does not:
 
+**Scope, before the strings: this was captured on 2.1.245, and the arms below ran on 2.1.237,
+2.1.238, 2.1.241 and (tonydzi) 2.1.201.** Whether those builds injected the notice at all, let
+alone with the `limit:` figure the answer-key arithmetic needs, was **not measured**. A
+third-party report of the `Only part of it was loaded` string at `tools_offered: 0` supports its
+*existence* on an earlier build but does not carry the limit figure, and its build is unstated.
+So the strengthening below is an INFERENCE across builds, not a measurement of this run. If the
+notice turns out to be absent on 2.1.237–241, the #717 downgrades stand unchanged on their
+original argument and only this strengthening lapses — the error direction is safe either way.
+
 ```
 > WARNING: MEMORY.md is 29.4KB (limit: 24.4KB) — index entries are too long. Only part of it was loaded. …
 > WARNING: MEMORY.md is 300 lines (limit: 200). Only part of it was loaded. …
 ```
 
 The harness appends one of these **inside the same `<system-reminder>` as the index**, at read time,
-in a session with no file tools. So every over-cap arm in this run carried its own answer key:
-the cap stated in the notice, the width visible in the index, and `floor(24.4 × 1024 / 201) = 124`
-— the measured cut, exactly. `lines300` is the starkest case; its notice reads `is 300 lines
+in a session with no file tools. If it did so on the builds above, then every over-cap arm here
+carried its own answer key: the cap stated in the notice, the width visible in the index, and
+`floor(24.4 × 1024 / 201) = 124` — which is the cut measured for the 201-unit arms `ctrl`, `bare`
+and `ascii200`. **Not `fenced`**, whose measured 109 is the one cell this arithmetic does not
+reach, and which is why it remains the least reconstructible in the run.
+
+Two caveats on "the width visible in the index", both of which narrow the claim rather than
+overturn it. For the ASCII arms the width is directly countable. For `cjk`, `astral`, `crlf` and
+`emoji` it must be counted in **UTF-16 units** — a third input, and one this corpus discovered
+rather than read anywhere, so those arms are not reconstructible from the prompt alone by a model
+without that rule. (The notice's own total is self-calibrating enough to recover it in principle —
+a bytes reading implies fewer lines than are visibly present — but nothing here measures whether
+that happens.)
+
+`lines300` is the starkest case and needs none of that: its notice reads `is 300 lines
 (limit: 200)`, so the answer `200` was a literal in its own prompt.
 
 This makes reconstruction **cheaper** than this section claims, so it strengthens every downgrade
@@ -427,7 +448,10 @@ reason it is flagged against the external bracket.
 ### 2. A behavioural re-measurement, 2.1.245
 
 Invented-token needles carrying facts rather than labels, right-aligned to the line end, three
-trials each, tools asserted zero behaviourally via a disk-only decoy. Five fixtures at 136–251
+trials each, tools asserted zero behaviourally via a disk-only decoy — read that as "no
+file-reading tool was offered", not literally zero: these arms ran on 2.1.245 on this machine,
+the exact configuration where a wire capture later showed one server-side `advisor` tool still
+present (see the Method correction above, #722). Five fixtures at 136–251
 units per line:
 
 ```

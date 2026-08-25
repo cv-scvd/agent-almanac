@@ -1,10 +1,28 @@
-# Draft comment for `anthropics/claude-code#82056`
+# Comment for `anthropics/claude-code#82056`
 
-**Status: NOT POSTED.** Drafted 2026-08-25 alongside the probe. Posting is an outward-facing
-action and needs the operator's go-ahead. When posted, record the comment id here and in
-`RESULT.md`, the way the two 2026-08-25 comments are recorded in the 2026-08-23 run.
+**Status: POSTED 2026-08-25 as
+[comment 5412833938](https://github.com/anthropics/claude-code/issues/82056#issuecomment-5412833938).**
+
+The posted text differs from the draft below: it was rewritten after
+[DanceNitra's reply](https://github.com/anthropics/claude-code/issues/82056#issuecomment-5411236356),
+which retracted four echo-derived cells and the `[24955, 25012)` ceiling to the reconstruction
+ruler, kept `198` on a shuffled-label arm, and **replicated this run's floor on Windows**
+(`cap >= 24,999`, a third platform). The posted version adds the point that the shuffled-label arm
+is immune to the notice finding — the cap gives you a line NUMBER, and that arm's answer is a
+label only reading yields — which the draft below does not make.
+
+**Two scoping corrections are owed on the posted text**, both raised by an adversarial review
+after it went out, and both narrowing rather than retracting:
+
+1. The capture is 2.1.245. The thread's brackets rest on arms from 2.1.201–2.1.241, where the
+   notice's presence and wording are unmeasured.
+2. The fixtures are all-ASCII, so the KB figure's NUMERATOR is unmeasured — `bytes/1024` and
+   `units/1024` are indistinguishable on them. That decides whether the answer-key arithmetic
+   reaches `cjk`, `astral` and `emoji`, which are precisely the thread's non-ASCII arms.
 
 ---
+
+## Draft as first written, before the reply (kept for the record)
 
 The premise under every bracket in this thread — mine, and I think all three of the others — is
 that a session has to *derive* where its index was cut. It doesn't. **The harness states the cap

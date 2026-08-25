@@ -9,8 +9,12 @@ THE READ-OUT IS THE WIRE, NOT THE MODEL
 directions, so "ask the model whether it saw a notice" cannot answer this. Instead the
 outbound request body is captured with `tools/wirecap.py` and two arms are DIFFERENCED:
 
-    over   150 lines x 200 chars = 30,150 UTF-16 units  -> over the ~25,000 cap
-    under  100 lines x 200 chars = 20,100 UTF-16 units  -> under it
+    over   150 lines x 200 chars = 30,149 UTF-16 units  -> over the ~25,000 cap
+    under  100 lines x 200 chars = 20,099 UTF-16 units  -> under it
+
+(N*201 - 1, not N*201: the generator joins with "\n" and writes NO trailing newline. An earlier
+draft of this docstring counted one that is never written, disagreeing with the registry 30 lines
+below -- the doc-vs-code drift this corpus exists to police.)
 
 `under` is a strict line-prefix of `over`, so every line of `under` also occurs in `over`.
 Lines appearing only in the `over` capture are therefore exactly: the canary lines that
