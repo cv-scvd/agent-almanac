@@ -351,8 +351,8 @@ fi
 a15_reg=$(printf '%s\n' "$a15_reg_all" | sed '/^$/d' | sort -u || true)
 # Directories carrying a SKILL.md, which is what the generator and the CLI both consume. A bare
 # directory with no SKILL.md is not a skill and must not count as one on either side.
-a15_disk=$(find skills -mindepth 2 -maxdepth 2 -name 'SKILL.md' -not -path 'skills/_template/*'   -printf '%h\n' 2>/dev/null | sed 's|^skills/||' | sort || true) # abort-ok: see A4
-a15_declared=$(grep 'total_skills:' skills/_registry.yml | tr -d '\r' | awk '{print $2}' || true)
+a15_disk=$(find skills -mindepth 2 -maxdepth 2 -name 'SKILL.md' -not -path 'skills/_template/*' -printf '%h\n' | sed 's|^skills/||' | sort) # abort-ok: find over a directory whose absence is not drift but a broken checkout
+a15_declared=$(grep -m1 '^total_skills:' skills/_registry.yml | tr -d '\r' | awk '{print $2}' || true)
 a15_extracted=$(printf '%s\n' "$a15_reg" | sed '/^$/d' | wc -l || true)
 if [ -z "$a15_reg" ]; then
   echo "FAIL: extracted 0 '- id:' values from skills/_registry.yml under 'domains:' -- pattern drift, not a clean tree"
@@ -367,8 +367,7 @@ elif [ "$a15_extracted" != "$a15_declared" ]; then
   # turns that storm into one accurate line. It is not a substitute for the count check in
   # validate-skills.yml, which compares the declared number against DISK; this compares it
   # against what the EXTRACTION found, and the two catch different things.
-  echo "FAIL: extracted $a15_extracted '- id:' values from skills/_registry.yml but total_skills says $a15_declared"
-  echo "      -- pattern drift in the extraction, not a registry/disk mismatch. Check indentation."
+  echo "FAIL: skills/_registry.yml: extracted $a15_extracted '- id:' values but total_skills says $a15_declared -- either the extraction pattern drifted or total_skills is stale; the count-vs-disk check in validate-skills.yml discriminates"
   failed=1; a15_fail=1
 else
   compare_id_sets skills/_registry.yml skills "$a15_reg" "$a15_disk" "skills/<id>/SKILL.md" \
