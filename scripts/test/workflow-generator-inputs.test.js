@@ -108,6 +108,70 @@ test('an exported function whose body quotes a dotted string is not read as an i
   assert.doesNotMatch(output, /\.md/, 'a quoted literal in a function body reached the graph');
 });
 
+test('the word `from` inside a COMMENT is not read as an import specifier', () => {
+  // The residual class after the first fix, found by an adversarial reviewer who named the
+  // experiment rather than asserting it. Anchoring the specifier on `from` narrowed the class
+  // but did not close it: the span before `from` was still `[^'"]*?`, so any line-start
+  // `export`/`import` whose text contained the word `from` before a dotted quoted string
+  // matched. The planted line reproduced the SAME hard refusal as the original bug.
+  //
+  // Closed by constraining that span to what an import CLAUSE can contain.
+  const { output, status } = run({
+    ...BASE,
+    files: {
+      ...BASE.files,
+      'scripts/lib/a.js':
+        "export const a = 1; // adapted from './nowhere.js'\nexport const b = a;\n",
+    },
+  });
+  assert.equal(status, 0, output);
+  assert.match(output, /; 0 unlisted$/m);
+  assert.doesNotMatch(output, /nowhere/, 'a comment reached the import graph');
+});
+
+test('a statement with `from` in it is not an import either', () => {
+  // Same class, without a comment: the span must exclude `=` and `;`, not merely sit before a
+  // `from`. Kept separate so a fix that special-cases comments cannot pass this one.
+  const { output, status } = run({
+    ...BASE,
+    files: {
+      ...BASE.files,
+      'scripts/lib/a.js':
+        "export const a = pickFrom('./nowhere.js');\nexport const b = a;\n"
+        + "function pickFrom(x) { return x; }\n",
+    },
+  });
+  assert.equal(status, 0, output);
+  assert.doesNotMatch(output, /nowhere/, 'a call expression reached the import graph');
+});
+
+test('the import forms the tightened class must still admit', () => {
+  // The narrowing direction, checked on the shapes a real module uses. Each target is
+  // UNLISTED, so a regex that missed it would report `0 unlisted` and pass — the false PASS
+  // this gate's header calls worse than having no gate.
+  for (const [label, source] of [
+    ['aliased re-export', "export { a as b } from './lib/x.js';\n"],
+    ['default plus named', "import d, { a } from './lib/x.js';\nconsole.log(d, a);\n"],
+    ['namespace', "import * as ns from './lib/x.js';\nconsole.log(ns);\n"],
+    ['star re-export', "export * from './lib/x.js';\n"],
+  ]) {
+    const { output, status } = run({
+      ...BASE,
+      // `scripts/lib/a.js` stays listed; `x.js` is the UNLISTED target, so the check must
+      // REPORT it. That is what proves the specifier was found: a regex that missed it would
+      // report `0 unlisted` and pass.
+      paths: ['scripts/generate-readmes.js', 'scripts/lib/a.js'],
+      files: {
+        ...BASE.files,
+        'scripts/generate-readmes.js': source,
+        'scripts/lib/x.js': 'export const a = 1;\nexport default a;\n',
+      },
+    });
+    assert.equal(status, 1, `${label}: ${output}`);
+    assert.match(output, /scripts\/lib\/x\.js is imported by this workflow/, label);
+  }
+});
+
 test('a MULTI-LINE import is still followed after that fix', () => {
   // The narrowing direction, and the reason the fix anchors on `from` rather than forbidding
   // the newline. A smaller reachable set means fewer required trigger paths -- a FALSE PASS on

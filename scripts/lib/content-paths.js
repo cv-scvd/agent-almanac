@@ -55,9 +55,11 @@ export function isTemplateSegment(segment) {
  * choice; it is the one direction that was MEASURED wrong. `skills-inventory.js`'s first
  * version skipped any entry named `_template` at any depth, which #672 itself counts as its
  * own 55th hand-rolled site, and it disagreed with npm: the `files` negations are
- * root-anchored gitignore-style patterns, so `skills/<id>/_template/helper.py` SHIPS.
- * `skills-inventory.test.js` pins that with a live fixture. A depth-agnostic test here would
- * re-introduce that bug one directory over.
+ * root-anchored gitignore-style patterns, so `skills/<id>/_template/helper.py` WOULD ship.
+ * `skills-inventory.test.js` pins that with a fixture built at test time. Note the tense: no
+ * nested `_template/` exists on this tree, so this is a fact about npm's matching rules rather
+ * than about the corpus, and an earlier wording ("SHIPS", "a live fixture") read as the latter
+ * on both counts. A depth-agnostic test here would re-introduce that bug one directory over.
  *
  * Equally not `includes('_template')`, the spelling three call sites used before this: that
  * also matches `guides/my_template_notes.md` and `agents/_templates.md`, neither of which is

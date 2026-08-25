@@ -80,7 +80,10 @@ jobs:
           # NOT routed through TEMPLATE_FIND_PRUNE, deliberately (#672 AC4). That array holds
           # `-not -name` predicates over basenames; this is an anchored `-not -path` whose
           # generic form `*/_template/*` would be depth-agnostic -- the direction
-          # content-paths.js records as measured-wrong, since a nested `_template/` ships.
+          # content-paths.js records as measured-wrong, since a nested `_template/` WOULD ship.
+          # (No nested `_template/` exists on this tree; it is a fact about npm's root-anchored
+          # negations, pinned by a fixture in skills-inventory.test.js, not a fact about the
+          # corpus. An earlier wording read as the latter.)
           # A new spelling is caught by templateSpellingDrift, not by this line.
           disk_count=$(find skills -name SKILL.md -not -path "skills/_template/*" | wc -l)
           reg_count=$(grep 'total_skills:' skills/_registry.yml | tr -d '\r' | awk '{print $2}')

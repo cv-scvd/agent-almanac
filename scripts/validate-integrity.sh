@@ -37,8 +37,11 @@ failed=0
 warn_count=0
 
 # The one definition of "this name is author scaffolding" (#672). Sourced rather than
-# repeated: this script carried 19 such tests in four spellings, and
-# `sync-discovery-symlinks.sh` carried two more that had to agree with them.
+# repeated: this script carried 19 lines mentioning `_template` -- 18 routed through the shared
+# file, 1 `-not -path` prune kept below with its reason -- and `sync-discovery-symlinks.sh` and
+# `validate-skills.yml` carried two executable sites each that had to agree with them.
+# The constructions are enumerated in `lib/template-names.sh`; do not restate a count here,
+# because the two comments contradicted each other for one revision.
 # shellcheck source=lib/template-names.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib/template-names.sh"
 
