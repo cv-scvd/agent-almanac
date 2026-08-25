@@ -26,8 +26,8 @@ Everything here is dependency-free and runnable from the repository root:
 
 ```bash
 python3 tools/capgeom.py --verify             # re-derive every published figure, assert, print counts
-python3 tools/capgeom.py --selftest-negative  # mutate each recorded figure, assert --verify goes red
-python3 tools/capgeom.py --arms               # the echo/behavioural arm registry as a table
+python3 tools/capgeom.py --selftest-negative  # mutate recorded figures, assert --verify goes red
+python3 tools/capgeom.py --arms               # the ARMS registry (echo instrument) as a table
 python3 tools/capgeom.py --wire               # the wire-measured arms (#722)
 python3 tools/capgeom.py --span 170 147
 
@@ -37,10 +37,16 @@ python3 tools/wirecap.py --diff over.jsonl under.jsonl
 ```
 
 **A `--verify` nobody has watched fail is a green light of unknown wiring.** `capgeom.py
---selftest-negative` is the answer to that for this directory: it mutates each recorded figure in
+--selftest-negative` is the answer to that for this directory: it mutates a recorded figure in
 memory — never the file on disk, so there is no mutant to strand — and asserts `--verify` exits
-non-zero for every one, plus that the unmutated baseline is still green. A survivor means that
-figure is published but unchecked.
+non-zero for each, plus that the unmutated baseline is still green. A survivor means that figure
+is published but unchecked.
+
+**It covers the named mutation set, not literally every figure**, and the difference is not
+academic: three line-arm figures were published-but-unchecked until a review looked for them, and
+their mutations would have survived silently. The pre-existing `ARMS` and `BEHAVIOURAL` registries
+are outside the set too — nudging an `ARMS` width survives, since only `measured` feeds the
+reconstruction count. Add a mutation when you add a figure.
 
 ## Adding one
 

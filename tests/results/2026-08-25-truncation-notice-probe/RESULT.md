@@ -60,12 +60,29 @@ bytes. Generator: [`notice-probe.py`](notice-probe.py) in this directory.
 | `lines` | 300 | 20 | 6,299 | line count only |
 
 `under` is a strict **line-prefix** of `over` — the line text depends only on the line's own index —
-so every line of `under` also occurs in `over`. Differencing the two captures therefore yields
-exactly: the canary lines `under` lacks, plus anything the harness added *because the index was cut*.
-The canary lines are trivially recognisable, so whatever else is in that set is the notice.
+so every line of `under` also occurs in `over`.
 
-**This needs no advance guess at the wording**, which is the reason for differencing rather than
-grepping for a string someone reported elsewhere.
+**The residual set is not purely canaries-plus-notice, and the first draft of this section said it
+was.** The two arms ran in different directories, so the only-in-A set also contains per-session
+and per-store noise. Measured, it was 29 lines, of which four are that noise:
+
+| only in A | what it is |
+|---|---|
+| 24 × `CANARY-101…124` | the lines `under` does not have |
+| ` - Primary working directory: …/over` | differs by arm |
+| `Contents of …-t722-over/memory/MEMORY.md …` | differs by arm |
+| `You have a persistent file-based memory at …` | embeds the store path |
+| `{"device_id":…,"session_id":…}` | differs per session |
+| **the WARNING line** | **the finding** |
+
+So the identification is: strip the canaries, strip the four lines that name a path or a session,
+and one line remains. That is a judgement over a small residual, not the logical guarantee
+"whatever else is in that set is the notice" claimed. It still needs **no advance guess at the
+wording**, which is the point of differencing rather than grepping for a string someone reported
+elsewhere — but the honest version is "a five-line residual a human reads", not "exactly one line".
+
+Running both arms sequentially in the SAME directory, varying only `MEMORY.md`, would make the
+exact-set claim nearly true by construction. Worth doing if this is repeated.
 
 Prompts were deliberately unrelated to memory (`Reply with the single word OK.`, `What is 2+2?`).
 
@@ -151,9 +168,16 @@ the `approaching the N-line read limit` advisories, which fire on `PostToolUse:E
 units = 24.3KB. So the notice tells the reader both what was offered and what the ceiling is — and
 by subtraction, roughly how much went missing.
 
-The displayed unit is **UTF-16 units / 1024**, not bytes: `30149/1000` would display `30.1KB`. That
-the divisor is 1024 and the numerator is UTF-16 units is consistent with, and independent of, the
-2026-08-23 finding that the cap counts UTF-16 units.
+The **divisor is 1024, not 1000**: `30149/1000` would display `30.1KB`.
+
+**The numerator is not measured here, and an earlier draft of this line claimed it was.** The
+fixture is all-ASCII, so UTF-8 bytes, UTF-16 units and code points are the same 30,149 number, and
+`bytes/1024` predicts the identical 29.4. This arm discriminates the divisor and nothing else.
+
+That gap matters downstream rather than here: if the harness computed the KB figure from *bytes*,
+then a model doing the answer-key arithmetic on `cjk` would derive ≈65 rather than the measured
+196, and the "every over-cap arm carried its own answer key" claim would hold only for the ASCII
+arms. **A single CJK-line fixture separates it cheaply and was not run.**
 
 ### Verdicts
 
@@ -163,7 +187,8 @@ the divisor is 1024 and the numerator is UTF-16 units is consistent with, and in
 | 2 | The notice names the limit | **MEASURED** — `limit: 24.4KB` and `limit: 200` |
 | 3 | The notice is precise enough to reconstruct the boundary from | **MEASURED for the line cap; MEASURED-with-rounding for the size cap** — see below |
 | 4 | The notice is delivered as inline text in `messages[0]`, inside the memory `<system-reminder>` | **MEASURED** |
-| 5 | The cut is whole-line, at `floor(cap/units-per-line)` clamped by a 200-line cap | **MEASURED on the wire**, first non-behavioural confirmation in this corpus |
+| 5 | The cut is whole-line | **MEASURED on the wire** — no partial line in any capture; first non-behavioural confirmation in this corpus |
+| 5b | …at `floor(cap/units-per-line)`, clamped by a 200-line cap | **consistent at two widths** (201 and 21), not measured in generality — two points do not establish a formula |
 
 #### On verdict 3, stated carefully
 
@@ -214,9 +239,19 @@ The captured request carries **one** tool in every arm:
 `--tools ""` filters *client* tools; `advisor` is server-side, enabled by `advisorModel` in
 `~/.claude/settings.json`, and neither `--tools ""` nor `--strict-mcp-config` removes it.
 
-**Benign for this run** — the read-out is the wire, so tool availability cannot affect any conclusion
-above, and `advisor` cannot read a file off disk in any case, which is the specific failure the
-`--tools ""` convention exists to prevent.
+**Benign for this run, and the airtight reason is not the one I reached for first.** The first draft
+argued that `advisor` "cannot read a file off disk" — an untested assertion about a server-side tool,
+which is precisely the docstring-guarantee-nobody-ran shape this repo bans. The sound argument needs
+no claim about what `advisor` can do:
+
+**the canned SSE reply never emits a `tool_use` block, so no tool — client or server — executed in
+any session in this run.** That is a property of the instrument, checkable in `wirecap.py`'s
+`SSE_EVENTS`, not a belief about a tool.
+
+One narrower caveat survives it. Tool availability *does* change the assembled request — the `tools`
+array is part of it, and plausibly some system-prompt text. It cannot affect the **differential**
+conclusions, since both arms share the configuration. The single-capture observations, such as where
+in the block the notice sits, are therefore conditioned on a machine with `advisorModel` set.
 
 **Not benign as a convention.** The 2026-08-23 method section and #722's own acceptance criteria both
 say "tools asserted zero", and on this machine that assertion is false. It is machine-dependent: it
@@ -230,7 +265,16 @@ decoy, which can only ever show that *the tools present did not read the decoy*.
   measures what is *sent*; it says nothing about what is read, and the inconsistent self-report the
   earlier work recorded is entirely compatible with a notice that is always present and sometimes
   ignored. That remains open and is not answerable by asking.
-- **Nothing about other platforms or builds.** 2.1.245, linux-x64, WSL2, one machine.
+- **Nothing about other platforms or builds.** 2.1.245, linux-x64, WSL2, one machine. This bites
+  harder than it looks: the corpus this run re-reads ran on **2.1.237, 2.1.238, 2.1.241** and
+  (tonydzi) **2.1.201**. Whether those builds injected the notice, or injected it with a `limit:`
+  figure, is unmeasured. The "carried its own answer key" consequence is therefore an INFERENCE
+  across builds. Its failure is safe — the #717 downgrades stand on their original argument and
+  only the strengthening lapses.
+- **The KB numerator is unmeasured.** The fixtures are all-ASCII, where bytes, UTF-16 units and
+  code points coincide, so `bytes/1024` and `units/1024` are indistinguishable here. One CJK
+  fixture would settle it, and it decides whether the answer-key arithmetic reaches the non-ASCII
+  arms at all.
 - **No improvement to the cap bracket.** `[24999, 25023)` from the 2026-08-23 addendum §2 stands as
   the sound bracket; the notice's `24.4KB` is coarser and is not an independent behavioural
   measurement.
@@ -241,18 +285,36 @@ decoy, which can only ever show that *the tools present did not read the decoy*.
 
 ### Reproduction
 
-```bash
-python3 tools/wirecap.py --verify                      # self-test the instrument first
-python3 tools/wirecap.py --port 8788 --out over.jsonl & # one per arm
-python3 tests/results/2026-08-25-truncation-notice-probe/notice-probe.py \
-  --build /tmp/t722 --port 8788
+An earlier version of this block did not reproduce the run: it pointed one capture file at both the
+build phase and the measurement, so the three arms' **discovery** sessions landed in the file the
+diff then read. Build and measure must use different capture files.
 
+```bash
+P=tests/results/2026-08-25-truncation-notice-probe/notice-probe.py
+
+python3 tools/wirecap.py --verify                              # self-test the instrument first
+
+# 1. Build. Discovery traffic goes to its own file and is never diffed.
+python3 tools/wirecap.py --port 8787 --out discovery.jsonl &
+python3 $P --build /tmp/t722 --port 8787
+#   NOTICE_PROBE_ONLY=lines python3 $P --build /tmp/t722 --port 8787   # one arm only
+
+# 2. Measure. One server and one capture file PER ARM.
+python3 tools/wirecap.py --port 8788 --out over.jsonl &
 cd /tmp/t722/over && printf '%s' 'Reply with the single word OK.' \
   | ANTHROPIC_BASE_URL=http://127.0.0.1:8788 claude -p --tools "" --strict-mcp-config
+#   repeat on 8789 -> under.jsonl, 8790 -> lines.jsonl
 
 python3 tools/wirecap.py --diff over.jsonl under.jsonl
-python3 tests/results/2026-08-25-truncation-notice-probe/notice-probe.py --cleanup /tmp/t722
+python3 $P --cleanup /tmp/t722
 ```
+
+Two properties of `notice-probe.py` worth knowing before trusting a rerun. `discover_store` takes
+`sorted(new)[0]` of whatever `~/.claude/projects` entries appear, so a **concurrent peer session**
+creating a store during the build can be selected instead — fail-open to the wrong store. And the
+cleanup cross-check below globs `*t722*`, which only matches because the disposable root was named
+`…/t722`; point it at a differently-named root and the pattern sees nothing, which is the
+cannot-see-its-target shape §3 of the 2026-08-23 record already documents for the other probe.
 
 **The raw captures are not committed.** They contain `device_id`, `account_uuid`, `session_id` and
 the operator's email — the request body is the whole assembled context, which is exactly what makes
