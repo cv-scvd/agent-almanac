@@ -25,14 +25,20 @@
 # The two are complementary and neither substitutes for the other. This one is deliberately
 # NOT wired into CI: it scans drafts, and a draft is not a tracked file.
 #
-# THE EXIT-CODE CONTRACT (from `enforce-redaction-gate`)
-# -----------------------------------------------------
+# THE EXIT-CODE CONTRACT
+# ----------------------
 #     0    clean
-#     N>0  N findings
+#     1    findings -- the COUNT is in the printed output, never in the status
 #     2    the scanner could not run -- FAIL CLOSED, never read as a pass
 #
-# `enforce-redaction-gate` names the trap this contract exists for: a wrapper of the shape
+# `enforce-redaction-gate` names the trap the third state exists for: a wrapper of the shape
 # `scanner && ok || echo CLEAN` reads a TOOL ERROR as a pass. Hence exit 2 and hence --verify.
+#
+# This DEVIATES from the skills, which both specify "exit code = leak count". That
+# specification is unsound and was implemented literally here before being measured: an exit
+# status is a byte, so 256 findings exited 0 and printed "clean" -- a redaction gate certifying
+# a maximally-leaky draft -- and 2 findings collided with the reserved could-not-run code and
+# were swallowed unprinted. `--verify` pins all three cases.
 #
 # LABELS ONLY, NEVER THE PATTERN
 # ------------------------------
@@ -85,6 +91,14 @@ PATTERNS=(
   # excluded because this repository's prose is full of legitimate ones -- locale codes (`de`,
   # `es`, `ja`), file types (`md`, `js`, `sh`, `py`). Widen only with a case that motivated it.
   'minified-ident-in-prose|(`[_$][A-Za-z0-9_$]{0,2}`|`[A-Z]`|`[A-Za-z0-9]{1,2}[_$][A-Za-z0-9]{0,1}`)'
+
+  # A template-literal interpolation of a short identifier -- `${r}`, `${at(o)}`. Added
+  # 2026-08-26 (second pass) after a reviewer found `${r} lines and ${at(o)}` quoted verbatim
+  # from the bundle in a probe docstring, which the prose-identifier shape above does not match
+  # because the name sits inside `${...}` rather than between backticks. Two review rounds, two
+  # distinct escapes from the same class: an internal name is not one shape, and a deny-list
+  # reaches it only one spelling at a time.
+  'minified-template-fragment|\$\{[A-Za-z_$][A-Za-z0-9_$]{0,2}(\([A-Za-z0-9_$, ]{0,12}\))?\}'
 )
 
 list_labels() {
@@ -135,7 +149,7 @@ verify() {
   local seeded=0 missed=0 label
   for label in minified-declaration-run minified-function-def binary-byte-offset \
                operator-home-path project-store-slug credential-shape \
-               minified-ident-in-prose; do
+               minified-ident-in-prose minified-template-fragment; do
     case "$label" in
       minified-declaration-run) printf 'var Q="LABEL.md",zz=200,qq=25000\n' ;;
       minified-function-def)    printf 'function qz(e,t="index"){return e}\n' ;;
@@ -145,6 +159,8 @@ verify() {
       credential-shape)         printf 'token ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ01\n' ;;
       # The 2026-08-26 case, verbatim in shape: a real internal name described in English.
       minified-ident-in-prose)  printf 'lineCount is what `_n` computes, and `R` counts them\n' ;;
+      # The 2026-08-26 second-pass case, verbatim in shape.
+      minified-template-fragment) printf 'the variant is `${r} lines and ${at(o)}` with no limit\n' ;;
     esac > "$tmp/canary.md"
     seeded=$((seeded + 1))
     out="$(scan_all "$tmp/canary.md")"; rc=$?

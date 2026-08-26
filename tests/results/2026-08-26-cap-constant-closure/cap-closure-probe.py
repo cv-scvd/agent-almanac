@@ -40,18 +40,19 @@ boundary instead of three characters inside one.
     line_exact   200 lines x 20 chars            4,199   200  silent, whole
     line_over1   201 lines x 20 chars            4,220   201  cut to 200 + notice
     both         300 lines x 100 chars          30,299   300  BOTH caps -> third variant
-    trim         size_exact + "\n\n\n"      25,000/25,003  1/4 silent IFF .trim() runs first
+    trim         size_exact + a blank run   25,000/25,003  1/4 silent IFF trimmed first
 
 `size_over7` replicates DanceNitra's win32 arm on linux: 25,000/7 = 3,571.43, so the cut
 lands THREE characters into marker 3,572. A cut landing on a marker edge would indict the
 fixture rather than measure the constant.
 
-`both` produces the third notice variant -- `${r} lines and ${at(o)}`, with no `(limit: ...)`
-at all -- which nobody in anthropics/claude-code#82056 has produced. After line-truncation to
+`both` produces a THIRD notice variant -- one naming the line count and the size together,
+with no `(limit: ...)` clause at all -- which nobody in anthropics/claude-code#82056 has
+produced. After line-truncation to
 200 lines the text is 20,199 units, under the size cap, so no second cut occurs.
 
-`trim` is the discriminator for the `.trim()` claim: trimmed it is 25,000 units and silent;
-untrimmed it is 25,003 and cuts. Nothing else in the corpus separates those.
+`trim` is the discriminator for P4: counted after trimming it is 25,000 units and silent;
+counted raw it is 25,003 and cuts. Nothing else in the corpus separates those.
 
 THE READ-OUT IS THE WIRE
 ------------------------
@@ -107,23 +108,40 @@ ARMS = {
     "trim": ("markers", {"width": 5, "count": 5000, "tail": "\n\n\n"}),
 }
 
+NOTICE_TAIL = (" Only part of it was loaded. Keep index entries to one line under ~200 chars;"
+               " move detail into topic files.")
+
+# arm -> what the run must produce. EVERY field here is asserted by --analyze.
+#
+# `disk_units` is the RAW file on disk; `disk_lines` is the count of the TRIMMED text. The two
+# deliberately measure different texts, and for every arm but `trim` those texts are identical,
+# so the distinction is invisible. `trim` is the one arm that separates them, which is its
+# entire purpose: 25,003 units on disk, 25,000 after trimming, and therefore SILENT if and only
+# if the trim really happens before the comparison.
+#
+# `notice` is the FULL expected string, not a boolean. An earlier version of this file stored a
+# boolean and asserted only that, so --analyze would have passed the `both` arm carrying
+# `300 lines (limit: 200)` -- precisely the outcome P5 predicts against. An independent reviewer
+# killed that version with a mutant: every wire body corrupted to 5 units and the `both` notice
+# replaced with `999.9KB ... TOTALLY DIFFERENT NOTICE`, and it still printed `OK`, exit 0.
+# Assert the payload, never its presence.
 EXPECTED = {
-    # arm: (utf16 units of the RAW file on disk, lineCount of the TRIMMED text, notice expected?)
-    #
-    # The two columns deliberately measure different texts. Units are what the file weighs on
-    # disk, which is what a human writing an index controls. The line figure is the count as
-    # taken under P4 -- i.e. AFTER trimming -- so for every arm but `trim` the two texts are
-    # identical and the distinction is invisible. `trim` is the one arm that separates them,
-    # which is its entire
-    # purpose: 25,003 units on disk, 25,000 after trimming, and therefore SILENT if and only if
-    # the trim really happens before the comparison.
-    "size_exact": (25000, 1, False),
-    "size_over1": (25001, 1, True),
-    "size_over7": (28000, 1, True),
-    "line_exact": (4199, 200, False),
-    "line_over1": (4220, 201, True),
-    "both": (30299, 300, True),
-    "trim": (25003, 1, False),
+    "size_exact": dict(disk_units=25000, disk_lines=1, wire_units=25000, wire_lines=1,
+                       notice=None),
+    "size_over1": dict(disk_units=25001, disk_lines=1, wire_units=25000, wire_lines=1,
+                       notice="MEMORY.md is 24.4KB (limit: 24.4KB) — index entries are"
+                              " too long." + NOTICE_TAIL),
+    "size_over7": dict(disk_units=28000, disk_lines=1, wire_units=25000, wire_lines=1,
+                       notice="MEMORY.md is 27.3KB (limit: 24.4KB) — index entries are"
+                              " too long." + NOTICE_TAIL),
+    "line_exact": dict(disk_units=4199, disk_lines=200, wire_units=4199, wire_lines=200,
+                       notice=None),
+    "line_over1": dict(disk_units=4220, disk_lines=201, wire_units=4199, wire_lines=200,
+                       notice="MEMORY.md is 201 lines (limit: 200)." + NOTICE_TAIL),
+    "both": dict(disk_units=30299, disk_lines=300, wire_units=20199, wire_lines=200,
+                 notice="MEMORY.md is 300 lines and 29.6KB." + NOTICE_TAIL),
+    "trim": dict(disk_units=25003, disk_lines=1, wire_units=25000, wire_lines=1,
+                 notice=None),
 }
 
 
@@ -254,10 +272,10 @@ def build(root, port):
                 fh.write(text.encode("utf-8"))
 
             units, lines = utf16_units(text), line_count(text)
-            exp_u, exp_l, _ = EXPECTED[name]
-            if units != exp_u or lines != exp_l:
-                print(f"FAIL: {name} built {units}u/{lines}L, expected {exp_u}u/{exp_l}L",
-                      file=sys.stderr)
+            exp = EXPECTED[name]
+            if units != exp["disk_units"] or lines != exp["disk_lines"]:
+                print(f"FAIL: {name} built {units}u/{lines}L, expected "
+                      f"{exp['disk_units']}u/{exp['disk_lines']}L", file=sys.stderr)
                 return 1
 
             manifest[name] = {
@@ -310,7 +328,7 @@ def analyze(root):
     manifest = json.loads((root / "manifest.json").read_text())
     ok = True
 
-    print(f"{'arm':11} {'disk u':>7} {'wire u':>7} {'wire L':>7} {'tools':>6}  notice")
+    print(f"{'arm':11} {'disk u':>7} {'wire u':>7} {'wire L':>7} {'tools':>6}  verdict")
     print("-" * 100)
     for name, info in sorted(manifest.items()):
         cap_path = root / f"{name}.jsonl"
@@ -320,24 +338,35 @@ def analyze(root):
             continue
         rec = json.loads(cap_path.open().readline())
         body = rec.get("body", rec)
-        text = json.dumps(body)                  # search the whole assembled request
         raw = _first_text(body)
 
         seg = _memory_segment(raw)
-        notice = NOTICE_RE.search(raw)
+        match = NOTICE_RE.search(raw)
+        got_notice = match.group(1) if match else None
         ntools = len(body.get("tools", []) or [])
-        exp_u, exp_l, exp_notice = EXPECTED[name]
+        exp = EXPECTED[name]
 
         wire_u = utf16_units(seg) if seg is not None else -1
         wire_l = seg.count("\n") + 1 if seg else -1
-        got_notice = bool(notice)
-        flag = "" if got_notice == exp_notice else "   <-- UNEXPECTED"
-        print(f"{name:11} {info['utf16_units']:7} {wire_u:7} {wire_l:7} {ntools:6}  "
-              f"{notice.group(1) if notice else '(none)'}{flag}")
-        if got_notice != exp_notice:
-            ok = False
 
-    print()
+        # EVERY field is asserted. Presence-only checking is what a mutant survived.
+        fails = []
+        if info["utf16_units"] != exp["disk_units"]:
+            fails.append(f"disk {info['utf16_units']}!={exp['disk_units']}")
+        if wire_u != exp["wire_units"]:
+            fails.append(f"wire {wire_u}!={exp['wire_units']}")
+        if wire_l != exp["wire_lines"]:
+            fails.append(f"lines {wire_l}!={exp['wire_lines']}")
+        if got_notice != exp["notice"]:
+            fails.append("notice text differs")
+
+        print(f"{name:11} {info['utf16_units']:7} {wire_u:7} {wire_l:7} {ntools:6}  "
+              f"{'ok' if not fails else 'FAIL: ' + '; '.join(fails)}")
+        if fails:
+            ok = False
+            print(f"{'':11}   expected notice: {exp['notice']!r}")
+            print(f"{'':11}   observed notice: {got_notice!r}")
+
     print("OK" if ok else "MISMATCH -- read the captures, do not adjust the expectations")
     return 0 if ok else 1
 
