@@ -321,7 +321,12 @@ CI auto-commits README updates when registry files change on `main` (`.github/wo
 
 ## Viz Deploy Model
 
-The visualization deploys to GitHub Pages from `.github/workflows/deploy-pages.yml`, which regenerates `viz/public/data/skills.json` before `vite build`. A registry change therefore reaches the page only through `build-data.js`, which reads three registries — `skills`, `agents`, `teams` — and every `skills/<id>/SKILL.md` body, from which it derives the node title, `metadata.tags`, and the entire skill-to-skill link set. The trigger paths therefore include `skills/*/SKILL.md` (#451). They deliberately exclude `guides/_registry.yml`, which no deploy step reads (#452), `skills/_template/SKILL.md`, which has no registry entry, and `agents/*.md` / `teams/*.md`, whose bodies `build-data.js` never opens.
+**Every generated-and-committed artifact in this repository, and what reads each one, is
+enumerated in `generated-artifacts.yml` and checked by `npm run check:generated-artifacts`
+(#590).** The rows below are the viz-specific detail; that file is the list, and it is the one
+thing a new generator cannot be added without touching.
+
+The visualization deploys to GitHub Pages from `.github/workflows/deploy-pages.yml`, which regenerates `viz/public/data/skills.json` before `vite build`. A registry change therefore reaches the page only through `build-data.js`, which has **nine** inputs, not the four usually cited: the three registries `skills` / `agents` / `teams`; every `skills/<id>/SKILL.md` body, from which it derives the node title, `metadata.tags` and the entire skill-to-skill link set; `i18n/_config.yml`; the three `i18n/<locale>/{skills,agents,teams}` directory scans; and `viz/js/title-case.js`. The i18n inputs are load-bearing rather than incidental — `_config.yml` supplies `meta.supportedLocales`, and the scans put a `locales` field on **every** node, so scaffolding one translated skill changes the published graph. That is why `i18n/**` is a trigger path, and it is the one pattern in `deploy-pages.yml` carrying no comment explaining itself. The trigger paths therefore include `skills/*/SKILL.md` (#451). They deliberately exclude `guides/_registry.yml`, which no deploy step reads (#452), `skills/_template/SKILL.md`, which has no registry entry, and `agents/*.md` / `teams/*.md`, whose bodies `build-data.js` never opens.
 
 The site makes three kinds of runtime fetch, and only the first is CI-derived:
 
@@ -343,7 +348,13 @@ It compares the `put id:"…"` ids in `viz/` against the node ids in the committ
 
 Adding a PUT annotation therefore also means adding a member line in `debt-ratchet.yml` in the same commit, until #601 lands. And check the ruler before believing a count from a variant of this check: anchoring the diagram scan on `[` alone reports five missing nodes where one is real, because `node_type:"input"` renders as `id(["…"])`; skipping the generator's own `exclude` adds two more; walking the filesystem instead of asking git scans 7,177 files instead of 72 and reaches the annotated examples vendored into `viz/renv/library/`.
 
-The icon manifests (`icon-manifest.json`, `agent-icon-manifest.json`, `team-icon-manifest.json`) are *not* fetched at runtime at all. They are inputs to the R renderers in `viz/build.sh`, which produce committed PNGs. Regenerate them locally when glyphs change, via the full pipeline:
+The icon manifests — all three under `viz/public/data/`, not `viz/` and not `viz/data/`, both of which appear in older prose and in the generator's own docstring — are *not* fetched at runtime at all. `viz/js/icons.js` derives icon URLs purely by convention, so a missing render is a silent 404 and no manifest lookup exists that could catch it.
+
+They are inputs to the R renderers in `viz/build.sh` **and outputs of them**: `build-icons.R`, `build-agent-icons.R` and `build-team-icons.R` each `write_manifest(...)` back. So `bash viz/build.sh` dirties the manifests BY DESIGN, and any regenerate-and-diff gate over them must account for that or it can never come out clean.
+
+What the renderers produce is **WebP** — 8,280 committed across `viz/public/icons/` and `icons-hd/`. PNG exists only as a `tempdir()` intermediate that is deleted before the manifest write-back. The committed `.png` files are favicons and wordmarks from `build-favicon.R` / `build-wordmark.R`, which `build.sh` never invokes at all.
+
+Regenerate the manifests locally when glyphs change, via the full pipeline:
 
 ```bash
 cd viz && bash build.sh          # never call Rscript directly
@@ -351,7 +362,9 @@ cd viz && bash build.sh          # never call Rscript directly
 
 Note that `npm run build-manifest` builds skill manifests only — `build-icon-manifest.js` defaults to `['skill']`, and `build.sh` passes `--type all`.
 
-`viz/public/data/skills.json` stays committed for local `npm run dev` and the Docker image. Because CI regenerates it on deploy, a stale committed copy no longer reaches the published site, but it can still drift from the registries in-tree; refresh it with `npm run build-data` in the same commit as the content change.
+`viz/public/data/skills.json` stays committed for local `npm run dev` and for `npm run build-manifest` run standalone — **not** for the Docker image, which is what this said before. `viz/docker-entrypoint.sh` runs `node build-data.js` on every container start, overwriting the copy baked in by the Dockerfile. (And that regeneration is degraded: `viz/Dockerfile` copies `skills/` and `agents/` but never `teams/` or `i18n/`, and `build-data.js` only *warns* when those are absent — so the container serves a graph with zero teams and empty locales.)
+
+Because CI regenerates it on deploy, a stale committed copy no longer reaches the published site, but it can still drift from the registries in-tree; refresh it with `npm run build-data` in the same commit as the content change. Note `build-data.js` stamps `meta.generated`, so any staleness gate must compare with that key removed.
 
 ## Internationalization (i18n)
 
