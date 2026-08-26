@@ -117,11 +117,33 @@ function withoutComments(text) {
     .join('\n');
 }
 
-/** Every `node`/`Rscript` script path in a command string. `matchAll`, so an `&&` chain is not
- * truncated at its first invocation. */
+/** A script path: anchored, so testing one token is linear. */
+const SCRIPT_PATH = /^[\w./-]+\.(?:js|mjs|R)$/;
+
+/**
+ * Every `node`/`Rscript` script path in a command string.
+ *
+ * TOKENS, not one big regex. The first version used
+ * `(?:node|Rscript)\s+(?:--?\S+\s+)*([\w./-]+\.(?:js|mjs|R))` and CodeQL flagged the
+ * flag-skipping group as exponential backtracking: `--?` followed by `\S+`, which can itself
+ * match a dash, is ambiguous, so `node -` plus many repetitions of `-! -` blows up. That group
+ * was added to handle `node --flag path.js`; scanning tokens handles it without the ambiguity,
+ * and states the rule plainly — after `node`, skip flags, take the first non-flag token.
+ *
+ * Every invocation in the string is found, so an `&&` chain is not truncated at its first.
+ */
 function scriptPathsIn(command) {
-  return [...String(command).matchAll(/(?:node|Rscript)\s+(?:--?\S+\s+)*([\w./-]+\.(?:js|mjs|R))/g)]
-    .map((match) => match[1]);
+  const tokens = String(command).split(/\s+/);
+  const found = [];
+  for (let i = 0; i < tokens.length; i += 1) {
+    if (tokens[i] !== 'node' && tokens[i] !== 'Rscript') continue;
+    for (let j = i + 1; j < tokens.length; j += 1) {
+      if (tokens[j].startsWith('-')) continue;
+      if (SCRIPT_PATH.test(tokens[j])) found.push(tokens[j]);
+      break;
+    }
+  }
+  return found;
 }
 
 // ── Load ──────────────────────────────────────────────────────────────────────────────────────
