@@ -133,7 +133,16 @@ const SCRIPT_PATH = /^[\w./-]+\.(?:js|mjs|R)$/;
  * Every invocation in the string is found, so an `&&` chain is not truncated at its first.
  */
 function scriptPathsIn(command) {
-  const tokens = String(command).split(/\s+/);
+  // Normalise shell punctuation to spaces FIRST. Splitting on whitespace alone lost two forms
+  // the previous regex caught, found by attacking this function rather than by review:
+  //
+  //   node a/build-a.js&&node b/build-b.js   -> [] because `a/build-a.js&&node` is one token
+  //   bash -c "node scripts/build-x.js"      -> [] because the quote sticks to `node`
+  //
+  // Neither shape occurs in this repo today, and both are SILENT misses — which in the reverse
+  // sweep means a generator addable without naming its reader. Alternation with no nested
+  // quantifier, so this stays linear and the ReDoS class does not return.
+  const tokens = String(command).replace(/["'`]|&&|\|\||[;|()]/g, ' ').split(/\s+/);
   const found = [];
   for (let i = 0; i < tokens.length; i += 1) {
     if (tokens[i] !== 'node' && tokens[i] !== 'Rscript') continue;

@@ -208,6 +208,38 @@ test('REFUSES when no workflow commits output back, because source 3 found nothi
   assert.match(output, /source 3 found nothing/);
 });
 
+test('shell forms that pack invocations together are still swept', (t) => {
+  // Found by attacking the tokenizer, not by review. The ReDoS fix replaced a regex with
+  // whitespace splitting, which silently lost two forms the regex had caught:
+  //
+  //   node a/build-a.js&&node b/build-b.js   -> `a/build-a.js&&node` is one token
+  //   bash -c "node scripts/build-x.js"      -> the quote sticks to `node`
+  //
+  // A silent miss in the REVERSE sweep is a generator addable without naming its reader, which
+  // is the single property this checker exists to establish — so it must be pinned rather than
+  // left to the next person to rediscover.
+  const dir = fixture(t, {
+    files: {
+      'package.json': JSON.stringify({
+        scripts: {
+          'check-thing': 'node gen/build-thing.js --check',
+          'build-thing': 'node gen/build-thing.js',
+          'build-packed': 'node gen/build-packed-a.js&&node gen/build-packed-b.js',
+          'build-quoted': 'bash -c "node gen/build-quoted.js"',
+        },
+      }, null, 2),
+    },
+  });
+  const { status, output } = run(dir);
+  assert.equal(status, 1, output);
+  for (const expected of ['gen/build-packed-a.js', 'gen/build-packed-b.js', 'gen/build-quoted.js']) {
+    assert.ok(
+      output.includes(`UNLISTED GENERATOR: ${expected}`),
+      `${expected} was not swept — the tokenizer lost a shell form. Output:\n${output}`,
+    );
+  }
+});
+
 test('--root without a value is refused rather than silently defaulting', (t) => {
   // Defaulting here would run the check against the REPO while a caller believed it was pointed
   // at a fixture — a green result about the wrong tree.
