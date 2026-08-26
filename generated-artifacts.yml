@@ -31,19 +31,38 @@
 # be listed under `generators_without_committed_output` with a reason. A new generator therefore
 # cannot be added silently.
 #
-#   1. npm scripts in `package.json` and `viz/package.json` named build*/generate*/update*
+#   1. npm scripts in `package.json` and `viz/package.json`
 #   2. commands invoked by `viz/build.sh`
 #   3. steps in `.github/workflows/` that commit output back to the repository
+#
+# Whatever those reach is filtered by the GENERATOR'S OWN FILENAME — `build*`, `generate*`,
+# `update*`. Keying on the filename rather than the npm alias matters twice: source 3 would
+# otherwise sweep every script a committing workflow runs, including checkers, and the alias rule
+# had a live blind spot — `translation:status` runs `scripts/generate-translation-status.js`, a
+# real generator of a committed artifact that no alias-keyed sweep could see.
+#
+# An earlier revision of this header advertised three sources while the checker implemented TWO,
+# which left four of the five exemptions below unable to match anything — written for a design the
+# code did not have. An adversarial review caught the file whose banner is "CHECKED, not merely
+# written" making an unchecked claim about its own enforcement. Source 3 is now implemented, and
+# an exemption that could never match is itself a finding.
 #
 # Source 2 is load-bearing and was almost omitted. `viz/package.json` has NO script for
 # `build-wordmark.R` or `build-terminal-glyphs.js`, so an npm-script-only sweep would miss two
 # generators — including the one feeding `cli/lib/glyph-data.json`, which SHIPS TO NPM.
 #
-# ## The blind spot, stated rather than discovered later
+# ## The blind spots, stated rather than discovered later
 #
-# A generator invoked from none of those three places is invisible to the reverse sweep and is
-# covered only by the forward assertion, the way `debt-ratchet.yml` marks `token: none`. That is
-# the honest limit of this design: it makes adding a generator loud, not impossible.
+# ADDING a generator is loud only if it is reachable from one of the three sources AND its
+# filename carries one of the three prefixes. A `postprocess-thing.js` invoked from a fourth
+# place is invisible, covered only by the forward assertion — the way `debt-ratchet.yml` marks
+# `token: none`.
+#
+# DELETING a row is the unstated half, and it is quieter. A row whose generator the sweep cannot
+# reach loses its forward protection with no signal at all. Three rows are in that position today
+# — `docs-wordmark` (no script, no build.sh line), `discovery-symlinks` (a `.sh`, outside the
+# extension set) and `translation-status` before the filename fix. Deleting any of those is
+# currently silent.
 #
 # ## Two constraints any regenerate-and-diff gate here must respect
 #
@@ -54,6 +73,14 @@
 #     A gate must compare with that key removed, or it fails on every run.
 
 version: 1
+
+# Measured claims in the `unread_edge` prose below — counts, timestamps, "currently stale" — are
+# a SNAPSHOT of 2026-08-26 and no tool reads them. They are here because an unread edge is not
+# actionable without knowing what it is costing right now. They will go stale: #714's palette and
+# icon regeneration would falsify several of them in one commit. Re-derive before quoting, and
+# treat a disagreement between this prose and the corpus as this file being out of date rather
+# than as a finding.
+as_of: 2026-08-26
 
 artifacts:
 
@@ -83,8 +110,10 @@ artifacts:
     gate:
       kind: regenerate-and-diff
       command: npm run check-readmes
-      where: package.json
-      also: .github/workflows/validate-readmes.yml
+      # The WORKFLOW, not package.json. A package.json needle proves the npm alias exists and
+      # nothing about whether CI runs it — so unwiring the gate would have been invisible.
+      where: .github/workflows/validate-readmes.yml
+    also: package.json
     notes: >-
       The daily schedule in validate-readmes.yml is not redundant with the per-PR run: it is what
       catches drift when the auto-commit healer itself fails.
@@ -95,7 +124,8 @@ artifacts:
     gate:
       kind: regenerate-and-diff
       command: npm run check-dreams
-      where: package.json
+      where: .github/workflows/validate-dreams.yml
+    also: package.json
 
   # ── Regenerated on deploy, so the PUBLISHED copy is safe; the committed copy is unread ─────
 
@@ -235,6 +265,10 @@ artifacts:
       - viz/public/favicon*
       - viz/public/apple-touch-icon.png
       - viz/public/favicons/**
+      # `logo*` was missing while `build-favicon.R` writes all five — an adversarial review found
+      # five committed outputs of an ALREADY-LISTED generator sitting outside the inventory,
+      # which is the failure mode a row-shaped table has and a path-shaped one does not.
+      - viz/public/logo*
     generator: viz/build-favicon.R
     gate:
       kind: none
@@ -274,9 +308,14 @@ artifacts:
 generators_without_committed_output:
   - id: viz-build
     command: vite build
-    reason: writes viz/dist/, which .gitignore excludes.
+    matches_nothing_by_design: true
+    reason: >-
+      Writes viz/dist/, which .gitignore excludes. Documentation rather than an exemption: `vite`
+      is not a `node`/`Rscript` invocation, so the sweep can never discover it and this entry can
+      never be what lets it through.
   - id: viz-build-data-in-container
     command: docker-entrypoint.sh
+    matches_nothing_by_design: true
     reason: >-
       Regenerates inside the container image, not the repository. NOTE a real defect found while
       enumerating this: viz/Dockerfile copies skills/ and agents/ but NEVER teams/ or i18n/, and
@@ -284,12 +323,16 @@ generators_without_committed_output:
       empty locales.
   - id: cli-adapters
     command: cli/adapters/*
-    reason: writes into the USER's project or home directory, never this repository.
+    matches_nothing_by_design: true
+    reason: >-
+      Writes into the USER's project or home directory, never this repository. A glob, so it
+      names no concrete path the sweep could match — documentation, not an exemption.
   - id: coverage-matrix
     command: node scripts/coverage-matrix.js
     reason: writes only when `--out <path>` is passed; no committed output exists and no workflow passes it.
   - id: update-readmes-healer
     command: .github/workflows/update-readmes.yml
+    matches_nothing_by_design: true
     reason: >-
       The only workflow that commits back. What it commits is the readme-family and
       translation-status artifacts already listed above, so it is a re-invocation of listed

@@ -12,7 +12,7 @@
  *
  * Result at introduction, 2026-08-26:
  *
- *     gate-envelope: 6 killed, 1 survived as documented of 7 case(s).
+ *     gate-envelope: 7 killed, 1 survived as documented of 8 case(s).
  *
  * The documented survivor pins the reverse sweep's stated blind spot as a MEASUREMENT rather than
  * a promise: the sweep matches npm scripts named build- / generate- / update-prefixed, so a generator hidden
@@ -64,14 +64,44 @@ export const cases = [
     expect: 'does not exist',
   },
   {
-    label: 'FORWARD: a gate the row claims but its workflow no longer runs',
-    // The rot this repo has actually shipped: a gate is renamed or dropped and the documentation
-    // asserting it stays behind. Same shape as debt-ratchet's advisory-gate forward assertion.
+    label: 'FORWARD: a row naming a gate command nothing runs',
+    // Renames the command IN THE INVENTORY. An earlier label called this "its workflow no longer
+    // runs", which overstated what the mutation shows — it never touches a workflow. The case
+    // below is the one that does.
     file: 'generated-artifacts.yml',
     find: '      command: npm run check-dreams',
     replace: '      command: npm run check-dreams-renamed',
     expect: 'does not appear in',
   },
+  {
+    label: 'FORWARD: the gate is UNWIRED FROM CI, and comments about it survive',
+    // The review's F3, reproduced before it was fixed. The forward check asks whether the gate's
+    // command appears in the file that runs it, and `#`-prefixed lines used to count. Deleting
+    // the real step from deploy-pages.yml left THREE comment mentions of `build-data` behind,
+    // and the check stayed green over an unwired gate — this repo's own "prove the wiring, not
+    // the component" rule, failed. Comments are stripped before the haystack test now.
+    //
+    // This is also why `where:` points at the WORKFLOW rather than package.json: a package.json
+    // needle proves the npm alias exists and says nothing about whether CI invokes it.
+    file: '.github/workflows/deploy-pages.yml',
+    find: '      - name: Generate viz data from registries\n'
+      + '        working-directory: viz\n'
+      + '        run: npm run build-data\n',
+    replace: '',
+    expect: 'outside of comments',
+  },
+  // NOT AN ENVELOPE CASE: "an exemption must not swallow a different generator by containment".
+  //
+  // The property is only observable when a generator is simultaneously DISCOVERED, UNLISTED and
+  // falsely exempted — two edits, in two distant regions of the file, where an envelope case is
+  // one find/replace on one file. Written as one anyway, it SURVIVED: adding a harmless
+  // exemption is correctly a no-op, so the case asserted nothing. It indicted the fixture, not
+  // the gate.
+  //
+  // It lives in `scripts/test/generated-artifacts.test.js`, which builds its fixture from
+  // scratch and can arrange all three conditions at once — with COLLIDING paths, which the
+  // original test's `gen/scratch.js` vs `gen/other.js` did not have, and which is why that test
+  // could not catch the bug it claimed to cover.
   {
     label: 'FORWARD: an unread edge that does not say what being unread costs',
     // `gate.kind: none` is a legitimate answer — #590 says "the decision not to have one is
