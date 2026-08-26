@@ -155,6 +155,28 @@ jobs:
       - name: Check agent file vs registry parity (#434)
         run: npm run validate:agent-parity
 
+      # Generated-and-committed artifact inventory (#590).
+      #
+      # Nearly every gate here validates a TILE — frontmatter, line counts, fence tags. Nearly
+      # every failure that has shipped was an EDGE: a generated artifact disagreeing with the
+      # source beneath it. The edge gates that exist were each added AFTER the corresponding edge
+      # failed, and were never enumerated as a class, so "which edges are undecorated?" had no
+      # answer. `generated-artifacts.yml` is that enumeration and this is what keeps it true.
+      #
+      # BLOCKING, and it is an inventory-consistency check rather than a debt gate — there is no
+      # backlog to ratchet down. It asserts FORWARD that every declared path still matches a
+      # tracked file, every generator exists and every claimed gate still appears where the row
+      # says; and REVERSE that every generator reachable from npm scripts or `viz/build.sh` is
+      # listed, so a new one cannot be added without naming its reader.
+      #
+      # Negative evidence: `scripts/envelopes/generated-artifacts.mjs`, 6 killed / 1 documented
+      # survivor of 7 cases. The survivor pins the sweep's stated blind spot — it keys on script
+      # NAME — as a measurement rather than a promise.
+      #
+      # HERE for the same reason as the step above: `js-yaml`.
+      - name: Check generated-artifact inventory (#590)
+        run: npm run check:generated-artifacts
+
       - name: Check translation freshness (warn only)
         run: node scripts/check-translation-freshness.js --warn
 
