@@ -5,6 +5,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.9.1] - 2026-08-26
+
+The first release to actually reach npm since `1.3.0`. `1.9.0` was tagged on 2026-08-19 and its publish failed with `E404` on the PUT; the credential behind it was later measured dead (`E401` on `whoami`). This release carries that fix and the content that accumulated behind it.
+
+**`cli/` is byte-identical to `1.9.0`.** This is a content release, not a code one — every breaking change described under `[1.9.0]` still applies and still describes the CLI you get. Read that section before upgrading from `1.3.0`.
+
+### Added
+- **`verify-memory-integrity` skill** — validates an agent memory store end to end: frontmatter, link targets, index coverage in both directions, and orphan detection. Ships with `references/EXAMPLES.md`. Skills **370 → 371**, domains unchanged at 66.
+- `references/EXAMPLES.md` for `prune-agent-memory` and `repair-broken-references`, extracting long examples out of the SKILL.md bodies under the agentskills.io progressive-disclosure pattern.
+
+### Changed
+- `manage-memory`, `prune-agent-memory`, `repair-broken-references` and `validate-references` substantially rewritten — the four memory-maintenance skills now describe one consistent store shape and cross-reference each other rather than each restating the format.
+- `agents/librarian.md` — capabilities and skill list brought in line with the memory skills above.
+- `guides/protecting-github-repositories.md` — branch-protection guidance rewritten against the live ruleset API, including that reading which rules bind a branch and reading who bypasses them are two separate calls.
+
+### Fixed
+- **The release path published nothing for three months.** `release.yml` authenticated with a secret named `NPM_TOKEN_2` that was dead, then deleted; the workflow kept referencing the deleted name, and a missing GitHub secret resolves to the empty string rather than failing. Repointed at `NPM_TOKEN` (#696, #746).
+- **`release.yml` never checked that the git tag matched `package.json`.** `npm publish` takes its version from the manifest and ignores the ref; `gh release create` takes its title from the ref and ignores the manifest. A mismatch was silent and green: tagging `v1.9.1` against a manifest reading `1.9.0` would have published 1.9.0 — a free version, so the PUT succeeds — under a release titled "Release v1.9.1", leaving `npm i agent-almanac@1.9.1` a permanent `E404`. Guarded on the tag path.
+- `package-lock.json` declared `1.3.0` while `package.json` declared `1.9.0` — the earlier bump was hand-edited. Both now move together via `npm version`.
+
+
 ## [1.9.0] - 2026-08-19
 
 The last release of the JavaScript CLI. The version number is deliberate: `2.0.0` is held for the Rust port (#256), so this line ends at `1.9.x`.
@@ -87,7 +108,9 @@ The last release of the JavaScript CLI. The version number is deliberate: `2.0.0
 
 First published release.
 
-[Unreleased]: https://github.com/pjt222/agent-almanac/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/pjt222/agent-almanac/compare/v1.9.1...HEAD
+[1.9.1]: https://github.com/pjt222/agent-almanac/compare/v1.9.0...v1.9.1
+[1.9.0]: https://github.com/pjt222/agent-almanac/compare/v1.3.0...v1.9.0
 [1.3.0]: https://github.com/pjt222/agent-almanac/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/pjt222/agent-almanac/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/pjt222/agent-almanac/releases/tag/v1.1.0

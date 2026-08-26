@@ -102,6 +102,33 @@ jobs:
       # corresponding to no ref marker at all, and this repo's stated threat model is the
       # agent-driven accident, where a stray `-f dry_run=false` is one flag against a deliberate
       # multi-step tag push.
+      # THE TAG IS NOT THE VERSION. `npm publish` takes the version from package.json and never
+      # looks at the ref; `gh release create` takes its title from the ref and never looks at the
+      # manifest. Nothing downstream compares them, so a mismatch is not merely unguarded — it is
+      # SILENT AND GREEN. Tagging `v1.9.1` against a manifest still reading `1.9.0` would publish
+      # 1.9.0 (a free version, so the PUT succeeds), title the GitHub Release "Release v1.9.1",
+      # and leave `npm i agent-almanac@1.9.1` returning E404 for good. A version number does not
+      # come back.
+      #
+      # `pretest:cli` -> `prepublishOnly` was the only pre-PUT hook and it checks CLI-suite naming,
+      # nothing about versions.
+      #
+      # Tag path only. On `workflow_dispatch` from a branch there is no version claim to check,
+      # and the publish arm cannot arm from a branch anyway.
+      #
+      # A tag push runs the workflow file AT THE TAGGED REF, so this protects tags cut at or after
+      # the commit that adds it — never a tag that already exists.
+      - name: The tag must match the manifest
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          PKG="$(node -p 'require("./package.json").version')"
+          if [ "v$PKG" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match package.json version $PKG."
+            echo "Publishing would put $PKG on npm under a release titled $GITHUB_REF_NAME."
+            exit 1
+          fi
+          echo "tag $GITHUB_REF_NAME matches package.json $PKG"
+
       - name: Publish to npm
         if: >-
           github.event_name == 'push' ||
