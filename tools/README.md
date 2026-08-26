@@ -55,6 +55,21 @@ skills. This one guards a *third party's* internals on the way out. Neither subs
 other, and the first real use of this one caught four findings in a probe script already staged
 for a public commit.
 
+**Know what it is second-best to before you extend it (#751).** A shape-tier deny-list reaches an
+internal name one spelling at a time: this one cleared `_n` described in prose, then — a round
+later, after a shape was added for that — cleared a verbatim bundle span quoted as `${…}`. Same
+class, two escapes. The better question is **provenance over spans**: does this published text
+appear verbatim in the artifact being audited? That needs no list and cannot be escaped by
+respelling. It also needs a measured false-positive rate first, because a shipped binary is full
+of ordinary English.
+
+Two consequences for anyone touching this file. **Widening the identifier shapes to catch more
+minified names is not worth doing** — those rotate every release and carry nothing attributable;
+they are belt-and-braces against a careless paste, not the control. And a provenance tool is not
+automatically safe here either: one that tokenizes before asking provenance never asks about a
+span containing no identifier-shaped token, which is a shape dependency hiding inside a
+provenance design.
+
 **A `--verify` nobody has watched fail is a green light of unknown wiring.** `capgeom.py
 --selftest-negative` is the answer to that for this directory: it mutates a recorded figure in
 memory — never the file on disk, so there is no mutant to strand — and asserts `--verify` exits
