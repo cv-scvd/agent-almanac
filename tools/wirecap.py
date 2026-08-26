@@ -34,9 +34,18 @@ USAGE
     python3 tools/wirecap.py --port 8787 --out capture.jsonl     # run the server
     python3 tools/wirecap.py --verify                            # self-test, exit non-zero on failure
 
-    # in another shell
-    ANTHROPIC_BASE_URL=http://127.0.0.1:8787 \
-      printf '%s' 'hello' | claude -p --tools "" --strict-mcp-config
+    # in another shell -- the assignment goes on `claude`, NEVER in front of a pipeline
+    printf '%s' 'hello' | ANTHROPIC_BASE_URL=http://127.0.0.1:8787 \
+      claude -p --tools "" --strict-mcp-config
+
+    # WHY THE ORDER MATTERS. `VARS printf '%s' hi | claude -p ...` applies the assignments to
+    # `printf` ONLY -- they never reach `claude`. The capture then stays empty, the real API
+    # answers, and any fixture written for the run lands in a LIVE memory store. Measured:
+    # `FOO=bar printf x | sh -c 'echo ${FOO:-UNSET}'` prints UNSET. This exact form was
+    # published in this docstring until 2026-08-26 and is the cause of a false finding
+    # upstream, reported as "a nested session ignores the isolation variables" and retracted
+    # the same day (anthropics/claude-code#82056, comment 5424142726). Calling from Python,
+    # pass `env=` to subprocess and the shape cannot occur at all.
 
 Then difference two captures:
 
