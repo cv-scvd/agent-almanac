@@ -89,19 +89,6 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      # The dispatch arm is spelled with an explicit `github.event_name` test rather than leaning
-      # on `inputs.dry_run` alone. On any non-dispatch event `inputs` is empty, `inputs.dry_run` is
-      # null, and GitHub casts both null and false to 0 — so `inputs.dry_run == false` is TRUE on
-      # every such event. That is harmless while `push` is the only other trigger, because its own
-      # disjunct is already true; add a third trigger and the publish step arms itself on it with
-      # nobody having touched this line.
-      #
-      # `startsWith(github.ref, 'refs/tags/')` is not about privilege — anyone who can dispatch can
-      # already push a tag. It is about EVIDENCE. A tag-push publish anchors the published bytes to
-      # a tag and a release; a dispatch publish from a branch leaves a version on the registry
-      # corresponding to no ref marker at all, and this repo's stated threat model is the
-      # agent-driven accident, where a stray `-f dry_run=false` is one flag against a deliberate
-      # multi-step tag push.
       # THE TAG IS NOT THE VERSION. `npm publish` takes the version from package.json and never
       # looks at the ref; `gh release create` takes its title from the ref and never looks at the
       # manifest. Nothing downstream compares them, so a mismatch is not merely unguarded — it is
@@ -129,6 +116,19 @@ jobs:
           fi
           echo "tag $GITHUB_REF_NAME matches package.json $PKG"
 
+      # The dispatch arm is spelled with an explicit `github.event_name` test rather than leaning
+      # on `inputs.dry_run` alone. On any non-dispatch event `inputs` is empty, `inputs.dry_run` is
+      # null, and GitHub casts both null and false to 0 — so `inputs.dry_run == false` is TRUE on
+      # every such event. That is harmless while `push` is the only other trigger, because its own
+      # disjunct is already true; add a third trigger and the publish step arms itself on it with
+      # nobody having touched this line.
+      #
+      # `startsWith(github.ref, 'refs/tags/')` is not about privilege — anyone who can dispatch can
+      # already push a tag. It is about EVIDENCE. A tag-push publish anchors the published bytes to
+      # a tag and a release; a dispatch publish from a branch leaves a version on the registry
+      # corresponding to no ref marker at all, and this repo's stated threat model is the
+      # agent-driven accident, where a stray `-f dry_run=false` is one flag against a deliberate
+      # multi-step tag push.
       - name: Publish to npm
         if: >-
           github.event_name == 'push' ||

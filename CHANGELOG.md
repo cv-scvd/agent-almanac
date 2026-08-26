@@ -25,7 +25,6 @@ The first release to actually reach npm since `1.3.0`. `1.9.0` was tagged on 202
 - **`release.yml` never checked that the git tag matched `package.json`.** `npm publish` takes its version from the manifest and ignores the ref; `gh release create` takes its title from the ref and ignores the manifest. A mismatch was silent and green: tagging `v1.9.1` against a manifest reading `1.9.0` would have published 1.9.0 — a free version, so the PUT succeeds — under a release titled "Release v1.9.1", leaving `npm i agent-almanac@1.9.1` a permanent `E404`. Guarded on the tag path.
 - `package-lock.json` declared `1.3.0` while `package.json` declared `1.9.0` — the earlier bump was hand-edited. Both now move together via `npm version`.
 
-
 ## [1.9.0] - 2026-08-19
 
 The last release of the JavaScript CLI. The version number is deliberate: `2.0.0` is held for the Rust port (#256), so this line ends at `1.9.x`.
