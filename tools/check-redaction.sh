@@ -148,8 +148,8 @@ verify() {
     esac > "$tmp/canary.md"
     seeded=$((seeded + 1))
     out="$(scan_all "$tmp/canary.md")"; rc=$?
-    if [ "$rc" -lt 1 ]; then
-      echo "verify FAIL: seeded '$label' was NOT caught -- the gate is blind to it" >&2
+    if [ "$rc" -ne 1 ]; then
+      echo "verify FAIL: seeded '$label' gave exit $rc, expected 1 (findings found)" >&2
       missed=$((missed + 1))
       continue
     fi
@@ -171,6 +171,30 @@ verify() {
     missed=$((missed + 1))
   fi
 
+  # 5. The finding COUNT must not reach the exit status. Regression for the 2026-08-26 defect:
+  #    while the count was the exit code, 2 findings rendered as COULD NOT RUN with both
+  #    swallowed, and 256 findings exited 0 and printed "clean" -- a gate certifying a
+  #    maximally-leaky draft. 255 and 256 straddle the byte wrap; 2 is the reserved collision.
+  local n
+  for n in 2 255 256; do
+    : > "$tmp/many.md"
+    local i=0
+    while [ "$i" -lt "$n" ]; do
+      printf 'lineCount is what `_n` computes\n' >> "$tmp/many.md"
+      i=$((i + 1))
+    done
+    out="$(scan_all "$tmp/many.md")"; rc=$?
+    if [ "$rc" -ne 1 ]; then
+      echo "verify FAIL: $n findings exited $rc, expected 1 -- the count is reaching the exit status" >&2
+      missed=$((missed + 1))
+      continue
+    fi
+    if [ "$(printf '%s\n' "$out" | grep -c '[^[:space:]]')" -ne "$n" ]; then
+      echo "verify FAIL: $n findings seeded but a different number was reported" >&2
+      missed=$((missed + 1))
+    fi
+  done
+
   if [ "$missed" -ne 0 ]; then
     echo "check-redaction --verify: FAILED ($missed of $((seeded + 1)) checks)" >&2
     return 1
@@ -179,9 +203,19 @@ verify() {
   return 0
 }
 
+# Returns 0 clean / 1 findings found / 2 could not run. The COUNT is carried in the printed
+# findings, one per line, NOT in the exit status.
+#
+# The skills specify "exit code = leak count" and that specification is unsound, because a
+# process exit status is a byte. Measured on this implementation before the contract was
+# changed: a draft with exactly TWO findings exited 2 and rendered as "COULD NOT RUN" with both
+# findings swallowed, and a draft with 256 findings exited 0 and printed "clean". The second is
+# the worst outcome a redaction gate has: it certifies a maximally-leaky draft. Reserving 2 for
+# could-not-run and 1 for any-findings is the only assignment that keeps both signals readable.
 scan_all() {
-  local total=0 file last
+  local file last
   [ "$#" -eq 0 ] && { echo "no files given" >&2; return 2; }
+  local total=0
   for file in "$@"; do
     if [ ! -r "$file" ]; then
       echo "cannot read: $file" >&2
@@ -194,7 +228,8 @@ scan_all() {
     printf '%s' "$last" | sed '$d'
     total=$((total + $(printf '%s' "$last" | tail -1)))
   done
-  return "$total"
+  [ "$total" -gt 0 ] && return 1
+  return 0
 }
 
 main() {
@@ -203,7 +238,7 @@ main() {
     --labels) list_labels; exit 0 ;;
     -h|--help|"") sed -n '2,50p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
   esac
-  local out rc
+  local out rc count
   out="$(scan_all "$@")"; rc=$?
   if [ "$rc" -eq 2 ]; then
     echo "check-redaction: COULD NOT RUN -- this is not a pass" >&2
@@ -213,9 +248,11 @@ main() {
     echo "check-redaction: clean ($# file(s))"
     exit 0
   fi
-  echo "check-redaction: $rc finding(s) -- classify each with skills/redact-for-public-disclosure Step 1"
+  # The count is derived from the printed findings, never from the exit status.
+  count="$(printf '%s\n' "$out" | grep -c '[^[:space:]]')"
+  echo "check-redaction: $count finding(s) -- classify each with skills/redact-for-public-disclosure Step 1"
   printf '%s\n' "$out"
-  exit "$rc"
+  exit 1
 }
 
 main "$@"
