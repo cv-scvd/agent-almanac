@@ -68,6 +68,23 @@ PATTERNS=(
 
   # Credential shapes, belt and braces -- a draft is the last place these can be caught.
   'credential-shape|(gh[pousr]_[A-Za-z0-9]{16,}|sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----)'
+
+  # A minified identifier NAMED IN PROSE rather than used as code. Added 2026-08-26 after a
+  # review found `_n` and `R` described in comments in a probe script this scanner had just
+  # reported clean -- the shapes above are all built around code SYNTAX (`x=1,y=2`,
+  # `function ab(e)`), so a true internal name merely discussed in English slips every one.
+  #
+  # This is a gap in `enforce-redaction-gate` Step 3 as specified, not only in this
+  # implementation: its structure-aware tier checks identifiers "in identifier position only,
+  # so a word in a comment does not trip the gate" -- written to suppress coincidental English
+  # words, which is exactly the position a prose-named internal occupies. Neither of the
+  # skill's two tiers is aimed there.
+  #
+  # Narrow deliberately, to shapes prose does not otherwise produce: a leading `_` or `$`, a
+  # lone capital, or an embedded `_`/`$`. Two-letter backticked tokens without those are
+  # excluded because this repository's prose is full of legitimate ones -- locale codes (`de`,
+  # `es`, `ja`), file types (`md`, `js`, `sh`, `py`). Widen only with a case that motivated it.
+  'minified-ident-in-prose|(`[_$][A-Za-z0-9_$]{0,2}`|`[A-Z]`|`[A-Za-z0-9]{1,2}[_$][A-Za-z0-9]{0,1}`)'
 )
 
 list_labels() {
@@ -117,7 +134,8 @@ verify() {
   #    silently misses another is the blind class `enforce-redaction-gate` Step 6 warns of.
   local seeded=0 missed=0 label
   for label in minified-declaration-run minified-function-def binary-byte-offset \
-               operator-home-path project-store-slug credential-shape; do
+               operator-home-path project-store-slug credential-shape \
+               minified-ident-in-prose; do
     case "$label" in
       minified-declaration-run) printf 'var Q="LABEL.md",zz=200,qq=25000\n' ;;
       minified-function-def)    printf 'function qz(e,t="index"){return e}\n' ;;
@@ -125,6 +143,8 @@ verify() {
       operator-home-path)       printf 'path was /home/someone/.local/share\n' ;;
       project-store-slug)       printf 'store .claude/projects/-tmp-probe-arm\n' ;;
       credential-shape)         printf 'token ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ01\n' ;;
+      # The 2026-08-26 case, verbatim in shape: a real internal name described in English.
+      minified-ident-in-prose)  printf 'lineCount is what `_n` computes, and `R` counts them\n' ;;
     esac > "$tmp/canary.md"
     seeded=$((seeded + 1))
     out="$(scan_all "$tmp/canary.md")"; rc=$?
