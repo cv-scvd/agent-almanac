@@ -1,0 +1,201 @@
+#!/usr/bin/env bash
+# check-redaction.sh -- a shape-tier deny-list scanner for outbound disclosure drafts.
+#
+# WHY THIS EXISTS
+# ---------------
+# `skills/redact-for-public-disclosure` specifies this tool in its Step 3 and
+# `skills/enforce-redaction-gate` specifies its exit-code contract. Neither shipped an
+# implementation: before 2026-08-26 every script those skills named was prose in a markdown
+# file, so the "gate" could not fail anything. This is the implementation, written when the
+# skills were first exercised for real -- an outbound comment on anthropics/claude-code#82056
+# carrying findings about a closed-source CLI harness.
+#
+# WHAT IT GUARDS, AND WHY IT IS NOT THE OTHER SCANNER
+# ---------------------------------------------------
+# `scripts/scan-skill-content.js` (`npm run validate:security`) guards THIS repository's own
+# committed content against leaking OUR credentials and PII outward to people who install our
+# skills. It is a merge gate over our trees.
+#
+# This scans a DRAFT -- a file about to leave the machine -- for THIRD-PARTY internals that
+# `redact-for-public-disclosure` classifies as `live internal`, publishable "Never -- until
+# vendor-documented":
+#
+#     minified identifier names, byte offsets, current-version gate logic, internal codenames
+#
+# The two are complementary and neither substitutes for the other. This one is deliberately
+# NOT wired into CI: it scans drafts, and a draft is not a tracked file.
+#
+# THE EXIT-CODE CONTRACT (from `enforce-redaction-gate`)
+# -----------------------------------------------------
+#     0    clean
+#     N>0  N findings
+#     2    the scanner could not run -- FAIL CLOSED, never read as a pass
+#
+# `enforce-redaction-gate` names the trap this contract exists for: a wrapper of the shape
+# `scanner && ok || echo CLEAN` reads a TOOL ERROR as a pass. Hence exit 2 and hence --verify.
+#
+# LABELS ONLY, NEVER THE PATTERN
+# ------------------------------
+# Findings print the label and the location, never the regex that matched. A deny-list of
+# internal shapes is itself a description of internals.
+#
+# USAGE
+#     tools/check-redaction.sh FILE...      scan
+#     tools/check-redaction.sh --verify     self-test; exit non-zero if the gate cannot fail
+#     tools/check-redaction.sh --labels     list what is checked, without the patterns
+set -uo pipefail
+
+SELF="$(basename "${BASH_SOURCE[0]}")"
+
+# label|regex  -- ERE. Keep each pattern narrow; `redact-for-public-disclosure` Step 8 says
+# narrow a false positive, never suppress it.
+PATTERNS=(
+  # A minified declaration run: a 1-3 char identifier assigned a string or number, twice or
+  # more in sequence. This is the shape of a bundler's `var a="x",b=1,c=2` output.
+  'minified-declaration-run|[A-Za-z_$][A-Za-z0-9_$]{0,2}=("[^"]*"|[0-9]+),[A-Za-z_$][A-Za-z0-9_$]{0,2}=("[^"]*"|[0-9]+)'
+
+  # A minified function definition: `function xy(e,t)` / `function xy(e)`. Real source uses
+  # descriptive names; 1-3 chars plus single-letter params is bundler output.
+  'minified-function-def|function [A-Za-z_$][A-Za-z0-9_$]{0,2}\([a-z](,[a-z](=[^)]*)?)*\)'
+
+  # Provenance the vendor never licensed: "at offset N", `skip=N`, `bs=1 skip=`.
+  'binary-byte-offset|(offset[ =:]+[0-9]{5,}|skip=[0-9]{5,}|dd if=[^ ]*(claude|versions)[^ ]*)'
+
+  # An operator home path or a discovered project-store slug (the #722 precedent: commit
+  # 9048cd7b3 redacted exactly these two shapes from a published RESULT.md).
+  'operator-home-path|/home/[a-z][a-z0-9_.-]*/'
+  'project-store-slug|(\.claude/projects/-|projects/-[a-z][a-z0-9-]*-scratchpad)'
+
+  # Credential shapes, belt and braces -- a draft is the last place these can be caught.
+  'credential-shape|(gh[pousr]_[A-Za-z0-9]{16,}|sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----)'
+)
+
+list_labels() {
+  printf 'checked shapes (patterns deliberately not shown):\n'
+  local entry
+  for entry in "${PATTERNS[@]}"; do
+    printf '  %s\n' "${entry%%|*}"
+  done
+}
+
+# scan_file FILE -> prints findings, echoes the count on the last line
+scan_file() {
+  local file="$1" count=0 entry label pat hits
+  for entry in "${PATTERNS[@]}"; do
+    label="${entry%%|*}"
+    pat="${entry#*|}"
+    # -a: a draft may contain odd bytes and must still be scanned, not skipped as binary.
+    hits="$(grep -aEn -- "$pat" "$file" 2>/dev/null | cut -d: -f1)" || true
+    if [ -n "$hits" ]; then
+      local line
+      while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        printf '  %-26s %s:%s\n' "$label" "$file" "$line"
+        count=$((count + 1))
+      done <<< "$hits"
+    fi
+  done
+  echo "$count"
+}
+
+verify() {
+  local tmp rc out
+  tmp="$(mktemp -d)" || { echo "verify: mktemp failed" >&2; return 2; }
+  # shellcheck disable=SC2064
+  trap "rm -rf '$tmp'" RETURN
+
+  # 1. A clean draft must exit 0.
+  printf 'The cap is 25,000 UTF-16 code units and the line cap is 200.\n' > "$tmp/clean.md"
+  out="$(scan_all "$tmp/clean.md")"; rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "verify FAIL: clean draft reported $rc finding(s)" >&2
+    echo "$out" >&2
+    return 1
+  fi
+
+  # 2. A seeded canary of EACH shape must be caught. A gate that catches one shape and
+  #    silently misses another is the blind class `enforce-redaction-gate` Step 6 warns of.
+  local seeded=0 missed=0 label
+  for label in minified-declaration-run minified-function-def binary-byte-offset \
+               operator-home-path project-store-slug credential-shape; do
+    case "$label" in
+      minified-declaration-run) printf 'var Q="LABEL.md",zz=200,qq=25000\n' ;;
+      minified-function-def)    printf 'function qz(e,t="index"){return e}\n' ;;
+      binary-byte-offset)       printf 'found at offset 204053570 in the build\n' ;;
+      operator-home-path)       printf 'path was /home/someone/.local/share\n' ;;
+      project-store-slug)       printf 'store .claude/projects/-tmp-probe-arm\n' ;;
+      credential-shape)         printf 'token ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ01\n' ;;
+    esac > "$tmp/canary.md"
+    seeded=$((seeded + 1))
+    out="$(scan_all "$tmp/canary.md")"; rc=$?
+    if [ "$rc" -lt 1 ]; then
+      echo "verify FAIL: seeded '$label' was NOT caught -- the gate is blind to it" >&2
+      missed=$((missed + 1))
+      continue
+    fi
+    if ! printf '%s' "$out" | grep -q "$label"; then
+      echo "verify FAIL: '$label' fired but did not report its own label" >&2
+      missed=$((missed + 1))
+    fi
+    # 3. The pattern itself must never be printed.
+    if printf '%s' "$out" | grep -qF '[A-Za-z_$]'; then
+      echo "verify FAIL: the output leaked a regex; labels only" >&2
+      missed=$((missed + 1))
+    fi
+  done
+
+  # 4. An unreadable target must FAIL CLOSED, not report clean.
+  scan_all "$tmp/does-not-exist.md" >/dev/null 2>&1; rc=$?
+  if [ "$rc" -ne 2 ]; then
+    echo "verify FAIL: a missing file exited $rc, expected 2 (fail closed)" >&2
+    missed=$((missed + 1))
+  fi
+
+  if [ "$missed" -ne 0 ]; then
+    echo "check-redaction --verify: FAILED ($missed of $((seeded + 1)) checks)" >&2
+    return 1
+  fi
+  echo "check-redaction --verify: OK ($seeded shapes each seeded and caught; clean exits 0; missing file exits 2; labels only)"
+  return 0
+}
+
+scan_all() {
+  local total=0 file last
+  [ "$#" -eq 0 ] && { echo "no files given" >&2; return 2; }
+  for file in "$@"; do
+    if [ ! -r "$file" ]; then
+      echo "cannot read: $file" >&2
+      return 2                                   # FAIL CLOSED
+    fi
+    # Never scan this script: it necessarily contains every shape it looks for.
+    [ "$(basename "$file")" = "$SELF" ] && continue
+    last="$(scan_file "$file")"
+    # scan_file prints findings then the count; the count is the last line.
+    printf '%s' "$last" | sed '$d'
+    total=$((total + $(printf '%s' "$last" | tail -1)))
+  done
+  return "$total"
+}
+
+main() {
+  case "${1:-}" in
+    --verify) verify; exit $? ;;
+    --labels) list_labels; exit 0 ;;
+    -h|--help|"") sed -n '2,50p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  esac
+  local out rc
+  out="$(scan_all "$@")"; rc=$?
+  if [ "$rc" -eq 2 ]; then
+    echo "check-redaction: COULD NOT RUN -- this is not a pass" >&2
+    exit 2
+  fi
+  if [ "$rc" -eq 0 ]; then
+    echo "check-redaction: clean ($# file(s))"
+    exit 0
+  fi
+  echo "check-redaction: $rc finding(s) -- classify each with skills/redact-for-public-disclosure Step 1"
+  printf '%s\n' "$out"
+  exit "$rc"
+}
+
+main "$@"

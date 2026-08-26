@@ -19,6 +19,7 @@ with a `--verify` mode can be re-run by anyone, including the next session.
 |---|---|
 | `capgeom.py` | Geometry and reconstruction arithmetic for auto-memory index cap probes. Holds the arm registry from `tests/results/2026-08-23-memory-cap-truncation-probe/`, derives every published bound from it, and refuses to agree with a figure that no longer follows from its recorded arm |
 | `wirecap.py` | Captures the request body a Claude Code session actually sends, by standing in as `ANTHROPIC_BASE_URL`. Answers locally — nothing is forwarded — and redacts credential headers before anything reaches disk. Use it when the question is "what is in the context?", which a session cannot be asked, because its self-report on that is unsound in both directions |
+| `check-redaction.sh` | Shape-tier deny-list scanner for a **draft about to leave the machine**. Implements the scanner `skills/redact-for-public-disclosure` Step 3 and `skills/enforce-redaction-gate` Step 2 both specify and neither shipped. Guards third-party internals — minified identifier shapes, byte offsets, operator home paths, store slugs, credential shapes — that the skill's category table rates publishable "Never — until vendor-documented" |
 
 ## Running
 
@@ -34,7 +35,25 @@ python3 tools/capgeom.py --span 170 147
 python3 tools/wirecap.py --verify                       # self-test: capture verbatim, redact secrets
 python3 tools/wirecap.py --port 8788 --out over.jsonl   # then point ANTHROPIC_BASE_URL at it
 python3 tools/wirecap.py --diff over.jsonl under.jsonl
+
+bash tools/check-redaction.sh --verify        # seed each shape, assert the gate catches it
+bash tools/check-redaction.sh --labels        # what is checked, without the patterns
+bash tools/check-redaction.sh DRAFT.md        # exit 0 clean / N findings / 2 COULD NOT RUN
 ```
+
+**`check-redaction.sh` exits 2 when it cannot run, and 2 must never be read as a pass.**
+`enforce-redaction-gate` names the trap it is built against: a wrapper shaped
+`scanner && ok || echo CLEAN` treats a *tool error* — a bad flag, an unreadable file — as a clean
+result, so the gate reports success precisely when it has checked nothing. Its `--verify` seeds
+each of its six shapes **individually**, because a gate that catches five and is blind to the
+sixth passes any self-test that seeds only one.
+
+It scans a draft, not the tree, which is why it is here and not in `scripts/` and why no CI job
+runs it — a draft is not a tracked file. It is also **not** `npm run validate:security`: that gate
+guards *our* committed content against leaking *our* credentials outward to people who install the
+skills. This one guards a *third party's* internals on the way out. Neither substitutes for the
+other, and the first real use of this one caught four findings in a probe script already staged
+for a public commit.
 
 **A `--verify` nobody has watched fail is a green light of unknown wiring.** `capgeom.py
 --selftest-negative` is the answer to that for this directory: it mutates a recorded figure in
