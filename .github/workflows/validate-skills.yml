@@ -166,12 +166,14 @@ jobs:
       # BLOCKING, and it is an inventory-consistency check rather than a debt gate — there is no
       # backlog to ratchet down. It asserts FORWARD that every declared path still matches a
       # tracked file, every generator exists and every claimed gate still appears where the row
-      # says; and REVERSE that every generator reachable from npm scripts or `viz/build.sh` is
-      # listed, so a new one cannot be added without naming its reader.
+      # says; and REVERSE that every generator reachable from npm scripts, from `viz/build.sh`,
+      # or from a workflow that commits output back is listed, so a new one cannot be added
+      # without naming its reader. What those three sources reach is filtered by the GENERATOR'S
+      # OWN FILENAME, not by the npm alias.
       #
-      # Negative evidence: `scripts/envelopes/generated-artifacts.mjs`, 6 killed / 1 documented
-      # survivor of 7 cases. The survivor pins the sweep's stated blind spot — it keys on script
-      # NAME — as a measurement rather than a promise.
+      # Negative evidence: `scripts/envelopes/generated-artifacts.mjs`, 7 killed / 1 documented
+      # survivor of 8 cases. The survivor pins the sweep's stated blind spot — it keys on the
+      # generator's file basename — as a measurement rather than a promise.
       #
       # HERE for the same reason as the step above: `js-yaml`.
       - name: Check generated-artifact inventory (#590)

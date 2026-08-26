@@ -77,6 +77,8 @@ const ROOT = rootArg
   : resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const INVENTORY = resolve(ROOT, 'generated-artifacts.yml');
 const WORKFLOW_DIR = resolve(ROOT, '.github/workflows');
+/** THE healer: the one workflow whose whole job is committing regenerated output back. */
+const HEALER = '.github/workflows/update-readmes.yml';
 
 const findings = [];
 const fail = (message) => findings.push(message);
@@ -130,7 +132,10 @@ const SCRIPT_PATH = /^[\w./-]+\.(?:js|mjs|R)$/;
  * was added to handle `node --flag path.js`; scanning tokens handles it without the ambiguity,
  * and states the rule plainly — after `node`, skip flags, take the first non-flag token.
  *
- * Every invocation in the string is found, so an `&&` chain is not truncated at its first.
+ * Every invocation in the string is found, so an `&&` chain is not truncated at its first —
+ * true of sources 1 and 3, which pass whole commands here. Source 2 keeps its own line-oriented
+ * regex because `viz/build.sh` dispatches through `$RSCRIPT`, so a `&&` chain written INSIDE
+ * build.sh is still truncated at its first invocation. No line there uses one.
  */
 function scriptPathsIn(command) {
   // Normalise shell punctuation to spaces FIRST. Splitting on whitespace alone lost two forms
@@ -321,14 +326,14 @@ if (existsSync(buildSh)) {
 if (!existsSync(WORKFLOW_DIR)) {
   refuse('.github/workflows not found — source 3 of the reverse sweep cannot run');
 }
-let sawCommittingWorkflow = false;
+const committingWorkflows = new Set();
 for (const name of readdirSync(WORKFLOW_DIR)) {
   if (!/\.ya?ml$/.test(name)) continue;
   const rel = `.github/workflows/${name}`;
   const body = withoutComments(readFileSync(resolve(WORKFLOW_DIR, name), 'utf8'));
   const commits = /git-auto-commit-action|git\s+commit|git\s+push/.test(body);
   if (!commits) continue;
-  sawCommittingWorkflow = true;
+  committingWorkflows.add(rel);
   for (const path of scriptPathsIn(body)) noteGenerator(path, `${rel} (commits back)`);
   for (const match of body.matchAll(/npm run ([\w:-]+)/g)) {
     const script = npmScripts.get(match[1]);
@@ -338,9 +343,17 @@ for (const name of readdirSync(WORKFLOW_DIR)) {
     }
   }
 }
-if (!sawCommittingWorkflow) {
-  refuse('no workflow commits output back — source 3 found nothing, which means the detector '
-    + 'is broken rather than that the repository has no healer');
+// Naming THE healer, rather than counting any match. `sawCommittingWorkflow` alone is satisfied
+// by `validate-line-endings.yml`, whose line 38 ECHOES the string "git commit" as advice — a
+// non-comment line the detector matches. So the anti-vacuity guard had a satisfier that is not
+// an actor: if `update-readmes.yml` ever migrates to an action this regex does not name
+// (`peter-evans/create-pull-request`, `EndBug/add-and-commit`, a `gh api` commit, or even
+// `git -C . commit`, which `git\s+commit` does not match), the real healer would leave the sweep
+// silently while that echo kept the guard quiet.
+if (!committingWorkflows.has(HEALER)) {
+  refuse(`${HEALER} was not detected as committing output back. It is THE healer, so its absence `
+    + 'means this detector no longer recognises how work is committed here — not that the '
+    + `repository stopped healing. Detected instead: ${[...committingWorkflows].join(', ') || 'nothing'}`);
 }
 
 if (discovered.size === 0) {
@@ -362,6 +375,13 @@ for (const entry of exempt) {
         + 'discover — give it a `generator:` field, or mark `matches_nothing_by_design: true` '
         + 'with the reason it is documentation rather than an exemption');
     }
+  } else if (entry.matches_nothing_by_design) {
+    // The flag was checked in one direction only: it suppressed the complaint above, and nothing
+    // failed when it was set on an entry that DOES resolve. A flag whose claim is never tested is
+    // the "docstring guarantee" class — worst when it is the thing licensing a suppression.
+    fail(`exemption '${entry.id ?? '(unnamed)'}' is marked \`matches_nothing_by_design\` but `
+      + 'names a generator the sweep can resolve — the flag is false, and it is exempting '
+      + 'something while claiming to exempt nothing');
   }
 }
 

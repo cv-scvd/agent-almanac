@@ -14,9 +14,16 @@
  *
  *     gate-envelope: 7 killed, 1 survived as documented of 8 case(s).
  *
- * The documented survivor pins the reverse sweep's stated blind spot as a MEASUREMENT rather than
- * a promise: the sweep matches npm scripts named build- / generate- / update-prefixed, so a generator hidden
- * behind a differently-named script is invisible to it and covered only by the forward assertion.
+ * The documented survivor pins the reverse sweep's stated blind spot as a MEASUREMENT rather
+ * than a promise: the sweep keys on the GENERATOR'S FILE BASENAME — `build*`, `generate*`,
+ * `update*` — so a generator whose FILENAME carries none of those is invisible to it and covered
+ * only by the forward assertion.
+ *
+ * It said "npm scripts named …-prefixed" for one revision, which described the design before the
+ * alias-to-filename change and was empirically false afterwards: a script named
+ * `postprocess-thing2` running `scripts/build-thing2.js` IS swept. Round 2 of the review caught
+ * it — documentation of the control diverging from the control, in the PR that fixed exactly
+ * that one layer down.
  * `generated-artifacts.yml`'s header says so; this row is the proof, and the day it starts being
  * killed the sweep has widened and the header needs updating.
  *
@@ -113,18 +120,23 @@ export const cases = [
     expect: 'no `unread_edge` explains',
   },
   {
-    label: 'DOCUMENTED LIMIT: a generator behind a script named neither build- / generate- / update-prefixed',
-    // Survivor by construction, and the honest boundary of the design. The sweep keys on script
-    // NAME, so `postprocess-something` running a generator is invisible to it. This is stated in
-    // generated-artifacts.yml's header as the `token: none` analogue; the row makes it a measured
-    // fact rather than a claim. If this ever starts being killed, the sweep widened — update the
-    // header, do not delete this case.
+    label: 'DOCUMENTED LIMIT: a generator whose FILENAME carries none of the three prefixes',
+    // Survivor by construction, and the honest boundary of the design. The sweep keys on the
+    // generator's FILE BASENAME, so `postprocess-thing.js` is invisible to it however the script
+    // that runs it is named. Note both halves of this fixture are unprefixed on purpose: the
+    // ALIAS being unprefixed is no longer what makes it survive, and a fixture that relied on
+    // that would have kept surviving for a reason that had stopped being true.
+    //
+    // Stated in generated-artifacts.yml's header as the `token: none` analogue; this row makes
+    // it a measured fact. If it ever starts being killed, the sweep widened — update the header,
+    // do not delete the case.
     file: 'package.json',
     find: '    "build-dreams": "node scripts/build-dreams.js",',
     replace: '    "build-dreams": "node scripts/build-dreams.js",\n'
       + '    "postprocess-thing": "node scripts/postprocess-thing.js",',
     expect: null,
-    why: 'the reverse sweep matches script NAMES; a generator behind an unmatched name is '
-      + 'covered only by the forward assertion, exactly as debt-ratchet.yml marks `token: none`.',
+    why: "the reverse sweep keys on the GENERATOR'S FILE BASENAME; `postprocess-thing.js` "
+      + 'carries none of the three prefixes, so it is covered only by the forward assertion, '
+      + 'exactly as debt-ratchet.yml marks `token: none`.',
   },
 ];

@@ -50,9 +50,11 @@ function fixture(t, { inventory = CLEAN_INVENTORY, files = {}, trackedCount = 12
   // member and no refusal fires. An earlier version had it run `node build-data.js`, which the
   // sweep correctly reported as unlisted — a fixture bug that read as a gate defect.
   writeFileSync(join(dir, 'viz', 'build.sh'), '#!/usr/bin/env bash\necho "no generators here"\n');
-  // Source 3 needs a workflow that commits output back; its absence is a refusal, tested below.
+  // Source 3 needs THE healer — the checker names `update-readmes.yml` specifically rather
+  // than counting any committing workflow, because an `echo "git commit"` elsewhere in the real
+  // repo satisfies a mere count. Its absence is a refusal, tested below.
   // This one runs the fixture's generator so the sweep has a member from source 3 too.
-  writeFileSync(join(dir, '.github', 'workflows', 'heal.yml'),
+  writeFileSync(join(dir, '.github', 'workflows', 'update-readmes.yml'),
     'name: heal\njobs:\n  h:\n    steps:\n'
     + '      - run: npm run build-thing\n'
     + '      - uses: stefanzweifel/git-auto-commit-action@v6\n');
@@ -197,46 +199,118 @@ test('an exemption satisfies the reverse sweep, and only for the generator it na
   assert.doesNotMatch(output, /gen\/build-scratch\.js/, 'the exempted generator must not be reported');
 });
 
-test('REFUSES when no workflow commits output back, because source 3 found nothing', (t) => {
-  // Symmetric with the build.sh refusal. If the committing-workflow detector stops matching —
-  // the action gets renamed, the healer moves — the sweep silently loses a source and would
-  // report a clean result over a corpus it did not fully read.
+test('REFUSES when THE HEALER is not detected as committing, not merely when nothing is', (t) => {
+  // Symmetric with the build.sh refusal, and deliberately stricter than "some workflow commits".
+  // In the real repo `validate-line-endings.yml` ECHOES the string "git commit" as advice on a
+  // non-comment line, which satisfies the detector — so a guard that only counted matches had a
+  // satisfier that is not an actor. If update-readmes.yml migrated to an action the regex does
+  // not name, the real healer would leave the sweep while that echo kept the guard quiet.
   const dir = fixture(t);
-  rmSync(join(dir, '.github', 'workflows', 'heal.yml'));
+  rmSync(join(dir, '.github', 'workflows', 'update-readmes.yml'));
   const { status, output } = run(dir);
   assert.equal(status, 2, output);
-  assert.match(output, /source 3 found nothing/);
+  assert.match(output, /was not detected as committing output back/);
 });
 
-test('shell forms that pack invocations together are still swept', (t) => {
-  // Found by attacking the tokenizer, not by review. The ReDoS fix replaced a regex with
-  // whitespace splitting, which silently lost two forms the regex had caught:
-  //
-  //   node a/build-a.js&&node b/build-b.js   -> `a/build-a.js&&node` is one token
-  //   bash -c "node scripts/build-x.js"      -> the quote sticks to `node`
-  //
-  // A silent miss in the REVERSE sweep is a generator addable without naming its reader, which
-  // is the single property this checker exists to establish — so it must be pinned rather than
-  // left to the next person to rediscover.
-  const dir = fixture(t, {
-    files: {
-      'package.json': JSON.stringify({
-        scripts: {
-          'check-thing': 'node gen/build-thing.js --check',
-          'build-thing': 'node gen/build-thing.js',
-          'build-packed': 'node gen/build-packed-a.js&&node gen/build-packed-b.js',
-          'build-quoted': 'bash -c "node gen/build-quoted.js"',
-        },
-      }, null, 2),
-    },
-  });
-  const { status, output } = run(dir);
-  assert.equal(status, 1, output);
-  for (const expected of ['gen/build-packed-a.js', 'gen/build-packed-b.js', 'gen/build-quoted.js']) {
-    assert.ok(
-      output.includes(`UNLISTED GENERATOR: ${expected}`),
-      `${expected} was not swept — the tokenizer lost a shell form. Output:\n${output}`,
-    );
+/**
+ * How the command tokenizer reads each shell form, as a TABLE.
+ *
+ * These were checked interactively when the ReDoS fix landed and written up in a commit message,
+ * which is exactly what this repo's #458 rule calls a demo rather than coverage: "removing this
+ * line fails these N tests" is coverage; running it by hand and seeing the right answer is not.
+ * A round-2 review pointed out the table was nowhere in the diff.
+ *
+ * `scriptPathsIn` is module-private and the module executes its whole pipeline on import, so
+ * nothing can import it. Driving it through fixture npm scripts is the reachable equivalent, and
+ * has the advantage of testing what the CHECKER does rather than what a copy of the function does.
+ *
+ * Only a basename matching build- / generate- / update- is swept at all, so every fixture path
+ * below carries one — otherwise the row would pass for the wrong reason.
+ */
+const TOKENIZER_TABLE = [
+  {
+    label: 'plain invocation',
+    command: 'node gen/build-plain.js',
+    expect: ['gen/build-plain.js'],
+  },
+  {
+    label: 'flags before the path are skipped',
+    command: 'node --experimental-vm-modules gen/build-flagged.js',
+    expect: ['gen/build-flagged.js'],
+  },
+  {
+    label: 'glued && separator — both halves found',
+    // Lost when the ReDoS fix split on whitespace alone: `gen/build-a.js&&node` was one token.
+    command: 'node gen/build-glued-a.js&&node gen/build-glued-b.js',
+    expect: ['gen/build-glued-a.js', 'gen/build-glued-b.js'],
+  },
+  {
+    label: 'semicolon separator — both halves found',
+    command: 'node gen/build-semi-a.js; node gen/build-semi-b.js',
+    expect: ['gen/build-semi-a.js', 'gen/build-semi-b.js'],
+  },
+  {
+    label: 'quoted inner command — the quote does not glue to `node`',
+    // Also lost to whitespace-only splitting: the token was `"node`.
+    command: 'bash -c "node gen/build-quoted.js"',
+    expect: ['gen/build-quoted.js'],
+  },
+  {
+    label: 'env dispatch',
+    command: 'env node gen/build-env.js',
+    expect: ['gen/build-env.js'],
+  },
+  {
+    label: 'Rscript',
+    command: 'Rscript gen/build-r.R',
+    expect: ['gen/build-r.R'],
+  },
+  {
+    label: 'npx tool taking a script-shaped ARGUMENT is not an invocation',
+    command: 'npx some-tool gen/build-argument.js',
+    expect: [],
+  },
+  {
+    label: 'Rscript -e with an inline expression names no script file',
+    // After punctuation normalisation the first non-flag token is `source`, which is not a script
+    // path, so the scan stops. Pinned because the normalisation makes this reachable to reason
+    // about wrongly.
+    command: 'Rscript -e "source(\'gen/build-inline.R\')"',
+    expect: [],
+  },
+  {
+    label: 'DOCUMENTED: a --require preload is taken as THE script, and the scan stops',
+    // Real semantics, not an aspiration. `--require x.js y.js` means "preload x, run y", but the
+    // tokenizer takes the first non-flag token and breaks — so it discovers the PRELOAD and never
+    // sees the real entry point. Nothing in this repo uses the form. Pinned so the day it appears
+    // the behaviour is a known limit rather than a surprise.
+    command: 'node --require gen/build-preload.js gen/build-entry.js',
+    expect: ['gen/build-preload.js'],
+  },
+];
+
+test('THE TOKENIZER TABLE: each shell form is read as recorded', (t) => {
+  const scripts = { 'check-thing': 'node gen/build-thing.js --check', 'build-thing': 'node gen/build-thing.js' };
+  TOKENIZER_TABLE.forEach((row, index) => { scripts[`build-case-${index}`] = row.command; });
+
+  const dir = fixture(t, { files: { 'package.json': JSON.stringify({ scripts }, null, 2) } });
+  const { output } = run(dir);
+
+  const reported = new Set(
+    [...output.matchAll(/UNLISTED GENERATOR: (\S+)/g)].map((match) => match[1]),
+  );
+
+  for (const row of TOKENIZER_TABLE) {
+    for (const path of row.expect) {
+      assert.ok(reported.has(path), `${row.label}: expected ${path} to be swept.\nOutput:\n${output}`);
+    }
+  }
+  // And the negative half: nothing a row says is NOT an invocation may appear.
+  for (const row of TOKENIZER_TABLE) {
+    for (const path of ['gen/build-argument.js', 'gen/build-inline.R', 'gen/build-entry.js']) {
+      if (row.expect.includes(path)) continue;
+      assert.ok(!reported.has(path), `${path} was swept but no row claims it.\nOutput:\n${output}`);
+    }
   }
 });
 
