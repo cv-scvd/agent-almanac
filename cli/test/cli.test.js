@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { execSync } from 'child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, readlinkSync, readFileSync, writeFileSync, symlinkSync } from 'fs';
 import { tmpdir, homedir } from 'os';
-import { resolve } from 'path';
+import { isAbsolute, resolve } from 'path';
 
 // Direct imports for unit tests.
 import { ClaudeCodeAdapter } from '../adapters/claude-code.js';
@@ -515,6 +515,58 @@ describe('resolveHermesHome (#604)', () => {
     mkdirSync(envHome, { recursive: true });
     process.env.HERMES_HOME = envHome;
     assert.equal(resolveHermesHome(), envHome);
+  });
+
+  // #611: the test above builds its fixture with resolve(), and resolve() is
+  // idempotent on its own output, so it passes byte-identically whether tier 1
+  // returns the value raw or normalizes it. Being absolute is NOT on its own
+  // enough to make it blind — resolve('/x/') is '/x' and resolve('/a/../b') is
+  // '/b' — it is being normalized-absolute that does.
+  //
+  // Of the four tests below, TWO discriminate the fix from the bug: the
+  // relative case and the whitespace case. The empty-string case is green on
+  // the pre-#611 body too, since '' is falsy and already fell through; it is
+  // kept as a pin against a future rewrite to `fromEnv !== undefined`, not
+  // counted as evidence. The padded case covers the half of the whitespace
+  // decision the docstring promises and neither recorded mutant reached.
+  //
+  // The contract under test is the return SHAPE — always normalized-absolute —
+  // not cwd-independence, which a relative $HERMES_HOME cannot have and which
+  // this fix does not claim to give it.
+  it('resolves a relative HERMES_HOME to an absolute path', () => {
+    delete process.env.LOCALAPPDATA; // keep the win32 probe out of the answer
+    process.env.HERMES_HOME = 'relative-hermes-home';
+    const got = resolveHermesHome();
+    // Fails on the pre-#611 body, which returned 'relative-hermes-home' raw.
+    assert.ok(isAbsolute(got), `expected an absolute path, got ${JSON.stringify(got)}`);
+    assert.equal(got, resolve('relative-hermes-home'));
+  });
+
+  it('does not trim the value it uses, only the value it tests for emptiness', () => {
+    delete process.env.LOCALAPPDATA;
+    // The docstring promises a path with a leading or trailing space survives
+    // byte-for-byte, and nothing tested it: every other tier-1 fixture in this
+    // file is whitespace-free, so `return resolve(fromEnv.trim())` passed the
+    // entire suite while breaking exactly this. Tier 1 does no existence check,
+    // so the directory need not exist.
+    process.env.HERMES_HOME = ' padded-hermes-home';
+    assert.equal(resolveHermesHome(), resolve(' padded-hermes-home'));
+  });
+
+  it('treats an empty HERMES_HOME as unset', () => {
+    delete process.env.LOCALAPPDATA;
+    process.env.HERMES_HOME = '';
+    assert.equal(resolveHermesHome(), resolve(homedir(), '.hermes'));
+  });
+
+  it('treats a whitespace-only HERMES_HOME as unset, not as a directory named " "', () => {
+    delete process.env.LOCALAPPDATA;
+    process.env.HERMES_HOME = '   ';
+    // Without the trim test this returns resolve('   ') — cwd + a directory
+    // literally named three spaces. The decision is recorded in the module's
+    // @returns docstring: the is-it-set test ignores whitespace, the value
+    // that is USED is never trimmed.
+    assert.equal(resolveHermesHome(), resolve(homedir(), '.hermes'));
   });
 
   it('falls back to ~/.hermes when HERMES_HOME is unset', () => {

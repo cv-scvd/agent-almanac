@@ -5,6 +5,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- `resolveHermesHome()` returned `$HERMES_HOME` raw while its other two tiers returned `resolve()`d absolute paths. The *documented* type was only `{string}`, which all three satisfied — absoluteness is a contract this change introduces, not one it restores — but one function returning two different shapes depending on which tier answered is a defect regardless. All three now normalize before returning. This fixes the **inconsistent shape, not the relativity**: a relative `HERMES_HOME` is still resolved against the working directory, now once at the source instead of once at each of the four call sites, so invocations from different directories generally still see different homes. A whitespace-only value is now treated as unset, on the argument that `" "` is a quoting accident rather than a directory name; the value that is *used* is never trimmed, so a POSIX-legal path with a leading or trailing space survives byte-for-byte. The pre-existing `$HERMES_HOME` test built its fixture with `resolve()`, on whose own output `resolve()` is idempotent, so it passed identically with the bug present. Four tests are added, of which **two** discriminate the fix from the bug — the relative and whitespace-only cases; the empty-string case was already green on the old body and is a pin rather than evidence (#611).
+
 ## [1.9.1] - 2026-08-26
 
 The first release to actually reach npm since `1.3.0`. `1.9.0` was tagged on 2026-08-19 and its publish failed with `E404` on the PUT; the credential behind it was later measured dead (`E401` on `whoami`). This release carries that fix and the content that accumulated behind it.
