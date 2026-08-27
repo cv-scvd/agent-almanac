@@ -22,7 +22,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -206,8 +206,12 @@ for (const arm of PROBED_ARMS) {
 // ~/.claude/projects/<slug>/memory/, where the fixtures are indistinguishable from a real memory
 // store to anything walking that directory.
 //
-// These digests are that command's output, taken from the GENERATOR. Deriving them from
-// buildArm() would make the first test a tautology that no drift could ever fail.
+// These digests are that command's output, taken from the GENERATOR rather than from
+// buildArm(). That provenance is worth less than it sounds and the first version of this
+// comment overstated it: buildArm-derived digests would still catch any FUTURE drift, so
+// what generator-provenance actually buys is the one-time cross-check that the two agreed
+// on the day the table was written. The second test is what keeps the pair honest from
+// then on, and it would have caught even that initial disagreement on its first CI run.
 const PROBED_ARM_SHA256 = {
   ascii: 'c3eacdf3f56db5a223fd2e3d4823ebaf12c414c9adab7c9d334bafc764913249',
   cjk: 'e86eab8563e6ffd628cb8a629470db48c7132d3ddfc3eb5c3c75212e7b2ece20',
@@ -219,6 +223,20 @@ const PROBED_ARM_SHA256 = {
 };
 
 test('fixture builder: every JS arm reproduces the probed bytes exactly', () => {
+  // The set check runs FIRST, deliberately. node:test stops at the first failed assertion, so
+  // with the loop first a newly added arm hit `PROBED_ARM_SHA256[name] === undefined` and was
+  // reported as DRIFT — a message ending "do not edit the digest", which is the exact opposite
+  // of what someone adding an arm must do. Ordering it this way makes the legible message the
+  // reachable one, and the "both directions" claim true rather than half-true.
+  assert.deepEqual(
+    PROBED_ARMS.map((arm) => arm.name).sort(),
+    Object.keys(PROBED_ARM_SHA256).sort(),
+    'the arm list and the digest table have diverged. Adding an arm means running the ' +
+    'generator (see the command above) and pasting ITS digest here — and probing the new arm ' +
+    'against a live harness before giving it a lastVisible, since that number is a measurement, ' +
+    'not a prediction.',
+  );
+
   // The generator writes BYTES (`open(target, "wb")`) precisely so the crlf arm keeps its CR, so
   // the comparison is over utf-8 bytes rather than over a decoded string.
   for (const arm of PROBED_ARMS) {
@@ -230,13 +248,6 @@ test('fixture builder: every JS arm reproduces the probed bytes exactly', () => 
       'in a file that was never probed. Regenerate and compare — do not edit the digest.',
     );
   }
-
-  // Both directions, so neither a new arm without a digest nor a leftover digest can hide.
-  assert.deepEqual(
-    PROBED_ARMS.map((arm) => arm.name).sort(),
-    Object.keys(PROBED_ARM_SHA256).sort(),
-    'the arm list and the digest table have diverged',
-  );
 });
 
 // Whether python3 exists is decided once, at load, because node:test evaluates `skip` when the
@@ -248,26 +259,51 @@ const PYTHON3 = (() => {
 
 test('fixture builder: the Python generator still emits those same bytes', {
   // Honest skip rather than a silent pass. The digests above keep the JS side covered on any
-  // machine; this test is what covers the OTHER direction — a change to the generator itself —
-  // and it is live wherever python3 exists, which includes every CI runner this suite runs on.
+  // machine; this test is what covers the OTHER direction — a change to the generator itself.
+  //
+  // In a GREEN run this skip is unreachable: `python3 is available` above hard-fails without it,
+  // so the suite cannot pass by skipping. The skip therefore exists for legibility if that
+  // availability test is ever relaxed — and if it is, note that `pretest:scripts` guards an empty
+  // DISCOVERY, not a permanent skip, so generator-direction coverage would vanish quietly.
   skip: PYTHON3 === null && 'python3 not on PATH; the JS-side digest test still runs',
 }, () => {
   const out = mkdtempSync(join(tmpdir(), 'memcap-arms-'));
   const generator = join(REPO, 'tests/results/2026-08-23-memory-cap-truncation-probe/memcap-fixture.py');
 
   // argv[1] is a disposable project root the generator only uses when NOT emitting; passing
-  // --emit-only keeps it out of ~/.claude/projects entirely.
+  // --emit-only keeps it out of ~/.claude/projects.
+  //
+  // HOME is redirected as well, and that is the control rather than the flag. Without it the
+  // test's safety rests entirely on `sys.argv[2] == "--emit-only"` staying true forever: a future
+  // generator CLI change that inserts a positional or moves to argparse would make that predicate
+  // false while still exiting 0, and every `npm run test:scripts` would then write real fixture
+  // stores into the developer's ~/.claude/projects/<slug>/memory/ — indistinguishable from a real
+  // memory store to anything walking that directory, and the assertions below would only go red
+  // AFTER the side effect. pathlib.Path.home() honours $HOME on POSIX, so the blast radius is the
+  // temp directory either way.
   const run = spawnSync(PYTHON3, [generator, join(out, 'unused-root'), '--emit-only', out], {
     encoding: 'utf8',
+    env: { ...process.env, HOME: out, USERPROFILE: out },
   });
   assert.equal(run.status, 0, `generator failed: ${run.stderr || run.stdout}`);
+
+  // Both directions over the emitted SET, not just a lookup per known arm. Iterating PROBED_ARMS
+  // alone makes a rename or a parameter change red, but leaves a pure addition to the Python
+  // ARMS table emitting a file nothing ever reads — and arm-set drift between the two builders is
+  // the whole subject of #713.
+  assert.deepEqual(
+    readdirSync(out).filter((entry) => entry !== 'unused-root').sort(),
+    PROBED_ARMS.map((arm) => arm.name).sort(),
+    `the generator emitted a different set of arms than PROBED_ARMS lists.\n${run.stdout}`,
+  );
 
   for (const arm of PROBED_ARMS) {
     const emitted = readFileSync(join(out, arm.name, 'MEMORY.md'));
     assert.equal(
       createHash('sha256').update(emitted).digest('hex'), PROBED_ARM_SHA256[arm.name],
       `arm '${arm.name}': the Python generator no longer emits the bytes recorded in ` +
-      'PROBED_ARM_SHA256, so the probed measurements no longer describe what it builds.',
+      `PROBED_ARM_SHA256, so the probed measurements no longer describe what it builds.\n` +
+      `Generator's own count table:\n${run.stdout}`,
     );
   }
 });
