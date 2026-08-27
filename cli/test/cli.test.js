@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { execSync } from 'child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, readlinkSync, readFileSync, writeFileSync, symlinkSync } from 'fs';
 import { tmpdir, homedir } from 'os';
-import { resolve } from 'path';
+import { isAbsolute, resolve } from 'path';
 
 // Direct imports for unit tests.
 import { ClaudeCodeAdapter } from '../adapters/claude-code.js';
@@ -515,6 +515,36 @@ describe('resolveHermesHome (#604)', () => {
     mkdirSync(envHome, { recursive: true });
     process.env.HERMES_HOME = envHome;
     assert.equal(resolveHermesHome(), envHome);
+  });
+
+  // #611: the test above uses an ABSOLUTE fixture path, so it passes
+  // byte-identically whether tier 1 returns the value raw or resolve()s it.
+  // These three discriminate. The contract under test is the return TYPE —
+  // "always absolute" — not cwd-independence, which a relative $HERMES_HOME
+  // cannot have and which this fix does not claim to give it.
+  it('resolves a relative HERMES_HOME to an absolute path', () => {
+    delete process.env.LOCALAPPDATA; // keep the win32 probe out of the answer
+    process.env.HERMES_HOME = 'relative-hermes-home';
+    const got = resolveHermesHome();
+    // Fails on the pre-#611 body, which returned 'relative-hermes-home' raw.
+    assert.ok(isAbsolute(got), `expected an absolute path, got ${JSON.stringify(got)}`);
+    assert.equal(got, resolve('relative-hermes-home'));
+  });
+
+  it('treats an empty HERMES_HOME as unset', () => {
+    delete process.env.LOCALAPPDATA;
+    process.env.HERMES_HOME = '';
+    assert.equal(resolveHermesHome(), resolve(homedir(), '.hermes'));
+  });
+
+  it('treats a whitespace-only HERMES_HOME as unset, not as a directory named " "', () => {
+    delete process.env.LOCALAPPDATA;
+    process.env.HERMES_HOME = '   ';
+    // Without the trim test this returns resolve('   ') — cwd + a directory
+    // literally named three spaces. The decision is recorded in the module's
+    // @returns docstring: the is-it-set test ignores whitespace, the value
+    // that is USED is never trimmed.
+    assert.equal(resolveHermesHome(), resolve(homedir(), '.hermes'));
   });
 
   it('falls back to ~/.hermes when HERMES_HOME is unset', () => {
