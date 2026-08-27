@@ -39,12 +39,16 @@ import { warn } from './reporter.js';
  *   `almanac install` on a machine where hermes is detected would warn that a
  *   flag the user never typed was ignored — warning fatigue aimed precisely at
  *   the people the message is for.
- * @param {string} [opts.verb] - 'installing' | 'uninstalling from' | 'reading'.
- *   The same mismatch is reported by three operations and "installing to" is
- *   wrong for two of them.
+ * @param {string} [opts.verb] - 'installing to' | 'uninstalling from' | 'reading'.
+ *   The same mismatch is reported by four call paths and "installing to" is
+ *   wrong for three of them. The default is deliberately the neutral 'using'
+ *   rather than any real caller's verb: when the default duplicates a call
+ *   site's value, deleting that value is an EQUIVALENT mutation and the verb
+ *   silently stops being covered. Measured — the first version defaulted to
+ *   'installing to' and deleting installAll's explicit verb survived the suite.
  * @returns {void}
  */
-export function warnUnsupportedScopes(adapters, scope, { contentTypes, explicit, verb = 'installing to' }) {
+export function warnUnsupportedScopes(adapters, scope, { contentTypes, explicit, verb = 'using' }) {
   if (!explicit) return;
 
   for (const adapter of adapters) {
