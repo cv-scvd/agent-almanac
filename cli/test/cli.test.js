@@ -517,11 +517,22 @@ describe('resolveHermesHome (#604)', () => {
     assert.equal(resolveHermesHome(), envHome);
   });
 
-  // #611: the test above uses an ABSOLUTE fixture path, so it passes
-  // byte-identically whether tier 1 returns the value raw or resolve()s it.
-  // These three discriminate. The contract under test is the return TYPE —
-  // "always absolute" — not cwd-independence, which a relative $HERMES_HOME
-  // cannot have and which this fix does not claim to give it.
+  // #611: the test above builds its fixture with resolve(), and resolve() is
+  // idempotent on its own output, so it passes byte-identically whether tier 1
+  // returns the value raw or normalizes it. Being absolute is NOT on its own
+  // enough to make it blind — resolve('/x/') is '/x' and resolve('/a/../b') is
+  // '/b' — it is being normalized-absolute that does.
+  //
+  // Of the four tests below, TWO discriminate the fix from the bug: the
+  // relative case and the whitespace case. The empty-string case is green on
+  // the pre-#611 body too, since '' is falsy and already fell through; it is
+  // kept as a pin against a future rewrite to `fromEnv !== undefined`, not
+  // counted as evidence. The padded case covers the half of the whitespace
+  // decision the docstring promises and neither recorded mutant reached.
+  //
+  // The contract under test is the return SHAPE — always normalized-absolute —
+  // not cwd-independence, which a relative $HERMES_HOME cannot have and which
+  // this fix does not claim to give it.
   it('resolves a relative HERMES_HOME to an absolute path', () => {
     delete process.env.LOCALAPPDATA; // keep the win32 probe out of the answer
     process.env.HERMES_HOME = 'relative-hermes-home';
@@ -529,6 +540,17 @@ describe('resolveHermesHome (#604)', () => {
     // Fails on the pre-#611 body, which returned 'relative-hermes-home' raw.
     assert.ok(isAbsolute(got), `expected an absolute path, got ${JSON.stringify(got)}`);
     assert.equal(got, resolve('relative-hermes-home'));
+  });
+
+  it('does not trim the value it uses, only the value it tests for emptiness', () => {
+    delete process.env.LOCALAPPDATA;
+    // The docstring promises a path with a leading or trailing space survives
+    // byte-for-byte, and nothing tested it: every other tier-1 fixture in this
+    // file is whitespace-free, so `return resolve(fromEnv.trim())` passed the
+    // entire suite while breaking exactly this. Tier 1 does no existence check,
+    // so the directory need not exist.
+    process.env.HERMES_HOME = ' padded-hermes-home';
+    assert.equal(resolveHermesHome(), resolve(' padded-hermes-home'));
   });
 
   it('treats an empty HERMES_HOME as unset', () => {
