@@ -27,6 +27,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SOURCE_OF_TRUTH = 'skills/verify-memory-integrity/SKILL.md';
@@ -185,6 +186,91 @@ for (const arm of PROBED_ARMS) {
     assert.match(out, new RegExp(`binds: ${arm.binds}`), out);
   });
 }
+
+// ── #713: pin the JS arm builder to the bytes that were actually probed ──────────
+//
+// `PROBED_ARMS.lastVisible` is what a running harness reported, measured on fixtures emitted by
+// `tests/results/2026-08-23-memory-cap-truncation-probe/memcap-fixture.py`. `buildArm()` above
+// re-implements that generator in JavaScript, and only the Python one was ever sha256-checked
+// against the probed bytes. If the two drift — a padding change, a canary-width change, a
+// trailing-newline change — this suite pins the shipped block against bytes nobody probed while
+// its comments claim the opposite. Nothing detected that.
+//
+// Settle any disagreement by regenerating, never by editing a digest to match:
+//
+//   python3 tests/results/2026-08-23-memory-cap-truncation-probe/memcap-fixture.py \
+//     /tmp/x --emit-only /tmp/arms
+//   sha256sum /tmp/arms/*/MEMORY.md
+//
+// `--emit-only` is what keeps that safe to run: without it the generator writes into
+// ~/.claude/projects/<slug>/memory/, where the fixtures are indistinguishable from a real memory
+// store to anything walking that directory.
+//
+// These digests are that command's output, taken from the GENERATOR. Deriving them from
+// buildArm() would make the first test a tautology that no drift could ever fail.
+const PROBED_ARM_SHA256 = {
+  ascii: 'c3eacdf3f56db5a223fd2e3d4823ebaf12c414c9adab7c9d334bafc764913249',
+  cjk: 'e86eab8563e6ffd628cb8a629470db48c7132d3ddfc3eb5c3c75212e7b2ece20',
+  astral: '09e6953a1834246cb56835a9b3d1b60c8036e97a36dd7cd402e95600b19d30b8',
+  ascii200: '863d29619aa6f8b6a7e5fd3b1586ffacb1d39cc6c478cc6658fa1c28421bb1da',
+  wide2000: 'ad21234260db8fcff07542f4a1fc382b21608f48acc917c6b90aa19c050eda24',
+  lines300: 'a448e0baa4877374e216de800801771629fd2b1d0d1cdc9a64fd3608945266d8',
+  crlf: 'f989efad4c3f45148c7d50d248c75e1cc99f779fb0f71031ac3ce990cbd97841',
+};
+
+test('fixture builder: every JS arm reproduces the probed bytes exactly', () => {
+  // The generator writes BYTES (`open(target, "wb")`) precisely so the crlf arm keeps its CR, so
+  // the comparison is over utf-8 bytes rather than over a decoded string.
+  for (const arm of PROBED_ARMS) {
+    const digest = createHash('sha256').update(Buffer.from(buildArm(arm), 'utf8')).digest('hex');
+    assert.equal(
+      digest, PROBED_ARM_SHA256[arm.name],
+      `arm '${arm.name}': buildArm() no longer emits the bytes that were probed. The lastVisible ` +
+      'value for this arm was measured against the generator\'s output, so it now predicts a cut ' +
+      'in a file that was never probed. Regenerate and compare — do not edit the digest.',
+    );
+  }
+
+  // Both directions, so neither a new arm without a digest nor a leftover digest can hide.
+  assert.deepEqual(
+    PROBED_ARMS.map((arm) => arm.name).sort(),
+    Object.keys(PROBED_ARM_SHA256).sort(),
+    'the arm list and the digest table have diverged',
+  );
+});
+
+// Whether python3 exists is decided once, at load, because node:test evaluates `skip` when the
+// test is declared. A `false` skip value means "do not skip".
+const PYTHON3 = (() => {
+  const probe = spawnSync('python3', ['--version'], { encoding: 'utf8' });
+  return probe.status === 0 ? 'python3' : null;
+})();
+
+test('fixture builder: the Python generator still emits those same bytes', {
+  // Honest skip rather than a silent pass. The digests above keep the JS side covered on any
+  // machine; this test is what covers the OTHER direction — a change to the generator itself —
+  // and it is live wherever python3 exists, which includes every CI runner this suite runs on.
+  skip: PYTHON3 === null && 'python3 not on PATH; the JS-side digest test still runs',
+}, () => {
+  const out = mkdtempSync(join(tmpdir(), 'memcap-arms-'));
+  const generator = join(REPO, 'tests/results/2026-08-23-memory-cap-truncation-probe/memcap-fixture.py');
+
+  // argv[1] is a disposable project root the generator only uses when NOT emitting; passing
+  // --emit-only keeps it out of ~/.claude/projects entirely.
+  const run = spawnSync(PYTHON3, [generator, join(out, 'unused-root'), '--emit-only', out], {
+    encoding: 'utf8',
+  });
+  assert.equal(run.status, 0, `generator failed: ${run.stderr || run.stdout}`);
+
+  for (const arm of PROBED_ARMS) {
+    const emitted = readFileSync(join(out, arm.name, 'MEMORY.md'));
+    assert.equal(
+      createHash('sha256').update(emitted).digest('hex'), PROBED_ARM_SHA256[arm.name],
+      `arm '${arm.name}': the Python generator no longer emits the bytes recorded in ` +
+      'PROBED_ARM_SHA256, so the probed measurements no longer describe what it builds.',
+    );
+  }
+});
 
 test('budget block: frontmatter and block comments are excluded from the measurement', () => {
   // Documented: "Only the content that loads counts toward the limits. YAML frontmatter and
