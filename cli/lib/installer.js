@@ -8,30 +8,45 @@
 import { warn } from './reporter.js';
 
 /**
- * Warn once per adapter when the requested scope will not be honoured (#607).
+ * Warn when the requested scope will not be honoured, per adapter and content
+ * type (#607).
  *
  * Most adapters install to exactly one place regardless of `--scope`: some
  * always global (a home directory), some always project (a path under
- * projectDir). Before this they accepted the flag and ignored it silently, so
- * `--scope project -f hermes` printed a successful install at a global path,
- * and `--scope global -f cursor` wrote into the project. The dry-run output
- * presented the wrong scope's path as though the request had been honoured,
- * which is the shape that makes the silence expensive: the one command a
- * caller runs to CHECK the destination confirmed the wrong one.
+ * projectDir). Before this they accepted the flag and ignored it in silence, so
+ * `--scope project -f hermes` printed a successful install at a global path and
+ * `--scope global -f cursor` wrote into the project, with nothing saying so.
  *
  * This reports; it does not redirect. Which scope an adapter uses is the
  * adapter's own decision and is unchanged — the defect was never that hermes
  * installs globally, it was that nothing said so.
  *
- * Called once per run rather than once per item: a scope mismatch is a
- * property of the adapter and the run, not of the item being installed, so
- * per-item warnings would repeat the same line N times.
+ * Keyed by CONTENT TYPE as well as adapter, because honouring is a property of
+ * the cell: `vibe` branches on scope for skills and writes agents to
+ * ~/.vibe/agents unconditionally. Warning per adapter alone reported vibe as
+ * fully scope-aware and left the agent downgrade exactly as silent as before.
+ *
+ * Emits at most one line per adapter. When every type in play shares an
+ * effective scope — the common case, and every adapter but vibe — the line does
+ * not mention types at all; only a split adapter names them.
  *
  * @param {import('../adapters/base.js').FrameworkAdapter[]} adapters
  * @param {string} scope - The requested scope
+ * @param {object} opts
+ * @param {string[]} opts.contentTypes - The types actually in play this run.
+ * @param {boolean} opts.explicit - Whether the user actually passed `--scope`.
+ *   `--scope` carries a commander default, so without this every bare
+ *   `almanac install` on a machine where hermes is detected would warn that a
+ *   flag the user never typed was ignored — warning fatigue aimed precisely at
+ *   the people the message is for.
+ * @param {string} [opts.verb] - 'installing' | 'uninstalling from' | 'reading'.
+ *   The same mismatch is reported by three operations and "installing to" is
+ *   wrong for two of them.
  * @returns {void}
  */
-export function warnUnsupportedScopes(adapters, scope) {
+export function warnUnsupportedScopes(adapters, scope, { contentTypes, explicit, verb = 'installing to' }) {
+  if (!explicit) return;
+
   for (const adapter of adapters) {
     // An adapter is not required to extend FrameworkAdapter — the registry
     // accepts anything with the right methods, and the #439 tests use bare
@@ -42,21 +57,42 @@ export function warnUnsupportedScopes(adapters, scope) {
     // `crashed`, defeating the very guarantee #439 added. Skipping is the
     // pre-#607 behaviour for such an adapter — no warning — which is a gap,
     // not a regression.
+    //
+    // scopesFor() is what keeps a MALFORMED declaration from getting past the
+    // typeof check and throwing further down: `static scopes = 'project'`
+    // satisfies String.prototype.includes and then dies at .join(). It
+    // normalises anything that is not an array to [], so such an adapter is
+    // reported rather than fatal.
     if (typeof adapter.supportsScope !== 'function') continue;
-    if (adapter.supportsScope(scope)) continue;
+    if (typeof adapter.supports !== 'function') continue;
 
-    const { displayName, scopes } = adapter.constructor;
-    const effective = adapter.effectiveScope(scope);
+    const inPlay = contentTypes.filter((type) => adapter.supports(type));
+    const unhonoured = inPlay.filter((type) => !adapter.supportsScope(scope, type));
+    if (unhonoured.length === 0) continue;
 
-    if (effective !== null) {
-      warn(`${displayName} is ${effective}-only; --scope ${scope} ignored (installing to ${effective}).`);
-    } else {
-      // No single destination to name — say what it does support instead of
-      // inventing one. Unreachable for every adapter shipped today, all of
-      // which declare either one scope or both; it exists so a future adapter
-      // with a partial set cannot fall through to silence.
-      warn(`${displayName} does not support --scope ${scope} (supports: ${scopes.join(', ')}).`);
+    const { displayName } = adapter.constructor;
+    const effectives = [...new Set(unhonoured.map((type) => adapter.effectiveScope(scope, type)))];
+
+    // Every unhonoured type lands in the same place: say it once, without
+    // naming types, which is the whole-adapter case for all but vibe.
+    if (effectives.length === 1 && effectives[0] !== null && unhonoured.length === inPlay.length) {
+      warn(`${displayName} is ${effectives[0]}-only; --scope ${scope} ignored (${verb} ${effectives[0]}).`);
+      continue;
     }
+
+    // Split adapter, or a type whose destination cannot be derived. Name the
+    // types, because "vibe is global-only" would be false for its skills.
+    const parts = unhonoured.map((type) => {
+      const effective = adapter.effectiveScope(scope, type);
+      return effective === null
+        // Reachable today: `--scope workspace` is advertised in every command's
+        // help text and no adapter declares it, so every two-scope cell lands
+        // here. An earlier version of this comment called the branch
+        // unreachable, which was simply wrong.
+        ? `${type}s support ${adapter.scopesFor(type).join(', ') || 'no scope'}`
+        : `${type}s are ${effective}-only`;
+    });
+    warn(`${displayName}: ${parts.join('; ')}; --scope ${scope} ignored for ${unhonoured.map((t) => `${t}s`).join(' and ')}.`);
   }
 }
 
@@ -72,13 +108,20 @@ export function warnUnsupportedScopes(adapters, scope) {
 export async function installAll(resolved, adapters, projectDir, scope, options) {
   const results = [];
 
-  warnUnsupportedScopes(adapters, scope);
-
   const allItems = [
     ...resolved.skills,
     ...resolved.agents,
     ...resolved.teams,
   ];
+
+  // Derived from the items actually being installed rather than from the
+  // adapter's full contentTypes: an agent-only install must not warn about
+  // skills, and vibe's split means the answer differs per type.
+  warnUnsupportedScopes(adapters, scope, {
+    contentTypes: [...new Set(allItems.filter((i) => !i.unknown).map((i) => i.type))],
+    explicit: options?.scopeExplicit === true,
+    verb: 'installing to',
+  });
 
   for (const item of allItems) {
     if (item.unknown) {
@@ -135,13 +178,17 @@ export async function installAll(resolved, adapters, projectDir, scope, options)
 export async function uninstallAll(resolved, adapters, projectDir, scope, options) {
   const results = [];
 
-  warnUnsupportedScopes(adapters, scope);
-
   const allItems = [
     ...resolved.skills,
     ...resolved.agents,
     ...resolved.teams,
   ];
+
+  warnUnsupportedScopes(adapters, scope, {
+    contentTypes: [...new Set(allItems.map((i) => i.type))],
+    explicit: options?.scopeExplicit === true,
+    verb: 'uninstalling from',
+  });
 
   for (const item of allItems) {
     for (const adapter of adapters) {
@@ -183,14 +230,28 @@ export async function uninstallAll(resolved, adapters, projectDir, scope, option
  * @param {string} scope
  * @returns {Promise<import('../adapters/base.js').AuditEntry[]>}
  */
-export async function auditAll(adapters, projectDir, scope) {
+export async function auditAll(adapters, projectDir, scope, scopeExplicit = false) {
   const results = [];
 
-  // The audit path carries the same silence as the install path, and its
-  // symptom is more confusing: auditing at a scope the adapter never uses
-  // reports "nothing installed" for content that IS installed, somewhere else.
-  // A warning here is output only — it does not touch auditExitCode.
-  warnUnsupportedScopes(adapters, scope);
+  // The audit path carries the same silence as the install path. An earlier
+  // version of this comment justified it with a symptom that cannot occur:
+  // "auditing at a scope the adapter never uses reports nothing installed for
+  // content that IS installed". The warning fires only for scope-IGNORING
+  // adapters, whose audit lands on their one real location and duly reports
+  // what is there. The real reason is plainer — the audit output is labelled
+  // with a scope it did not honour, so a reader comparing two runs at two
+  // scopes sees identical results and no explanation.
+  //
+  // Output only; it does not touch auditExitCode. No items are in play here, so
+  // the types are the adapter's own.
+  for (const adapter of adapters) {
+    if (typeof adapter.supports !== 'function') continue;
+    warnUnsupportedScopes([adapter], scope, {
+      contentTypes: adapter.constructor.contentTypes ?? [],
+      explicit: scopeExplicit,
+      verb: 'reading',
+    });
+  }
 
   for (const adapter of adapters) {
     try {

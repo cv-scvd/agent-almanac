@@ -19,8 +19,8 @@ export class HermesAdapter extends FrameworkAdapter {
   static displayName = 'Hermes Agent';
   static strategy = 'symlink';
   static contentTypes = ['skill', 'agent'];
-  /** @type {string[]} #607: installs under resolveHermesHome(); projectDir never reaches a path. */
-  static scopes = ['global'];
+  /** @type {Record<string, string[]>} #607: both land under resolveHermesHome(); projectDir never reaches a path. */
+  static scopes = { skill: ['global'], agent: ['global'] };
 
   async detect() {
     return existsSync(resolve(resolveHermesHome(), 'config.yaml'));
