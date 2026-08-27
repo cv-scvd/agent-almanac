@@ -15,6 +15,8 @@ export class OpenCodeAdapter extends FrameworkAdapter {
   static displayName = 'OpenCode';
   static strategy = 'symlink';
   static contentTypes = ['skill', 'agent'];
+  /** @type {string[]} #607: _targetBase() branches on scope. */
+  static scopes = ['project', 'global'];
 
   async detect(projectDir) {
     return existsSync(resolve(projectDir, '.opencode')) ||

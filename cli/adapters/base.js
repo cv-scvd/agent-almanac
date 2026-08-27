@@ -38,6 +38,23 @@ export class FrameworkAdapter {
   static contentTypes = ['skill'];
 
   /**
+   * @type {Array<'project'|'workspace'|'global'>} Scopes this adapter can
+   *   honour. Most adapters install to exactly ONE place regardless of what
+   *   `--scope` asked for — some always global (a home directory), some always
+   *   project (a file inside projectDir) — and before #607 they accepted the
+   *   flag and ignored it in silence, so `--scope project -f hermes` reported a
+   *   successful install at a global path and `--scope global -f cursor` wrote
+   *   into the project.
+   *
+   *   This default is permissive so a third-party adapter that predates the
+   *   field keeps working. Every adapter shipped here declares its own value
+   *   instead of inheriting it, and `cli/test/cli.test.js` asserts that as an
+   *   OWN property — so adding an adapter forces the decision rather than
+   *   letting it default into silence.
+   */
+  static scopes = ['project', 'global'];
+
+  /**
    * Check whether this framework is present in the project directory.
    * @param {string} projectDir
    * @returns {Promise<boolean>}
@@ -112,5 +129,33 @@ export class FrameworkAdapter {
    */
   supports(contentType) {
     return this.constructor.contentTypes.includes(contentType);
+  }
+
+  /**
+   * Check if this adapter can honour a requested install scope.
+   * @param {string} scope - 'project' | 'workspace' | 'global'
+   * @returns {boolean}
+   */
+  supportsScope(scope) {
+    return this.constructor.scopes.includes(scope);
+  }
+
+  /**
+   * The scope this adapter will ACTUALLY use for a requested one.
+   *
+   * Returns the request unchanged when the adapter can honour it. When it
+   * cannot AND the adapter has exactly one scope, that scope is the answer —
+   * it is where the install lands no matter what was asked for. With more
+   * than one supported scope there is no single truthful answer, so this
+   * returns null and the caller reports the mismatch without naming a
+   * destination it cannot derive.
+   *
+   * @param {string} scope
+   * @returns {string|null} The effective scope, or null when undeterminable.
+   */
+  effectiveScope(scope) {
+    if (this.supportsScope(scope)) return scope;
+    const { scopes } = this.constructor;
+    return scopes.length === 1 ? scopes[0] : null;
   }
 }

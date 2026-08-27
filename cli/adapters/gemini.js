@@ -14,6 +14,8 @@ export class GeminiAdapter extends FrameworkAdapter {
   static displayName = 'Gemini CLI';
   static strategy = 'symlink';
   static contentTypes = ['skill'];
+  /** @type {string[]} #607: writes into projectDir/.gemini/skills/. */
+  static scopes = ['project'];
 
   async detect(projectDir) {
     return existsSync(resolve(projectDir, '.gemini'));

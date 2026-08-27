@@ -8,7 +8,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execSync } from 'child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, readlinkSync, readFileSync, writeFileSync, symlinkSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, readlinkSync, readFileSync, writeFileSync, symlinkSync } from 'fs';
 import { tmpdir, homedir } from 'os';
 import { isAbsolute, resolve } from 'path';
 
@@ -28,7 +28,9 @@ import {
   getCampfireSprite,
   createAgentGlyph, getAgentPng, getTeamStrip, getCampfirePng, getCampfireFrames, GLYPH_SIZE,
 } from '../lib/sprites.js';
-import { auditAll, auditExitCode, AUDIT_EXIT } from '../lib/installer.js';
+import { auditAll, auditExitCode, AUDIT_EXIT, warnUnsupportedScopes } from '../lib/installer.js';
+import { getAdapter, listAdapterIds } from '../adapters/index.js';
+import { FrameworkAdapter } from '../adapters/base.js';
 import { makeChalkStub } from '../lib/chalk-stub.js';
 import { detectFrameworks } from '../lib/detector.js';
 import { buildFireScene } from '../lib/scene.js';
@@ -87,6 +89,34 @@ function auditSection(out, framework) {
   const rest = lines.slice(start + 1);
   const end = rest.findIndex((line) => /^\S/.test(line));
   return (end === -1 ? rest : rest.slice(0, end)).join('\n');
+}
+
+/**
+ * Collect the lines reporter.warn() emits while `fn` runs (#607).
+ *
+ * warn() writes through console.log, so this stubs it for the duration and
+ * restores it in a finally — a throw inside `fn` must not leave the suite with
+ * a swallowed console.
+ *
+ * ANSI is stripped because warn() colours through chalk and FORCE_COLOR is set
+ * in this environment, so the lines arrive wrapped in escape codes. Matching
+ * them literally would miss every time and, worse, make an "expected no
+ * warnings" assertion pass for the wrong reason.
+ *
+ * @param {() => void} fn
+ * @returns {string[]} One trimmed, ANSI-free line per console.log call.
+ */
+function captureWarnings(fn) {
+  const originalLog = console.log;
+  const lines = [];
+  console.log = (...args) => { lines.push(args.join(' ')); };
+  try {
+    fn();
+  } finally {
+    console.log = originalLog;
+  }
+  // eslint-disable-next-line no-control-regex
+  return lines.map((line) => line.replace(/\x1b\[[0-9;]*m/g, '').trim());
 }
 
 // ── Registry-derived expectations (#307) ─────────────────────────
@@ -1403,5 +1433,177 @@ describe('scene', () => {
   it('buildFireScene uses cold sprite for cold state', () => {
     const lines = buildFireScene({ state: 'cold', maxWidth: 80 });
     assert.equal(lines.length, 4);
+  });
+});
+
+// ── Adapter scope declarations (#607) ────────────────────────────
+// Most adapters install to exactly one place no matter what `--scope` asked
+// for: hermes and openclaw are always global (a home directory), seven others
+// are always project (a path under projectDir). They accepted the flag and
+// ignored it in silence, and the dry-run output printed the wrong scope's path
+// as though the request had been honoured — so the one command a caller runs
+// to CHECK the destination confirmed the wrong one.
+//
+// A `static scopes` declaration on its own is worth little: one that disagrees
+// with what the adapter DOES is a new lie in place of the old one. The second
+// test below therefore checks every declaration against behaviour rather than
+// restating it, and the first makes a new adapter decide rather than inherit.
+
+describe('adapter scope declarations (#607)', () => {
+  let sandbox;
+  let savedEnv;
+
+  const skillItem = {
+    type: 'skill',
+    id: 'commit-changes',
+    domain: 'git',
+    sourcePath: resolve(ROOT, 'skills/commit-changes/SKILL.md'),
+    sourceDir: resolve(ROOT, 'skills/commit-changes'),
+  };
+
+  before(() => {
+    sandbox = mkdtempSync(resolve(tmpdir(), 'almanac-scope-'));
+    savedEnv = {
+      HOME: process.env.HOME,
+      USERPROFILE: process.env.USERPROFILE,
+      HERMES_HOME: process.env.HERMES_HOME,
+    };
+    // Steer the home-based adapters into the sandbox so the "wrote nothing"
+    // assertion is reading a fixture rather than the real profile. POSIX only:
+    // on win32 os.homedir() ignores $HOME entirely, which is #609. The other
+    // assertions here compare two paths to each other rather than to a literal,
+    // so they hold on either platform.
+    process.env.HOME = sandbox;
+    process.env.USERPROFILE = sandbox;
+    process.env.HERMES_HOME = resolve(sandbox, '.hermes');
+  });
+
+  after(() => {
+    for (const [key, value] of Object.entries(savedEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    rmSync(sandbox, { recursive: true, force: true });
+  });
+
+  it('every registered adapter declares its own scopes rather than inheriting the default', () => {
+    // base.js defaults to ['project','global'] so a third-party adapter written
+    // before the field keeps working. Inheriting it HERE would mean an adapter
+    // that silently ignores scope and never warns — the exact pre-#607 state.
+    const inheriting = listAdapterIds().filter(
+      (id) => !Object.hasOwn(getAdapter(id).constructor, 'scopes'),
+    );
+    assert.deepEqual(
+      inheriting, [],
+      `these adapters inherit base's permissive default instead of deciding: ${inheriting.join(', ')}`,
+    );
+  });
+
+  it('each declared scope count matches the number of distinct paths that adapter installs to', async () => {
+    const options = { dryRun: true, force: false, almanacRoot: ROOT };
+    const projectDir = resolve(sandbox, 'proj');
+    const mismatches = [];
+
+    for (const id of listAdapterIds()) {
+      const adapter = getAdapter(id);
+      if (!adapter.supports('skill')) continue;
+
+      const asProject = (await adapter.install(skillItem, projectDir, 'project', options)).path;
+      const asGlobal = (await adapter.install(skillItem, projectDir, 'global', options)).path;
+
+      // Same path for both requests => the adapter ignores scope => it has
+      // exactly one real scope. Different paths => it honours scope => two.
+      const observed = asProject === asGlobal ? 1 : 2;
+      const declared = adapter.constructor.scopes.length;
+      if (observed !== declared) {
+        mismatches.push(
+          `${id}: declares [${adapter.constructor.scopes.join(',')}] (${declared}) but installs to ` +
+          `${observed} distinct path(s)\n    project: ${asProject}\n    global : ${asGlobal}`,
+        );
+      }
+    }
+
+    assert.deepEqual(mismatches, [], `\n${mismatches.join('\n')}\n`);
+  });
+
+  it('those dry runs wrote nothing into the sandboxed home', () => {
+    // Guards the test above: if a dry run were to write, the comparison would
+    // still pass while the suite quietly created files in a real home on any
+    // machine where the HOME redirect does not take (#609).
+    assert.deepEqual(
+      readdirSync(sandbox), [],
+      'a dry run created something; the comparison above would still have passed',
+    );
+  });
+
+  it('warns when a global-only adapter is asked for project scope', () => {
+    const lines = captureWarnings(() => warnUnsupportedScopes([getAdapter('hermes')], 'project'));
+    assert.equal(lines.length, 1, `expected exactly one warning, got: ${JSON.stringify(lines)}`);
+    assert.match(lines[0], /Hermes Agent is global-only/);
+    assert.match(lines[0], /--scope project ignored/);
+  });
+
+  it('warns when a project-only adapter is asked for global scope', () => {
+    // The mirror case, which #607 does not mention: seven adapters pin project.
+    const lines = captureWarnings(() => warnUnsupportedScopes([getAdapter('cursor')], 'global'));
+    assert.equal(lines.length, 1, `expected exactly one warning, got: ${JSON.stringify(lines)}`);
+    assert.match(lines[0], /Cursor is project-only/);
+    assert.match(lines[0], /--scope global ignored/);
+  });
+
+  it('stays silent when the adapter can honour the requested scope', () => {
+    // The half that makes the warning worth having: a gate that fires on
+    // everything carries no information.
+    assert.deepEqual(captureWarnings(() => warnUnsupportedScopes([getAdapter('hermes')], 'global')), []);
+    assert.deepEqual(captureWarnings(() => warnUnsupportedScopes([getAdapter('cursor')], 'project')), []);
+    assert.deepEqual(
+      captureWarnings(() => warnUnsupportedScopes([getAdapter('claude-code')], 'project')), [],
+    );
+    assert.deepEqual(
+      captureWarnings(() => warnUnsupportedScopes([getAdapter('claude-code')], 'global')), [],
+    );
+  });
+
+  it('warns once per adapter, not once per adapter per item', () => {
+    const adapters = [getAdapter('hermes'), getAdapter('cursor'), getAdapter('claude-code')];
+    const lines = captureWarnings(() => warnUnsupportedScopes(adapters, 'project'));
+    assert.equal(lines.length, 1, 'only hermes cannot honour project scope');
+  });
+
+  it('names the supported set when no single destination can be derived', () => {
+    // Unreachable for every adapter shipped today — all declare one scope or
+    // both — so this pins the else branch that exists to keep a future partial
+    // declaration from falling through to silence.
+    class PartialScopeAdapter extends FrameworkAdapter {
+      static id = 'partial';
+      static displayName = 'Partial';
+      static scopes = ['workspace', 'global'];
+    }
+    const adapter = new PartialScopeAdapter();
+    assert.equal(adapter.effectiveScope('project'), null);
+    const lines = captureWarnings(() => warnUnsupportedScopes([adapter], 'project'));
+    assert.equal(lines.length, 1);
+    assert.match(lines[0], /does not support --scope project/);
+    assert.match(lines[0], /workspace, global/);
+  });
+
+  it('does not throw on a duck-typed adapter that predates the scopes field', () => {
+    // warnUnsupportedScopes runs BEFORE auditAll's try/catch. An unguarded
+    // supportsScope() call there threw out of auditAll entirely, so a
+    // third-party adapter without the method would crash `almanac audit`
+    // instead of being recorded as crashed — the guarantee #439 exists for.
+    // The #439 tests in this file use exactly such bare classes.
+    class LegacyAdapter {
+      static displayName = 'Legacy';
+      async audit() { return { framework: 'Legacy', ok: [], warnings: [], errors: [] }; }
+    }
+    assert.deepEqual(captureWarnings(() => warnUnsupportedScopes([new LegacyAdapter()], 'project')), []);
+  });
+
+  it('effectiveScope returns the request unchanged when it can be honoured', () => {
+    assert.equal(getAdapter('claude-code').effectiveScope('project'), 'project');
+    assert.equal(getAdapter('claude-code').effectiveScope('global'), 'global');
+    assert.equal(getAdapter('hermes').effectiveScope('project'), 'global');
+    assert.equal(getAdapter('hermes').effectiveScope('global'), 'global');
   });
 });

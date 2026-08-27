@@ -8,6 +8,59 @@
 import { warn } from './reporter.js';
 
 /**
+ * Warn once per adapter when the requested scope will not be honoured (#607).
+ *
+ * Most adapters install to exactly one place regardless of `--scope`: some
+ * always global (a home directory), some always project (a path under
+ * projectDir). Before this they accepted the flag and ignored it silently, so
+ * `--scope project -f hermes` printed a successful install at a global path,
+ * and `--scope global -f cursor` wrote into the project. The dry-run output
+ * presented the wrong scope's path as though the request had been honoured,
+ * which is the shape that makes the silence expensive: the one command a
+ * caller runs to CHECK the destination confirmed the wrong one.
+ *
+ * This reports; it does not redirect. Which scope an adapter uses is the
+ * adapter's own decision and is unchanged — the defect was never that hermes
+ * installs globally, it was that nothing said so.
+ *
+ * Called once per run rather than once per item: a scope mismatch is a
+ * property of the adapter and the run, not of the item being installed, so
+ * per-item warnings would repeat the same line N times.
+ *
+ * @param {import('../adapters/base.js').FrameworkAdapter[]} adapters
+ * @param {string} scope - The requested scope
+ * @returns {void}
+ */
+export function warnUnsupportedScopes(adapters, scope) {
+  for (const adapter of adapters) {
+    // An adapter is not required to extend FrameworkAdapter — the registry
+    // accepts anything with the right methods, and the #439 tests use bare
+    // duck-typed classes. Calling supportsScope() unguarded threw
+    // `adapter.supportsScope is not a function` from here, which runs BEFORE
+    // auditAll()'s try/catch: a third-party adapter predating this field would
+    // have made `almanac audit` throw outright instead of being recorded as
+    // `crashed`, defeating the very guarantee #439 added. Skipping is the
+    // pre-#607 behaviour for such an adapter — no warning — which is a gap,
+    // not a regression.
+    if (typeof adapter.supportsScope !== 'function') continue;
+    if (adapter.supportsScope(scope)) continue;
+
+    const { displayName, scopes } = adapter.constructor;
+    const effective = adapter.effectiveScope(scope);
+
+    if (effective !== null) {
+      warn(`${displayName} is ${effective}-only; --scope ${scope} ignored (installing to ${effective}).`);
+    } else {
+      // No single destination to name — say what it does support instead of
+      // inventing one. Unreachable for every adapter shipped today, all of
+      // which declare either one scope or both; it exists so a future adapter
+      // with a partial set cannot fall through to silence.
+      warn(`${displayName} does not support --scope ${scope} (supports: ${scopes.join(', ')}).`);
+    }
+  }
+}
+
+/**
  * Install items across all adapters.
  * @param {object} resolved - { skills, agents, teams } from resolveItems()
  * @param {import('../adapters/base.js').FrameworkAdapter[]} adapters
@@ -18,6 +71,8 @@ import { warn } from './reporter.js';
  */
 export async function installAll(resolved, adapters, projectDir, scope, options) {
   const results = [];
+
+  warnUnsupportedScopes(adapters, scope);
 
   const allItems = [
     ...resolved.skills,
@@ -80,6 +135,8 @@ export async function installAll(resolved, adapters, projectDir, scope, options)
 export async function uninstallAll(resolved, adapters, projectDir, scope, options) {
   const results = [];
 
+  warnUnsupportedScopes(adapters, scope);
+
   const allItems = [
     ...resolved.skills,
     ...resolved.agents,
@@ -128,6 +185,13 @@ export async function uninstallAll(resolved, adapters, projectDir, scope, option
  */
 export async function auditAll(adapters, projectDir, scope) {
   const results = [];
+
+  // The audit path carries the same silence as the install path, and its
+  // symptom is more confusing: auditing at a scope the adapter never uses
+  // reports "nothing installed" for content that IS installed, somewhere else.
+  // A warning here is output only — it does not touch auditExitCode.
+  warnUnsupportedScopes(adapters, scope);
+
   for (const adapter of adapters) {
     try {
       const result = await adapter.audit(projectDir, scope);
