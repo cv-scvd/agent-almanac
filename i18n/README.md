@@ -110,13 +110,14 @@ translator: "(untranslated stub)"       # Attribution; this is the scaffold valu
 translation_date: "2026-03-15"          # ISO 8601
 ```
 
-`translator` is stamped as `"(untranslated stub)"` at scaffold time because a scaffold is a byte
-copy of the English source: no translation and no review has happened, and the field must not
-claim otherwise (#545). Replace it with a real attribution — a model id, a person, or both — when
-the prose is translated. Stubs are *detected* by body equality in
-`generate-translation-status.js`, not by this field, so the value is a signal for humans, not a
-gate; what it buys is that "which translations has a human actually reviewed?" becomes a question
-the corpus can answer.
+`translator` is stamped with the value shown in the example above at scaffold time, because a
+scaffold is a copy of the English source: no translation and no review has happened, and the
+field must not claim otherwise (#545). Replace it with a real attribution — a model id, a person,
+or both — when the prose is translated. Stubs are *detected* by the verdicts of
+`generate-translation-status.js --verdicts` (`no-novel-lines` for Latin-script locales,
+`no-script` for CJK and wenyan ones), never by this field, so the value is a signal for humans,
+not a gate; what it buys is that "which translations has a human actually reviewed?" becomes a
+question the corpus can answer once the remaining scaffold defaults are replaced (#769).
 
 ### Why there are two commit fields
 
