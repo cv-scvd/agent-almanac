@@ -7,8 +7,8 @@ teams: []
 skills: [assess-github-repo-security, harden-github-repo-security]
 locale: zh-CN
 source_locale: en
-source_commit: f16018409
-fence_basis_commit: f16018409
+source_commit: 6dc5eeaf9
+fence_basis_commit: 6dc5eeaf9
 translator: "(untranslated stub)"
 translation_date: "2026-09-02"
 ---
@@ -39,7 +39,7 @@ The running example throughout is the concrete case that trips most people up: a
 The order matters. Hardening blind is how you break the bot or lock yourself out.
 
 1. **Assess** — inventory the current state with [`assess-github-repo-security`](../skills/assess-github-repo-security/SKILL.md): existing rules, token defaults, enabled security features, and how CI pushes.
-2. **Apply the no-regret baseline** — the essential tier below hardens the repo *without* touching anything the bot depends on.
+2. **Apply the no-regret baseline** — the essential tier below hardens the repo *without* breaking the bot.
 3. **Decide on required checks / required PR** — this is the fork in the road. It is the single control most in tension with a direct-push bot; if you want it, you must first provision a bypass identity for the bot (see the bypass matrix).
 4. **Harden the automation path** — swap the bot to a GitHub App token and add the App as a ruleset bypass actor, or route it through a pull request.
 5. **Verify** — re-run the assessment; confirm the bot still pushes and humans/forks are still gated.
@@ -112,7 +112,7 @@ Inspect what exists before and after: `gh api /repos/OWNER/REPO/rulesets` and `g
 
 ## The Tiered Hardening Checklist
 
-Apply top to bottom. The **essential** tier is no-regret — every bullet is either free to apply or a decision that costs nothing to make deliberately — and does not break the auto-commit bot; **recommended** introduces the bot-bypass decision; **advanced** is high-friction or niche.
+Apply top to bottom. The **essential** tier is no-regret — every bullet is either a control you will not want to undo or a decision you will not want to have skipped — and does not break the auto-commit bot; **recommended** introduces the bot-bypass decision; **advanced** is high-friction or niche.
 
 ### Essential (no-regret baseline)
 
