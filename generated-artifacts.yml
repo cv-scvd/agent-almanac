@@ -335,6 +335,21 @@ generators_without_committed_output:
     command: .github/workflows/update-readmes.yml
     matches_nothing_by_design: true
     reason: >-
-      The only workflow that commits back. What it commits is the readme-family and
-      translation-status artifacts already listed above, so it is a re-invocation of listed
-      generators rather than a generator of its own.
+      The only workflow that commits back INTO THIS REPOSITORY. What it commits is the
+      readme-family and translation-status artifacts already listed above, so it is a
+      re-invocation of listed generators rather than a generator of its own.
+      (publish-hermes-profile.yml also matches the committing-workflow sweep — it pushes to
+      another repository; see the entry below.)
+  - id: hermes-profile-distribution
+    command: node scripts/build-hermes-distribution.js
+    reason: >-
+      Writes a SEPARATE repository, pjt222/agent-almanac-hermes-profile, never this one: the
+      output is a Hermes profile distribution (companion #78) and Hermes copies every top-level
+      entry of the cloned tree into the consumer's profile, so it cannot live here. The edge is
+      decorated twice — `npm run check:hermes-distribution` in validate-skills.yml (required)
+      builds from this tree and runs every output gate; and
+      .github/workflows/publish-hermes-profile.yml, on every release tag, regenerates a clone of
+      that repository in place (`--out`, which writes nothing unless every gate passed) and
+      stages and diffs it with `git diff --cached` before pushing. `--check --against <dir>` is
+      the manual regenerate-and-diff over such a clone; it is not wired into any workflow.
+      Output is deterministic, so that diff needs no content exclusions.

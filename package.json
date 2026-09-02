@@ -66,6 +66,8 @@
     "check:generator-inputs": "node scripts/check-workflow-generator-inputs.js",
     "check:diagram-nodes": "node scripts/check-workflow-diagram-nodes.js",
     "check:bare-substitutions": "node scripts/check-bare-substitutions.js",
+    "build:hermes-distribution": "node scripts/build-hermes-distribution.js",
+    "check:hermes-distribution": "node scripts/build-hermes-distribution.js --check",
     "normalize:i18n-fences": "node scripts/normalize-i18n-fences.js",
     "backfill:fence-basis": "node scripts/backfill-fence-basis.js",
     "validate:agent-parity": "node scripts/check-agent-registry-parity.js",

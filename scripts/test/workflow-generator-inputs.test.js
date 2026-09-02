@@ -38,10 +38,16 @@ ${steps.map((s) => `      - run: ${s}`).join('\n')}
 `;
 
 /** Build a throwaway tree and run the check over it. */
-function run({ paths, steps, files, scripts = {}, warn = false, extraWorkflows = {} }) {
+function run({ paths, steps, files, scripts = {}, warn = false, extraWorkflows = {}, omitExternalPublisher = false }) {
   const dir = mkdtempSync(join(tmpdir(), 'gen-inputs-'));
   try {
     mkdirSync(join(dir, '.github/workflows'), { recursive: true });
+    // The checker declares `publish-hermes-profile.yml` an external publisher and refuses when
+    // it is missing, so every fixture carries a valid one unless a test says otherwise. Written
+    // BEFORE extraWorkflows so a test's own copy under that name wins.
+    if (!omitExternalPublisher) {
+      writeFileSync(join(dir, '.github/workflows/publish-hermes-profile.yml'), externalPublisher(READ_ONLY));
+    }
     for (const [name, body] of Object.entries(extraWorkflows)) {
       writeFileSync(join(dir, '.github/workflows', name), body);
     }
@@ -319,6 +325,7 @@ test('a `run: |` block scalar is expanded line by line', () => {
   try {
     mkdirSync(join(dir, '.github/workflows'), { recursive: true });
     mkdirSync(join(dir, 'scripts/lib'), { recursive: true });
+    writeFileSync(join(dir, '.github/workflows/publish-hermes-profile.yml'), externalPublisher(READ_ONLY));
     writeFileSync(join(dir, '.github/workflows/update-readmes.yml'), `name: Update READMEs
 on:
   push:
@@ -354,6 +361,7 @@ test('shell control flow inside a block is not mistaken for an entry point', () 
   try {
     mkdirSync(join(dir, '.github/workflows'), { recursive: true });
     mkdirSync(join(dir, 'scripts'), { recursive: true });
+    writeFileSync(join(dir, '.github/workflows/publish-hermes-profile.yml'), externalPublisher(READ_ONLY));
     writeFileSync(join(dir, '.github/workflows/update-readmes.yml'), `name: Update READMEs
 on:
   push:
@@ -486,6 +494,7 @@ test('a `run: |2` block header is still recognised as a block', () => {
   try {
     mkdirSync(join(dir, '.github/workflows'), { recursive: true });
     mkdirSync(join(dir, 'scripts'), { recursive: true });
+    writeFileSync(join(dir, '.github/workflows/publish-hermes-profile.yml'), externalPublisher(READ_ONLY));
     writeFileSync(join(dir, '.github/workflows/update-readmes.yml'), `name: Update READMEs
 on:
   push:
@@ -660,4 +669,113 @@ test('the DECLARED healer is skipped, or the check would accuse itself', () => {
 
   assert.equal(status, 0, output);
   assert.ok(!/HEALER_WORKFLOWS/.test(output), output);
+});
+
+// ── EXTERNAL_PUBLISHERS: a push to another repository is not a healer (#78) ─────
+//
+// The fixture file is named `publish-hermes-profile.yml` because the declaration is a constant
+// in the checker; a differently named copy of the same workflow must still be accused, which
+// is what makes the LIST the gate rather than the permission block.
+
+/** A workflow that pushes to another repository, with the token permission it must carry. */
+const externalPublisher = (permissions) => `name: Publish Elsewhere
+on:
+  push:
+    tags: ['v*.*.*']
+${permissions}jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: |
+          git clone git@github.com:someone/elsewhere.git "$RUNNER_TEMP/dist"
+          cd "$RUNNER_TEMP/dist" && git add -A && git commit -m build
+          git push origin HEAD:main
+`;
+const READ_ONLY = 'permissions:\n  contents: read\n';
+const EXTERNAL_BASE = {
+  paths: ['skills/**', 'scripts/generate-readmes.js'],
+  steps: ['node scripts/generate-readmes.js'],
+  files: { 'scripts/generate-readmes.js': 'export const x = 1;\n' },
+};
+
+test('a declared external publisher with a read-only token is not accused', () => {
+  const { status, output } = run({ ...EXTERNAL_BASE, extraWorkflows: { 'publish-hermes-profile.yml': externalPublisher(READ_ONLY) } });
+  assert.equal(status, 0, output);
+  assert.ok(!/HEALER_WORKFLOWS|external publisher/.test(output), output);
+});
+
+test('the same workflow under an undeclared name is still accused — the list is the gate', () => {
+  const { status, output } = run({ ...EXTERNAL_BASE, extraWorkflows: { 'other-publisher.yml': externalPublisher(READ_ONLY) } });
+  assert.equal(status, 1, output);
+  assert.match(output, /other-publisher\.yml uses a bare `git push` but is not in HEALER_WORKFLOWS/);
+  assert.match(output, /EXTERNAL_PUBLISHERS/, 'the accusation names the other list');
+});
+
+test('a declared external publisher whose token can write here is refused, even under --warn', () => {
+  for (const warn of [false, true]) {
+    const { status, output } = run({ ...EXTERNAL_BASE, warn, extraWorkflows: { 'publish-hermes-profile.yml': externalPublisher('permissions:\n  contents: write\n') } });
+    assert.equal(status, 1, output);
+    assert.match(output, /publish-hermes-profile\.yml is declared an external publisher but a permissions block grants contents: write/);
+  }
+});
+
+test('a declared external publisher with an unstated token permission is refused', () => {
+  const { status, output } = run({ ...EXTERNAL_BASE, extraWorkflows: { 'publish-hermes-profile.yml': externalPublisher('') } });
+  assert.equal(status, 1, output);
+  assert.match(output, /token permission is unstated/);
+});
+
+test('a job-level write grant beside a workflow-level read is refused — every permissions block counts', () => {
+  const body = externalPublisher(READ_ONLY).replace('    runs-on: ubuntu-latest\n', '    runs-on: ubuntu-latest\n    permissions:\n      contents: write\n');
+  const { status, output } = run({ ...EXTERNAL_BASE, extraWorkflows: { 'publish-hermes-profile.yml': body } });
+  assert.equal(status, 1, output);
+  assert.match(output, /a permissions block grants contents: write/);
+});
+
+test('the permissions are read structurally: write-all, a flow mapping, and a contents: line inside a run block', () => {
+  // `permissions: write-all` at job level beside a workflow-level read — a line grep for
+  // `contents:` sees only the read.
+  let body = externalPublisher(READ_ONLY).replace('    runs-on: ubuntu-latest\n', '    runs-on: ubuntu-latest\n    permissions: write-all\n');
+  let r = run({ ...EXTERNAL_BASE, extraWorkflows: { 'publish-hermes-profile.yml': body } });
+  assert.equal(r.status, 1, r.output);
+  assert.match(r.output, /the scalar or flow form 'permissions: write-all', which this check does not parse/);
+
+  // A flow mapping is refused rather than parsed.
+  body = externalPublisher(READ_ONLY).replace('    runs-on: ubuntu-latest\n', '    runs-on: ubuntu-latest\n    permissions: { contents: write }\n');
+  r = run({ ...EXTERNAL_BASE, extraWorkflows: { 'publish-hermes-profile.yml': body } });
+  assert.equal(r.status, 1, r.output);
+  assert.match(r.output, /the scalar or flow form 'permissions: \{ contents: write \}'/);
+
+  // A `contents: read` line inside a run block, with no permissions key anywhere, is unstated.
+  body = externalPublisher('').replace('          git push origin HEAD:main\n', '          echo "contents: read"\n          git push origin HEAD:main\n');
+  r = run({ ...EXTERNAL_BASE, extraWorkflows: { 'publish-hermes-profile.yml': body } });
+  assert.equal(r.status, 1, r.output);
+  assert.match(r.output, /token permission is unstated/);
+
+  // A block that names other scopes but not contents is refused too.
+  body = externalPublisher('permissions:\n  actions: read\n');
+  r = run({ ...EXTERNAL_BASE, extraWorkflows: { 'publish-hermes-profile.yml': body } });
+  assert.equal(r.status, 1, r.output);
+  assert.match(r.output, /a permissions block states no contents: grant/);
+
+  // The accept side of the indent boundary: a read-only block, then a `contents: write` line
+  // that sits inside a later run block (a shell line, not YAML) must NOT be read as a grant.
+  // Without the boundary the parser would walk on past the block and take it.
+  body = externalPublisher(READ_ONLY).replace('          git push origin HEAD:main\n', '          contents: write\n          git push origin HEAD:main\n');
+  r = run({ ...EXTERNAL_BASE, extraWorkflows: { 'publish-hermes-profile.yml': body } });
+  assert.equal(r.status, 0, r.output);
+});
+
+test('a declared external publisher that no longer pushes is a stale declaration and is refused', () => {
+  const body = externalPublisher(READ_ONLY).replace('          git push origin HEAD:main\n', '          echo "nothing pushed"\n');
+  const { status, output } = run({ ...EXTERNAL_BASE, extraWorkflows: { 'publish-hermes-profile.yml': body } });
+  assert.equal(status, 1, output);
+  assert.match(output, /declared an external publisher but carries no commit signal/);
+});
+
+test('a missing declared external publisher is a refusal, not a pass', () => {
+  const { status, output } = run({ ...EXTERNAL_BASE, omitExternalPublisher: true });
+  assert.equal(status, 1, output);
+  assert.match(output, /external publisher workflow not found: \.github\/workflows\/publish-hermes-profile\.yml/);
 });
