@@ -55,7 +55,7 @@ Record every measurement you will cite in a **facts file** (`handoff-facts.md`, 
 
 **On failure:** If not in a git repository, skip git commands. The continuation file can still capture conversational context and task state.
 
-### Step 2: Write CONTINUE_HERE.md
+### Step 2: Write the Draft
 
 Write the file as `CONTINUE_HERE.draft.md` at the project root — it becomes `CONTINUE_HERE.md` only after Step 3 — using the structure below. Every section must contain actionable content, not placeholders. Where a claim is not measured, tag it in place as `inferred`, `not re-measured`, `by-construction`, or `the operator's call`; a tag is allowed only where the facts file records why the measurement was not taken, and never on a sha, count, or status line a reader would act on.
 
@@ -63,6 +63,7 @@ Write the file as `CONTINUE_HERE.draft.md` at the project root — it becomes `C
 # Continue Here
 
 > Last updated: YYYY-MM-DDTHH:MM:SSZ | Branch: current-branch-name
+> Verified: verify-handoff round N, 0 blocking, coverage complete — or "not run (workflow unavailable)"
 
 ## Objective
 One-paragraph description of what we are trying to accomplish and why.
@@ -93,9 +94,9 @@ Guidelines:
 - **Next Steps**: Number by priority. Prefix user-dependent items with `**[USER]**`
 - **Context**: Record negative space — what was tried and rejected, and why
 
-**Expected:** A CONTINUE_HERE.md file at the project root with all 5 sections populated with real content from the current session. The timestamp and branch are accurate.
+**Expected:** A `CONTINUE_HERE.draft.md` at the project root with all 5 sections populated with real content from the current session, every claim backed by the facts file or tagged. The timestamp and branch are accurate.
 
-**On failure:** If Write fails, check file permissions. The file should be created in the project root (same directory as `.git/`). Verify `.gitignore` contains `CONTINUE_HERE.md` — if not, add it.
+**On failure:** If Write fails, check file permissions. The draft belongs in the project root (same directory as `.git/`). Verify `.gitignore` contains `CONTINUE_HERE*.md` — the pattern must cover the draft as well as the installed file — and if not, add it.
 
 ### Step 3: Verify the Draft, Then Install It
 
@@ -113,12 +114,12 @@ Workflow({ name: 'verify-handoff', args: { drafts: [{
   key: 'this-repo',
   draft: '/abs/path/CONTINUE_HERE.draft.md',
   facts: '/abs/path/handoff-facts.md',
-  sources: ['/abs/path/previous CONTINUE_HERE.md if one survives, or the plan the work follows'],
-  context: 'what the file is, who consumes it, which repositories the agents must not read',
+  sources: ['/abs/path/previous-edition.md'],   // the previous CONTINUE_HERE.md if one survives, else the plan the work follows
+  context: 'what the file is, who consumes it, which repositories the agents must not read (the draft and facts file are the exception)',
 }], round: 1 } })
 ```
 
-Apply its findings, pass the round's findings file among `sources`, and re-run with the next `round` until the run reports **0 blocking** findings. Only then install: `mv CONTINUE_HERE.draft.md CONTINUE_HERE.md`. If the workflow is not available, say so in the file's header rather than skipping the step silently.
+Write the run's findings to a file beside the facts file (e.g. `handoff-findings-r1.md`), apply them, pass that file among `sources`, and re-run with the next `round`. The gate is the run's return value, not its log: **`blocking` is 0 and `coverage.complete` is true** — no dead or unusable lens, no dropped draft, and the completeness lens actually ran. Re-stamp the header immediately before installing, then install without clobbering an unconsumed prior handoff: `mv -n CONTINUE_HERE.draft.md CONTINUE_HERE.md` (if a prior file still exists, read and archive it first). If the workflow is not available, record `Verified: not run (workflow unavailable)` in the header rather than skipping the step silently.
 
 **Expected:** The installed file reads as a clear, actionable handoff that a fresh session could use to immediately resume work, and every claim in it survived a verifier that could see the facts file.
 
@@ -129,11 +130,11 @@ Apply its findings, pass the round's findings file among `sources`, and re-run w
 - [ ] CONTINUE_HERE.md exists at the project root
 - [ ] File contains all 5 sections with real content (not placeholders)
 - [ ] Timestamp and branch are accurate
-- [ ] `.gitignore` includes `CONTINUE_HERE.md`
+- [ ] `.gitignore` includes `CONTINUE_HERE*.md` (the draft and the installed file)
 - [ ] Next Steps are numbered and actionable
 - [ ] In Progress items specify enough detail to resume without questions
-- [ ] Every number, sha, quoted output and status claim traces to a line of the facts file from Step 1 that names the command which produced it, or is tagged in place as `inferred`, `not re-measured`, `by-construction`, or `the operator's call` — and no sha, count, or status line a reader would act on carries a tag
-- [ ] The draft was verified adversarially in Step 3 (`verify-handoff`, traceability + completeness + actionability, against the facts file and the previous edition if one survives, else the plan) and the last run reported 0 blocking findings before the draft was renamed to `CONTINUE_HERE.md`
+- [ ] Every number, sha, quoted output and status claim traces to a line of the facts file from Step 1 that names the command which produced it, or is tagged in place as `inferred`, `not re-measured`, `by-construction`, or `the operator's call` where the facts file records why the measurement was not taken — and no sha, count, or status line a reader would act on carries a tag
+- [ ] The draft was verified adversarially in Step 3 (`verify-handoff`, traceability + completeness + actionability, against the facts file and the previous edition if one survives, else the plan) and the last run returned `blocking: 0` with `coverage.complete: true` before the draft was renamed to `CONTINUE_HERE.md` — or, if the workflow is not installed, the header records `Verified: not run (workflow unavailable)`
 
 ## Common Pitfalls
 
@@ -141,7 +142,7 @@ Apply its findings, pass the round's findings file among `sources`, and re-run w
 - **Duplicating git state**: Do not list every file changed — git already tracks that. Focus on intent, partial state, and next steps.
 - **Forgetting the Context section**: Failed approaches are the most valuable thing to record. Without them, the next session will retry the same dead ends.
 - **Overwriting without reading**: If CONTINUE_HERE.md already exists from a prior session, read it first — it may contain unfinished work from an earlier handoff.
-- **Leaving stale files**: CONTINUE_HERE.md is ephemeral. After the next session consumes it, delete it. Stale files cause confusion.
+- **Leaving stale files**: CONTINUE_HERE.md is ephemeral. After the next session consumes it, delete it. Stale files cause confusion — and so does a leftover `CONTINUE_HERE.draft.md`, which the next session may mistake for the installed one.
 - **Extrapolating a measurement**: "every run since the 20th" written from a `tail -6` that showed three days is an assertion, not a measurement. Quote the command that ran, and if the claim needs more days, read them. The verification workflow flags this only when the facts file records the command that actually ran — paste real output, never a paraphrased range.
 - **Claiming a section is unchanged when part of it was regenerated**: a section can be byte-identical through its last paragraph and still contain a subsection rewritten today. Scope the claim to what you compared.
 - **Pinning the absence of the last bad value**: a status line that says "not X" passes when the value drifts to Y. State the value.

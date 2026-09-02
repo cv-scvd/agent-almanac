@@ -18,23 +18,25 @@
 #
 # The decision table is the part that drifts, so it is a function and --verify pins it — per
 # pattern alternative, and with mixed pairs that make arm ORDER load-bearing. --verify also
-# drives `run` through a fake gh (GH=fakegh) for the merge, conflict, blocked and unreadable
-# paths, so the wiring between the table and the side effects is pinned too, offline.
+# sources this file and drives the real `run` through a fake gh that LOGS every call, so the
+# assertions read what was invoked (merge exactly once, BLOCKED polled exactly max-polls
+# times, an unreadable PR polled exactly twice), not only what was printed.
 #
 # USAGE
 #     tools/merge-dependabot.sh [--repo OWNER/NAME] [--dry-run] [--max-polls N] [--interval S] [PR...]
 #     tools/merge-dependabot.sh --verify        pin the decision table and the run wiring; no network, no gh
 #
-#   PR...        numbers to handle, in order. Default: every open PR by app/dependabot, oldest first.
+#   PR...        numbers to handle, in order. Default: every open PR by app/dependabot, oldest first (up to 200).
 #   --dry-run    print the decision for each PR; merge nothing, comment nothing; exit 0 when done.
 #   --max-polls  how many times to re-read a PR while it is UNKNOWN or BLOCKED (default 15).
 #   --interval   seconds between polls (default 6).
-#   GH=<cmd>     the gh executable or shell function to use (default gh); --verify uses a fake.
+#   GH=<cmd>     the gh executable to use (default gh). --verify sources this file and points GH
+#                at a shell function; a function cannot cross the process boundary otherwise.
 #
 # EXIT: 0 every PR merged, or --dry-run completed; 1 at least one PR not merged (conflict left
-# for Dependabot, blocked after the poll budget, verdict not MERGED); 2 could not run (gh
-# missing or not authenticated, repo unknown, PR list unreadable, bad arguments). 2 is never a
-# pass.
+# for Dependabot, blocked after the poll budget, verdict not MERGED or unreadable); 2 could not
+# run (gh missing or not authenticated, repo unknown, PR list unreadable, bad arguments). 2 is
+# never a pass.
 set -uo pipefail
 
 SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
@@ -68,6 +70,15 @@ read_state() {
   printf '%s\n' "$raw"
 }
 
+# read_verdict N → "STATE OID" from the API; one retry on a failed read; returns 1 if both fail.
+read_verdict() {
+  local v
+  v="$("$GH" pr view "$1" -R "$REPO" --json state,mergeCommit --jq '"\(.state) \(.mergeCommit.oid[0:9] // "-")"' 2>/dev/null)" \
+    || v="$("$GH" pr view "$1" -R "$REPO" --json state,mergeCommit --jq '"\(.state) \(.mergeCommit.oid[0:9] // "-")"' 2>/dev/null)" \
+    || return 1
+  printf '%s\n' "$v"
+}
+
 run() {
   local dry=0 max_polls=15 interval=6
   local -a prs=()
@@ -92,13 +103,13 @@ run() {
   fi
   if [ ${#prs[@]} -eq 0 ]; then
     local listed
-    listed="$("$GH" pr list -R "$REPO" --author app/dependabot --state open --json number --jq 'sort_by(.number) | .[].number' 2>/dev/null)" || die "cannot list Dependabot PRs in $REPO"
+    listed="$("$GH" pr list -R "$REPO" --author app/dependabot --state open --limit 200 --json number --jq 'sort_by(.number) | .[].number' 2>/dev/null)" || die "cannot list Dependabot PRs in $REPO"
     local x
     while IFS= read -r x; do [ -n "$x" ] && prs+=("$x"); done <<< "$listed"
   fi
   if [ ${#prs[@]} -eq 0 ]; then printf 'no open Dependabot PRs in %s\n' "$REPO"; exit 0; fi
 
-  local failed=0 n i m s d verdict state unreadable err
+  local failed=0 n i m s d verdict state unreadable err st oid
   printf '%-6s %-12s %-10s %-8s %s\n' PR mergeable state action verdict
   for n in "${prs[@]}"; do
     d=wait; m=UNKNOWN; s=UNKNOWN; unreadable=0
@@ -122,14 +133,16 @@ run() {
         merge)
           if [ "$dry" -eq 1 ]; then verdict="would merge"; else
             err="$("$GH" pr merge "$n" -R "$REPO" --merge --delete-branch 2>&1 >/dev/null)"
-            verdict="$("$GH" pr view "$n" -R "$REPO" --json state,mergeCommit --jq '"\(.state) \(.mergeCommit.oid[0:9] // "-")"' 2>/dev/null)" \
-              || verdict="$("$GH" pr view "$n" -R "$REPO" --json state,mergeCommit --jq '"\(.state) \(.mergeCommit.oid[0:9] // "-")"' 2>/dev/null)" \
-              || verdict=""
-            case "$verdict" in
-              "MERGED -"|MERGED\ *) [ "$verdict" = "MERGED -" ] && { verdict="MERGED but no merge commit reported"; failed=1; } ;;
-              "") verdict="verdict unreadable after merge attempt"; failed=1 ;;
-              *) verdict="$verdict — ${err%%$'\n'*}"; failed=1 ;;
-            esac
+            err="${err%%$'\n'*}"
+            if verdict="$(read_verdict "$n")"; then
+              read -r st oid <<< "$verdict"
+              case "$st" in
+                MERGED) [ "$oid" != - ] || { verdict="MERGED but no merge commit reported"; failed=1; } ;;
+                *) verdict="$st $oid"; [ -n "$err" ] && verdict="$verdict — $err"; failed=1 ;;
+              esac
+            else
+              verdict="verdict unreadable after merge attempt"; [ -n "$err" ] && verdict="$verdict — $err"; failed=1
+            fi
           fi ;;
         rebase)
           if [ "$dry" -eq 1 ]; then verdict="would comment @dependabot rebase"; else
@@ -146,9 +159,12 @@ run() {
   exit "$failed"
 }
 
-# A fake gh for --verify: PR 101 is clean, 102 conflicting, 103 blocked forever, 104 unreadable,
-# 105 clean but the merge leaves it OPEN (a refused merge), 106 a draft.
+# A fake gh for --verify. Every call is appended to $FAKEGH_LOG so the assertions can read what
+# was invoked. PRs: 101 clean; 102 conflicting; 103 blocked forever; 104 unreadable; 105 clean
+# but the merge leaves it OPEN; 106 draft; 107 answers null fields; 108 clean but the verdict
+# read fails.
 fakegh() {
+  [ -n "${FAKEGH_LOG:-}" ] && printf '%s\n' "$*" >> "$FAKEGH_LOG"
   case "$1 $2" in
     "auth status") return 0 ;;
     "repo view") printf 'o/r\n' ;;
@@ -160,18 +176,19 @@ fakegh() {
       case "$*" in
         *mergeable,mergeStateStatus*)
           case "$n" in
-            101) printf 'MERGEABLE CLEAN\n' ;;
+            101|105|108) printf 'MERGEABLE CLEAN\n' ;;
             102) printf 'CONFLICTING DIRTY\n' ;;
             103) printf 'MERGEABLE BLOCKED\n' ;;
             104) return 1 ;;
-            105) printf 'MERGEABLE CLEAN\n' ;;
             106) printf 'MERGEABLE DRAFT\n' ;;
-            *) printf 'null null\n' ;;
+            107) printf 'null null\n' ;;
+            *) return 1 ;;
           esac ;;
         *state,mergeCommit*)
           case "$n" in
             101) printf 'MERGED 0123456ab\n' ;;
             105) printf 'OPEN -\n' ;;
+            108) return 1 ;;
             *) printf 'OPEN -\n' ;;
           esac ;;
       esac ;;
@@ -200,36 +217,45 @@ verify() {
   check "blocked beats unknown"         UNKNOWN BLOCKED     blocked
   check "dirty beats draft"             MERGEABLE DIRTY     rebase
 
-  printf 'run wiring through a fake gh:\n'
-  local out rc2
+  printf 'run wiring through a fake gh that logs every call:\n'
+  local out rc2 log
+  log="$(mktemp)"; export FAKEGH_LOG="$log"
   wcheck() { if eval "$2"; then printf '  ok   %s\n' "$1"; else printf '  FAIL %s\n' "$1"; rc=1; fi; }
-  out="$(MERGE_DEPENDABOT_LIB=1 GH=fakegh bash -c 'source "$0"; run --repo o/r --interval 0 --max-polls 2 101 102 103 104 105 106' "$SELF" 2>&1)"; rc2=$?
+  # bash -c sets $0 to the script and $1.. to the remaining args; no shift.
+  drive() { : > "$log"; _MERGE_DEPENDABOT_SOURCE_ONLY=1 GH=fakegh bash -c 'source "$0"; run "$@"' "$SELF" "$@" 2>&1; }
+  out="$(drive --repo o/r --interval 0 --max-polls 2 101 102 103 104 105 106 107 108)"; rc2=$?
   wcheck "clean PR merged, verdict from API"        "printf '%s' \"\$out\" | grep -q '^#101 .* merge .*MERGED 0123456ab'"
-  wcheck "conflict → rebase requested"              "printf '%s' \"\$out\" | grep -q '^#102 .* rebase .*asked to rebase'"
-  wcheck "blocked polled to budget, then reported"  "printf '%s' \"\$out\" | grep -q '^#103 .* blocked .*after 2 poll'"
-  wcheck "unreadable PR reported, not polled 15x"   "printf '%s' \"\$out\" | grep -q '^#104 .* unreadable .*could not read'"
-  wcheck "refused merge reported as not merged"     "printf '%s' \"\$out\" | grep -q '^#105 .* merge .*OPEN'"
+  wcheck "gh pr merge invoked once each for the merge decisions only (101, 105, 108)" "[ \"\$(grep -c '^pr merge 101 ' '$log')\" = 1 ] && [ \"\$(grep -c '^pr merge 105 ' '$log')\" = 1 ] && [ \"\$(grep -c '^pr merge 108 ' '$log')\" = 1 ] && ! grep -q '^pr merge 10[23467] ' '$log'"
+  wcheck "conflict → rebase comment posted"         "printf '%s' \"\$out\" | grep -q '^#102 .* rebase .*asked to rebase' && grep -q '^pr comment 102 ' '$log'"
+  wcheck "blocked polled exactly max-polls times"   "printf '%s' \"\$out\" | grep -q '^#103 .* blocked .*after 2 poll' && [ \"\$(grep -c '^pr view 103 .*mergeable,mergeStateStatus' '$log')\" = 2 ]"
+  wcheck "unreadable PR reported"                   "printf '%s' \"\$out\" | grep -q '^#104 .* unreadable .*could not read'"
+  wcheck "refused merge reported as not merged"     "printf '%s' \"\$out\" | grep -q '^#105 .* merge .*OPEN -$'"
   wcheck "draft left alone"                         "printf '%s' \"\$out\" | grep -q '^#106 .* skip .*draft'"
+  wcheck "null API fields → UNKNOWN, waited"        "printf '%s' \"\$out\" | grep -q '^#107 .* wait .*still UNKNOWN/UNKNOWN'"
+  wcheck "verdict read failure reported distinctly" "printf '%s' \"\$out\" | grep -q '^#108 .* merge .*verdict unreadable' && [ \"\$(grep -c '^pr view 108 .*state,mergeCommit' '$log')\" = 2 ]"
   wcheck "exit 1 when any PR is not merged"         "[ $rc2 -eq 1 ]"
-  out="$(MERGE_DEPENDABOT_LIB=1 GH=fakegh bash -c 'source "$0"; run --repo o/r --interval 0 --max-polls 1 --dry-run 101 102 103' "$SELF" 2>&1)"; rc2=$?
-  wcheck "dry-run prints decisions, exits 0"        "[ $rc2 -eq 0 ] && printf '%s' \"\$out\" | grep -q 'would merge' && printf '%s' \"\$out\" | grep -q 'would comment'"
-  out="$(MERGE_DEPENDABOT_LIB=1 GH=fakegh bash -c 'source "$0"; run --repo o/r --interval 0 --max-polls 1 101 --max-polls' "$SELF" 2>&1)"; rc2=$?
+  out="$(drive --repo o/r --interval 0 --max-polls 15 104)"; rc2=$?
+  wcheck "unreadable PR abandoned after 2 reads, not 15" "[ \"\$(grep -c '^pr view 104 ' '$log')\" = 2 ] && [ $rc2 -eq 1 ]"
+  out="$(drive --repo o/r --interval 0 --max-polls 1 --dry-run 101 102 103)"; rc2=$?
+  wcheck "dry-run prints decisions, merges nothing, exits 0" "[ $rc2 -eq 0 ] && printf '%s' \"\$out\" | grep -q 'would merge' && printf '%s' \"\$out\" | grep -q 'would comment' && ! grep -q '^pr merge ' '$log' && ! grep -q '^pr comment ' '$log'"
+  out="$(drive --repo o/r --interval 0 --max-polls 1 101 --max-polls)"; rc2=$?
   wcheck "missing option value → exit 2"            "[ $rc2 -eq 2 ]"
-  out="$(MERGE_DEPENDABOT_LIB=1 GH=fakegh bash -c 'source "$0"; run --repo o/r -x' "$SELF" 2>&1)"; rc2=$?
+  out="$(drive --repo o/r -x)"; rc2=$?
   wcheck "unknown single-dash flag → exit 2"        "[ $rc2 -eq 2 ]"
-  out="$(MERGE_DEPENDABOT_LIB=1 GH=fakegh bash -c 'source "$0"; run --repo o/r' "$SELF" 2>&1)"; rc2=$?
-  wcheck "default PR list comes from gh pr list"    "printf '%s' \"\$out\" | grep -q '^#101 ' && printf '%s' \"\$out\" | grep -q '^#102 '"
+  out="$(drive --interval 0 --max-polls 1)"; rc2=$?
+  wcheck "repo resolved via gh repo view; list via gh pr list" "grep -q '^repo view' '$log' && grep -q '^pr list ' '$log' && printf '%s' \"\$out\" | grep -q '^#101 ' && printf '%s' \"\$out\" | grep -q '^#102 '"
+  rm -f "$log"; unset FAKEGH_LOG
 
   [ "$rc" -eq 0 ] && printf 'verify: decision table and run wiring pinned\n'
   exit "$rc"
 }
 
-# --verify's subshells source this file with MERGE_DEPENDABOT_LIB=1 to get the functions only;
-# BASH_SOURCE/$0 cannot tell those apart because `bash -c '…' "$SELF"` sets $0 to the script.
-if [ -z "${MERGE_DEPENDABOT_LIB:-}" ]; then
+# --verify's subshells source this file with _MERGE_DEPENDABOT_SOURCE_ONLY=1 to get the functions
+# only; BASH_SOURCE/$0 cannot tell those apart because `bash -c '…' "$SELF"` sets $0 to the script.
+if [ -z "${_MERGE_DEPENDABOT_SOURCE_ONLY:-}" ]; then
   case "${1:-}" in
     --verify) verify ;;
-    -h|--help) sed -n '2,38p' "$SELF"; exit 0 ;;
+    -h|--help) awk 'NR >= 2 && /^set -uo pipefail/ { exit } NR >= 2 { print }' "$SELF"; exit 0 ;;
     *) run "$@" ;;
   esac
 fi
