@@ -20,6 +20,8 @@ with a `--verify` mode can be re-run by anyone, including the next session.
 | `capgeom.py` | Geometry and reconstruction arithmetic for auto-memory index cap probes. Holds the arm registry from `tests/results/2026-08-23-memory-cap-truncation-probe/`, derives every published bound from it, and refuses to agree with a figure that no longer follows from its recorded arm |
 | `wirecap.py` | Captures the request body a Claude Code session actually sends, by standing in as `ANTHROPIC_BASE_URL`. Answers locally — nothing is forwarded — and redacts credential headers before anything reaches disk. Use it when the question is "what is in the context?", which a session cannot be asked, because its self-report on that is unsound in both directions |
 | `check-redaction.sh` | Shape-tier deny-list scanner for a **draft about to leave the machine**. Implements the scanner `skills/redact-for-public-disclosure` Step 3 and `skills/enforce-redaction-gate` Step 2 both specify and neither shipped. Guards third-party internals — minified identifier shapes, byte offsets, operator home paths, store slugs, credential shapes — that the skill's category table rates publishable "Never — until vendor-documented" |
+| `review-bundle.sh` | Builds a self-contained bundle for an adversarial reviewer that must not read the working tree: the diff against a base ref, full post-change copies of every added or modified source file, the PR body, and a README that says to read nothing else. Paths matching `--summarise` (e.g. `i18n/*`) are reported as a stat plus a small sample so 165 one-line mirror hunks cannot drown the review. Exit 2 when there is nothing to bundle |
+| `merge-dependabot.sh` | Merges open Dependabot PRs one at a time, oldest first, re-polling mergeability before each merge because the shared lockfile flips the rest to UNKNOWN and then CONFLICTING. Reads the verdict from the API (`state`, `mergeCommit`), never from gh's stderr; asks Dependabot to rebase on a conflict and exits 1 so the caller comes back. The decision table is a function, and `--verify` pins it |
 | `translator-stamp.mjs` | Keeps the `translator:` frontmatter field honest on scaffolds (#545). Classifies every translated file by the STUB / UNJUDGED verdicts of `generate-translation-status.js --verdicts` (`no-novel-lines` or `no-script` — not byte equality), repairs the field only in STUB-verdict files, and lists UNJUDGED and translated-but-stamped files for a human attribution call. Reads the stub value from `scripts/translate-content.sh` rather than duplicating it, so the two cannot drift silently, and exits 2 on any locale/tree pair the verdict scan did not cover |
 
 ## Running
@@ -40,6 +42,11 @@ python3 tools/wirecap.py --diff over.jsonl under.jsonl
 bash tools/check-redaction.sh --verify        # seed each shape, assert the gate catches it
 bash tools/check-redaction.sh --labels        # what is checked, without the patterns
 bash tools/check-redaction.sh DRAFT.md        # exit 0 clean / N findings / 2 COULD NOT RUN
+
+bash tools/review-bundle.sh --verify          # throwaway repo: assert nothing changed is omitted, nothing summarised is expanded
+bash tools/review-bundle.sh --summarise 'i18n/*' --body pr.md   # bundle HEAD vs origin/main; prints the directory
+bash tools/merge-dependabot.sh --verify       # pin the mergeable/mergeState → merge|rebase|wait|skip table
+bash tools/merge-dependabot.sh --dry-run      # decisions only; then run bare to merge oldest-first
 
 node tools/translator-stamp.mjs               # preview: classify, list the repair set, change nothing
 node tools/translator-stamp.mjs --write       # repair byte-equal stubs only

@@ -12,7 +12,7 @@ license: MIT
 allowed-tools: Read Write Bash Grep Glob
 metadata:
   author: Philipp Thoss
-  version: "1.0"
+  version: "1.1"
   domain: general
   complexity: basic
   language: multi
@@ -116,6 +116,8 @@ Read back CONTINUE_HERE.md and confirm:
 - [ ] `.gitignore` includes `CONTINUE_HERE.md`
 - [ ] Next Steps are numbered and actionable
 - [ ] In Progress items specify enough detail to resume without questions
+- [ ] Every number, sha, quoted output and status claim traces to a **facts file** that names the command which produced it, or is tagged in the file as inferred, not re-measured, or the user's call
+- [ ] The draft was verified adversarially before install — `workflows/verify-handoff.mjs` runs traceability, completeness and actionability lenses against the facts file and the previous edition; apply its findings, then re-run once
 
 ## Common Pitfalls
 
@@ -124,6 +126,9 @@ Read back CONTINUE_HERE.md and confirm:
 - **Forgetting the Context section**: Failed approaches are the most valuable thing to record. Without them, the next session will retry the same dead ends.
 - **Overwriting without reading**: If CONTINUE_HERE.md already exists from a prior session, read it first — it may contain unfinished work from an earlier handoff.
 - **Leaving stale files**: CONTINUE_HERE.md is ephemeral. After the next session consumes it, delete it. Stale files cause confusion.
+- **Extrapolating a measurement**: "every heartbeat since the 20th" written from a `tail -6` that showed three days is an assertion, not a measurement. Quote the command that ran, and if the claim needs more days, read them — the verification workflow flags exactly this.
+- **Carrying a section "verbatim" that has a rewritten subsection**: a Context section can be byte-identical through its last paragraph and still contain a Links block re-derived today. Scope the claim to what was compared.
+- **Pinning the absence of the last bad value**: a status line that says "not X" passes when the value drifts to Y. State the value.
 
 ## Related Skills
 
