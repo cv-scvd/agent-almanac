@@ -3,7 +3,7 @@ name: write-helm-chart
 locale: caveman-ultra
 source_locale: en
 source_commit: 82c77053
-translator: "Julius Brussee homage — caveman"
+translator: "(untranslated stub)"
 translation_date: "2026-04-19"
 description: >
   Create production-ready Helm charts for Kubernetes application deployment with templating,

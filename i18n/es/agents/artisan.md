@@ -18,7 +18,7 @@ locale: es
 source_locale: en
 source_commit: eac7e4fe
 fence_basis_commit: eac7e4fe
-translator: "Claude + human review"
+translator: "(untranslated stub)"
 translation_date: "2026-07-24"
 ---
 

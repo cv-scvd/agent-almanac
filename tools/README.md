@@ -20,6 +20,7 @@ with a `--verify` mode can be re-run by anyone, including the next session.
 | `capgeom.py` | Geometry and reconstruction arithmetic for auto-memory index cap probes. Holds the arm registry from `tests/results/2026-08-23-memory-cap-truncation-probe/`, derives every published bound from it, and refuses to agree with a figure that no longer follows from its recorded arm |
 | `wirecap.py` | Captures the request body a Claude Code session actually sends, by standing in as `ANTHROPIC_BASE_URL`. Answers locally — nothing is forwarded — and redacts credential headers before anything reaches disk. Use it when the question is "what is in the context?", which a session cannot be asked, because its self-report on that is unsound in both directions |
 | `check-redaction.sh` | Shape-tier deny-list scanner for a **draft about to leave the machine**. Implements the scanner `skills/redact-for-public-disclosure` Step 3 and `skills/enforce-redaction-gate` Step 2 both specify and neither shipped. Guards third-party internals — minified identifier shapes, byte offsets, operator home paths, store slugs, credential shapes — that the skill's category table rates publishable "Never — until vendor-documented" |
+| `translator-stamp.mjs` | Keeps the `translator:` frontmatter field honest on scaffolds (#545). Classifies every translated file by the body-equality verdicts of `generate-translation-status.js --verdicts`, repairs the field only in byte-equal stubs, and lists translated-but-stamped files for a human attribution call. Reads the stub value from `scripts/translate-content.sh` rather than duplicating it, so the two cannot drift silently |
 
 ## Running
 
@@ -39,7 +40,15 @@ python3 tools/wirecap.py --diff over.jsonl under.jsonl
 bash tools/check-redaction.sh --verify        # seed each shape, assert the gate catches it
 bash tools/check-redaction.sh --labels        # what is checked, without the patterns
 bash tools/check-redaction.sh DRAFT.md        # exit 0 clean / N findings / 2 COULD NOT RUN
+
+node tools/translator-stamp.mjs               # preview: classify, list the repair set, change nothing
+node tools/translator-stamp.mjs --write       # repair byte-equal stubs only
+node tools/translator-stamp.mjs --verify      # exit 0 clean / 1 a stub asserts a review / 2 COULD NOT MEASURE
 ```
+
+**`translator-stamp.mjs` also exits 2 when it cannot measure** — zero STUB verdicts parsed, or no
+quoted value in the scaffolder — because a corpus with no stubs and a verdict format that changed
+look identical from the outside, and only one of them is good news.
 
 **`check-redaction.sh` exits 2 when it cannot run, and 2 must never be read as a pass.**
 `enforce-redaction-gate` names the trap it is built against: a wrapper shaped

@@ -106,9 +106,17 @@ locale: de                              # Content locale (IETF BCP 47)
 source_locale: en                       # Translated from
 source_commit: abc1234                  # English revision a HUMAN translated against
 fence_basis_commit: abc1234             # English revision the FENCES were verified against
-translator: "Claude + human review"     # Attribution
+translator: "(untranslated stub)"       # Attribution; this is the scaffold value
 translation_date: "2026-03-15"          # ISO 8601
 ```
+
+`translator` is stamped as `"(untranslated stub)"` at scaffold time because a scaffold is a byte
+copy of the English source: no translation and no review has happened, and the field must not
+claim otherwise (#545). Replace it with a real attribution — a model id, a person, or both — when
+the prose is translated. Stubs are *detected* by body equality in
+`generate-translation-status.js`, not by this field, so the value is a signal for humans, not a
+gate; what it buys is that "which translations has a human actually reviewed?" becomes a question
+the corpus can answer.
 
 ### Why there are two commit fields
 
