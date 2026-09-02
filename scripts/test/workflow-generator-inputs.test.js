@@ -758,6 +758,13 @@ test('the permissions are read structurally: write-all, a flow mapping, and a co
   r = run({ ...EXTERNAL_BASE, extraWorkflows: { 'publish-hermes-profile.yml': body } });
   assert.equal(r.status, 1, r.output);
   assert.match(r.output, /a permissions block states no contents: grant/);
+
+  // The accept side of the indent boundary: a read-only block, then a `contents: write` line
+  // that sits inside a later run block (a shell line, not YAML) must NOT be read as a grant.
+  // Without the boundary the parser would walk on past the block and take it.
+  body = externalPublisher(READ_ONLY).replace('          git push origin HEAD:main\n', '          contents: write\n          git push origin HEAD:main\n');
+  r = run({ ...EXTERNAL_BASE, extraWorkflows: { 'publish-hermes-profile.yml': body } });
+  assert.equal(r.status, 0, r.output);
 });
 
 test('a declared external publisher that no longer pushes is a stale declaration and is refused', () => {
