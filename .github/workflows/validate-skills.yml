@@ -187,9 +187,10 @@ jobs:
       # counts skills by `rglob("SKILL.md")`. So the distribution is a separate, generated
       # repository, and THIS step builds it into a temp dir from the current tree and runs every
       # output gate — user-owned and Hermes-excluded names at any depth, `_`/`.`-prefixed
-      # components, symlinks, one SKILL.md per skill at its root, count == registry ==
+      # DIRECTORIES (a dot-file inside a skill is not gated: that is a repository matter, not a
+      # Hermes one), symlinks, one SKILL.md per skill at its root, count == registry ==
       # description, the four secret literals and the fabricated constant in every emitted file,
-      # and the manifest re-parsed from disk.
+      # and the manifest re-parsed from disk, every field.
       #
       # BLOCKING, in this required job, and deliberately NOT warn-only + ratcheted as the
       # 2026-08-19 thread first decided: that decision was for an in-place layout where the

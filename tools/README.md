@@ -23,11 +23,13 @@ with a `--verify` mode can be re-run by anyone, including the next session.
 | `review-bundle.sh` | Builds a self-contained bundle for an adversarial reviewer that must not read the working tree: the diff against a base ref, full copies from HEAD of every added, modified, renamed or type-changed source file, the PR body, and a README that says to read nothing else. Paths matching `--summarise` (a git pathspec: `i18n/*` or `i18n`) are reported as a stat plus a small sample so 165 one-line mirror hunks cannot drown the review — and git's pathspec is the one matcher for both the diff and the copies. Non-ASCII paths, subdirectory invocation and renames are handled; a failed copy, an unreadable body, a reused `--out` or no changes all exit 2, never a partial bundle |
 | `merge-dependabot.sh` | Merges open Dependabot PRs one at a time, oldest first, re-polling mergeability before each merge because the shared lockfile flips the rest to UNKNOWN and then CONFLICTING. BLOCKED is polled, not skipped — GitHub reports it for required checks that are merely pending. Reads the verdict from the API (`state` plus a merge commit), never from gh's stderr; asks Dependabot to rebase on a conflict and exits 1 so the caller comes back. The decision table is a function; `--verify` pins every pattern alternative and the arm order, then drives `run` through a fake `gh` (`GH=`) so the wiring is pinned offline too |
 | `translator-stamp.mjs` | Keeps the `translator:` frontmatter field honest on scaffolds (#545). Classifies every translated file by the STUB / UNJUDGED verdicts of `generate-translation-status.js --verdicts` (`no-novel-lines` or `no-script` — not byte equality), repairs the field only in STUB-verdict files, and lists UNJUDGED and translated-but-stamped files for a human attribution call. Reads the stub value from `scripts/translate-content.sh` rather than duplicating it, so the two cannot drift silently, and exits 2 on any locale/tree pair the verdict scan did not cover |
-| `validate-hermes-distribution.py` | Installs a Hermes profile distribution with Hermes's **own** `hermes_cli/profile_distribution.py` (`--module`, fetched or copied by you — it is upstream code and not in this repository) into a temporary profile root, never `~/.hermes`, and checks companion #78's done-criteria: manifest version and shape, the module's own `_count_skills` and the files that actually landed, SOUL.md bytes, root hygiene, nested user-owned names, symlinks, nothing dropped by the install filter. The stubbed `hermes_cli.profiles` carries Hermes's real name regex and reserved set. `--verify` plants seven defects and requires each to go red with the module you supplied; run it against the deployed pin and against upstream main, since their install behaviour differs (symlink rejection from v0.15.0, filter depth from v0.17.0). Needs PyYAML, which the Hermes module itself imports |
+| `validate-hermes-distribution.py` | Installs a Hermes profile distribution with Hermes's **own** `hermes_cli/profile_distribution.py` (`--module`, fetched or copied by you — it is upstream code and not in this repository) into a temporary profile root, never `~/.hermes` — asserted, not assumed: the stub it imports is checked by path and the profile directory by containment. Fifteen checks against companion #78's done-criteria: manifest fields through the module's own parser and comparator, the module's own `_count_skills` and the files that actually landed, SOUL.md bytes, the profile root against the staged root, the module's user-owned set against the generator's 37 names, nested user-owned names, symlinks, nothing dropped by the install filter. The stubbed `hermes_cli.profiles` carries Hermes's real name regex and reserved set. `--verify` plants thirteen defects and requires each to redden one of its own named checks; run it against the deployed pin and against upstream main, whose install behaviour differs at the two endpoints measured (the pin dereferences symlinks and filters user-owned names at every depth; upstream main refuses symlinks and filters only at the root). Not dependency-free: needs PyYAML, which the Hermes module itself imports |
 
 ## Running
 
-Everything here is dependency-free and runnable from the repository root:
+Everything here is runnable from the repository root, and dependency-free except where its row
+says otherwise (`validate-hermes-distribution.py` needs PyYAML, because the Hermes module it runs
+does):
 
 ```bash
 python3 tools/capgeom.py --verify             # re-derive every published figure, assert, print counts
@@ -38,6 +40,12 @@ python3 tools/capgeom.py --span 170 147
 
 python3 tools/wirecap.py --verify                       # self-test: capture verbatim, redact secrets
 python3 tools/wirecap.py --port 8788 --out over.jsonl   # then point ANTHROPIC_BASE_URL at it
+
+# Hermes's own module, fetched by you (upstream main here; or the deployed pin, copied read-only)
+gh api repos/NousResearch/hermes-agent/contents/hermes_cli/profile_distribution.py --jq .content | base64 -d > /tmp/profile_distribution.py
+python3 tools/validate-hermes-distribution.py --module /tmp/profile_distribution.py --verify          # 13 plants must each go red
+node scripts/build-hermes-distribution.js --out /tmp/almanac-dist                                    # needs `npm ci` first
+python3 tools/validate-hermes-distribution.py --module /tmp/profile_distribution.py --dist /tmp/almanac-dist --almanac .
 python3 tools/wirecap.py --diff over.jsonl under.jsonl
 
 bash tools/check-redaction.sh --verify        # seed each shape, assert the gate catches it

@@ -347,7 +347,9 @@ generators_without_committed_output:
       output is a Hermes profile distribution (companion #78) and Hermes copies every top-level
       entry of the cloned tree into the consumer's profile, so it cannot live here. The edge is
       decorated twice — `npm run check:hermes-distribution` in validate-skills.yml (required)
-      builds from this tree and runs every output gate, and `--check --against <checkout>` is
-      the regenerate-and-diff over a clone of that repository, which
-      .github/workflows/publish-hermes-profile.yml performs on every release tag before pushing.
-      Output is deterministic, so that diff needs no exclusions.
+      builds from this tree and runs every output gate; and
+      .github/workflows/publish-hermes-profile.yml, on every release tag, regenerates a clone of
+      that repository in place (`--out`, which writes nothing unless every gate passed) and
+      stages and diffs it with `git diff --cached` before pushing. `--check --against <dir>` is
+      the manual regenerate-and-diff over such a clone; it is not wired into any workflow.
+      Output is deterministic, so that diff needs no content exclusions.

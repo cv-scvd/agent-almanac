@@ -24,64 +24,81 @@
  *
  * Every gate below re-reads what was just written. A future edit to the copy step, the manifest
  * writer or the README template is then caught by the same check that guards the content — a gate
- * over the inputs would trust the generator it lives in.
+ * over the inputs would trust the generator it lives in. The build always goes to a temp directory
+ * first and is gated there; `--out` receives a copy only when every gate passed, so a red build
+ * writes nothing and never leaves a checkout half-replaced.
  *
  * ## The gates, and the Hermes behaviour each one answers
  *
  *   user-owned      Any path component, at ANY depth, named in Hermes's `USER_OWNED_EXCLUDE`
  *                   (37 names: `cache`, `bin`, `logs`, `memories`, `.env`, …). At v0.13.0
  *                   `_copy_dist_payload` passes that set as `shutil.copytree`'s `ignore` callback,
- *                   so a nested `skills/<id>/bin/` is silently dropped on install. Fixed upstream
- *                   at v0.17.0, still the behaviour at the operator's pin.
+ *                   so a nested `skills/<id>/bin/` is silently dropped on install. Upstream main
+ *                   (2026-09-02) filters only at the staged root; the companion's investigation
+ *                   places the change at v0.17.0 — verified here at the two endpoints only.
  *   hermes-excluded Any component in upstream's `EXCLUDED_SKILL_DIRS` (`.git`, `node_modules`,
  *                   `__pycache__`, …): a SKILL.md under one is invisible to the skill scanner.
- *   hidden          Any `_`- or `.`-prefixed component. `_` is this repository's own convention
- *                   for scaffolding (`skills/_template/`) and for non-content; a dot-directory is
- *                   never content here either.
- *   symlink         Any symlink. Accepted at v0.13.0 (dereferenced by copytree), hard-rejected
- *                   from v0.15.0 (`_reject_distribution_symlinks`). Real files at every version.
+ *   hidden          Any `_`- or `.`-prefixed DIRECTORY. `_` is this repository's own convention
+ *                   for scaffolding (`skills/_template/`) and a dot-directory is never content
+ *                   here. Files are not gated by prefix — a `.gitkeep` inside a skill is a
+ *                   repository matter, not a Hermes one — except where a name is already user-owned.
+ *   symlink         Any symlink, anywhere in the emitted tree and among the root inputs (a
+ *                   symlinked SOUL.md or LICENSE is refused at load, not dereferenced). Accepted
+ *                   and dereferenced at v0.13.0; upstream main rejects the whole tree
+ *                   (`_reject_distribution_symlinks`); the companion places the change at v0.15.0.
  *   skill-shape     Exactly one SKILL.md per skill, at `skills/<id>/SKILL.md`, and nowhere else
  *                   beneath it. v0.13.0's `_count_skills` is `rglob("SKILL.md")` — a preserved
  *                   package under `references/` would inflate the count it reports; upstream
  *                   excludes support paths. One SKILL.md at the root is the shape both agree on.
  *   count           Registry entries == `total_skills` == emitted skill directories == the number
- *                   written into the manifest description. The install preview reports
- *                   `_count_skills`, and that number must be the registry's — not one more.
+ *                   stated in the manifest description, as a whole number and not a substring.
+ *                   A registry listing no skills does not build at all, and a check that scanned
+ *                   zero files is itself a finding — a vacuous run cannot read as clean.
  *   banned-literal  The four secret patterns from the companion's build-gate list and the
  *                   fabricated-constant string struck in companion #66, in EVERY emitted file
  *                   including the manifest and README this script writes. Pinned as literals,
  *                   not anchored: `almanac@` also matches the npm spelling `agent-almanac@1.9.1`,
  *                   which is why the generated README never uses `name@version`.
- *   manifest        Re-parsed from disk: `name` matches Hermes's `_PROFILE_ID_RE` and is not
- *                   reserved; `version` equals package.json; no `env_requires` (nothing here needs
- *                   a credential); no `distribution_owned` (parsed but never enforced at v0.13.0 —
- *                   `owned_paths()` has zero callers — so writing one would claim a control the
- *                   manifest does not have).
+ *   manifest        Re-parsed from disk, every field: `name` matches Hermes's `_PROFILE_ID_RE`
+ *                   and is not reserved; `version` equals package.json; `author` and `license`
+ *                   equal package.json's (or are absent when it has none); `hermes_requires` is
+ *                   the pinned floor; no `env_requires` (nothing here needs a credential); no
+ *                   `distribution_owned` (parsed but never enforced at v0.13.0 — `owned_paths()`
+ *                   has zero callers — so writing one would claim a control the manifest does not
+ *                   have); no other key. A sequence or an unparseable file is one finding.
  *   root-set        The five entries above and nothing else (`.git` is tolerated in `--out`).
  *   soul            Byte equality with the source SOUL.md.
  *
  * ## Modes
  *
- *   --out <dir>               build into <dir>. Refuses a non-empty <dir> unless every existing
- *                             entry is one this generator owns (or `.git`), in which case the owned
- *                             entries are replaced — that is the regenerate-in-place publish path.
+ *   --out <dir>               build, gate, and only then copy into <dir>. Refuses (exit 2) a <dir>
+ *                             inside this repository's `skills/` tree or equal to its root, and a
+ *                             non-empty <dir> whose ROOT holds anything other than the five owned
+ *                             entries and `.git` — those it replaces, which is the
+ *                             regenerate-in-place publish path. The refusal is root-level by
+ *                             design: a file hand-added INSIDE `skills/` of a checkout is replaced
+ *                             with the rest of that entry, because that repository is generated.
  *   --check                   build into a temp dir, run every gate, exit 1 on any finding. This is
  *                             the CI gate: it fails when THIS tree acquires something the
  *                             distribution cannot carry (a symlink, a `bin/`, a secret).
  *   --check --against <dir>   additionally diff the fresh build against <dir> (a checkout of the
- *                             distribution repository): any added, removed or changed file is a
- *                             finding. Output is deterministic — no timestamps, no commit shas in
- *                             any emitted file — so this diff needs no exclusions. The source
- *                             commit belongs in the distribution repository's commit message.
+ *                             distribution repository): any added, removed or changed file, or a
+ *                             changed executable bit, is a finding. Output is deterministic — no
+ *                             timestamps, no commit shas in any emitted file — so this diff needs
+ *                             no content exclusions. Two things it cannot see, stated: mode bits
+ *                             other than the executable bit, and empty directories, which git
+ *                             cannot store and a git-sourced build therefore never emits.
  *   --root <dir>              repository root to build from (default: this checkout). Tests use it.
  *   --json                    print the summary as JSON on stdout.
  *
  * Needs `npm ci` first (js-yaml) — a fresh worktree without node_modules dies on the import,
  * which is how the companion session's first run of this file ended.
  *
- * Exit codes follow the repository contract: 0 clean, 1 a finding, 2 usage or could-not-build
- * (a registry entry with no directory, a count the registry disagrees with itself about, an
- * `--out` holding foreign entries). Exit 2 is never a pass.
+ * Exit codes follow the repository contract: 0 clean, 1 a finding, 2 could not build or could
+ * not measure — a registry entry with no directory or an id that is not its directory name, a
+ * count the registry disagrees with itself about, an unsafe or foreign `--out`, a usage error,
+ * or ANY unexpected exception (reported with its stack; a crash must never read as a finding).
+ * Exit 2 is never a pass.
  *
  * ## Deviation from the 2026-08-19 thread, stated
  *
@@ -96,7 +113,7 @@
 
 import {
   readFileSync, writeFileSync, mkdirSync, readdirSync, lstatSync, rmSync, existsSync,
-  copyFileSync, mkdtempSync,
+  copyFileSync, cpSync, mkdtempSync, realpathSync,
 } from 'node:fs';
 import { resolve, dirname, join, basename, relative, sep } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -107,7 +124,9 @@ import { parseArgs, usageExit } from './lib/parse-args.js';
 // ── Hermes constants, copied verbatim from the pin and re-checked against upstream ──────────
 //
 // `USER_OWNED_EXCLUDE`: hermes_cli/profile_distribution.py, identical at v0.13.0 (the operator's
-// deployed pin, 702 lines) and at upstream main on 2026-09-02 (782 lines) — 37 names.
+// deployed pin, 702 lines) and at upstream main on 2026-09-02 (782 lines) — 37 names. The test
+// suite pins the full set, and tools/validate-hermes-distribution.py compares it against the
+// module it is handed, so a substituted name cannot silently re-scope the gate.
 export const USER_OWNED_EXCLUDE = Object.freeze([
   'auth.json', '.env',
   'state.db', 'state.db-shm', 'state.db-wal',
@@ -132,13 +151,17 @@ export const EXCLUDED_SKILL_DIRS = Object.freeze([
   '__pycache__', '.tox', '.nox', '.pytest_cache', '.mypy_cache', '.ruff_cache',
 ]);
 
-// hermes_cli/profiles.py: `_PROFILE_ID_RE` and `_RESERVED_NAMES`, upstream main 2026-09-02.
+// hermes_cli/profiles.py: `_PROFILE_ID_RE` and `_RESERVED_NAMES`, upstream main 2026-09-02
+// (fetched with `gh api repos/NousResearch/hermes-agent/contents/hermes_cli/profiles.py`).
 export const PROFILE_ID_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 export const RESERVED_PROFILE_NAMES = Object.freeze(['hermes', 'default', 'test', 'tmp', 'root', 'sudo']);
 
 // Companion #78's build-gate list (four secret patterns) plus the fabricated constant struck in
 // companion #66. Literals, deliberately — see the header on `almanac@`.
 export const BANNED_LITERALS = Object.freeze(['187.124.161.28', 'almanac@', 'moltbook_sk_', 'sk-ant-', '$0.55/day']);
+
+/** A registry id is one path segment of this shape, and it IS the skill's directory name. */
+export const SKILL_ID_RE = /^[a-z0-9][a-z0-9-]*$/;
 
 export const MANIFEST_FILENAME = 'distribution.yaml';
 export const DISTRIBUTION_NAME = 'agent-almanac';
@@ -156,6 +179,11 @@ const DEFAULT_ROOT = resolve(__dirname, '..');
 
 /** Could not build: the inputs are inconsistent or the target is unsafe. Exit 2. */
 export class BuildError extends Error {}
+
+/** Is `child` equal to `parent` or beneath it? Both absolute. */
+function within(child, parent) {
+  return child === parent || child.startsWith(parent + sep);
+}
 
 // ── Inputs ─────────────────────────────────────────────────────────────────────────────────
 
@@ -193,16 +221,27 @@ export function loadInputs(root) {
       if (!skill?.id || typeof skill.path !== 'string') {
         throw new BuildError(`skills/_registry.yml: malformed entry in domain '${domain}': ${JSON.stringify(skill)}`);
       }
+      const id = String(skill.id);
       if (basename(skill.path) !== 'SKILL.md') {
-        throw new BuildError(`skills/_registry.yml: '${skill.id}' path '${skill.path}' does not end in SKILL.md`);
+        throw new BuildError(`skills/_registry.yml: '${id}' path '${skill.path}' does not end in SKILL.md`);
       }
-      entries.push({ id: String(skill.id), sourceDir: join(root, 'skills', dirname(skill.path)), domain });
+      // The id names the emitted directory and the path names the source; they must be the same
+      // single segment, or a skill is renamed in the distribution — and an id with `/` or `..`
+      // in it would write outside --out.
+      if (!SKILL_ID_RE.test(id)) {
+        throw new BuildError(`skills/_registry.yml: id '${id}' is not a single safe path segment (${SKILL_ID_RE})`);
+      }
+      if (dirname(skill.path) !== id) {
+        throw new BuildError(`skills/_registry.yml: '${id}' has path '${skill.path}' — the directory must be named by the id`);
+      }
+      entries.push({ id, sourceDir: join(root, 'skills', id), domain });
     }
   }
 
   const ids = entries.map((e) => e.id);
   const dupes = ids.filter((id, i) => ids.indexOf(id) !== i);
   if (dupes.length) throw new BuildError(`skills/_registry.yml: duplicate ids ${[...new Set(dupes)].join(', ')}`);
+  if (entries.length === 0) throw new BuildError('skills/_registry.yml lists no skills — refusing to build an empty distribution');
 
   const totalSkills = Number(skillsRegistry?.total_skills);
   if (!Number.isInteger(totalSkills)) throw new BuildError('skills/_registry.yml: total_skills is not an integer');
@@ -221,8 +260,13 @@ export function loadInputs(root) {
   if (!Number.isInteger(totalAgents)) throw new BuildError('agents/_registry.yml: total_agents is not an integer');
   if (!Number.isInteger(totalTeams)) throw new BuildError('teams/_registry.yml: total_teams is not an integer');
 
+  // lstat, not existsSync: a symlinked SOUL.md would be dereferenced by the copy and the soul gate
+  // would compare two reads of the same link — "any symlink" has to include the root inputs.
   for (const name of ['SOUL.md', 'LICENSE']) {
-    if (!existsSync(join(root, name))) throw new BuildError(`${name} is missing at the repository root`);
+    const path = join(root, name);
+    if (!existsSync(path)) throw new BuildError(`${name} is missing at the repository root`);
+    const st = lstatSync(path);
+    if (st.isSymbolicLink() || !st.isFile()) throw new BuildError(`${name} at the repository root is a symlink or not a regular file`);
   }
 
   return {
@@ -282,7 +326,10 @@ hermes -p ${DISTRIBUTION_NAME}
 \`hermes profile install\` creates the profile \`${DISTRIBUTION_NAME}\` under \`~/.hermes/profiles/\` and
 does not switch your active profile; pass \`--name <other>\` to install under another name and
 \`hermes profile update ${DISTRIBUTION_NAME}\` to re-pull. Installing never touches an existing
-profile's memories, sessions, credentials or config.
+profile's memories, sessions, credentials or config. It DOES replace that profile's \`skills/\`
+directory wholesale: \`hermes profile update\` and \`hermes profile install --force\` remove it
+before copying, so do not keep hand-written skills inside this profile — put them in another
+profile or in a directory Hermes's \`skills.external_dirs\` points at.
 
 ## What is in it
 
@@ -302,22 +349,31 @@ which is why the almanac's CLI, visualisation, scripts and tests are not here.
 ## No ref pinning — read before depending on this
 
 \`hermes profile install\` runs \`git clone --depth 1\` of this repository's default branch at the
-moment of install, and \`hermes profile update\` re-pulls it. **No Hermes version pins a tag, branch
-or commit** — the \`#<ref>\` syntax the module docstring mentions is not implemented (verified at
-v0.13.0 and at upstream main). You get whatever HEAD is.
+moment of install, and \`hermes profile update\` re-pulls it. **Hermes does not pin a tag, branch
+or commit** — the \`#<ref>\` syntax its module docstring mentions is not implemented, at the
+operator's v0.13.0 pin nor at upstream main as of 2026-09-02. You get whatever HEAD is.
 
 HEAD here only ever moves when the almanac cuts a release tag, and every build is made from that
 tag's checkout, so HEAD always corresponds to an almanac release tag — the commit message names
 the tag and the source commit. If you need a fixed set of bytes, fork this repository and install
-from your fork, or install from a local clone checked out at the commit you reviewed
-(\`hermes profile install /path/to/clone\`).
+from your fork, or export the commit you reviewed and install from the export:
+
+\`\`\`bash
+git -C /path/to/clone archive --format=tar <commit> | (mkdir -p /tmp/almanac-dist && tar -x -C /tmp/almanac-dist)
+hermes profile install /tmp/almanac-dist
+\`\`\`
+
+Install from the export, not from the clone itself: a local-directory install copies the
+directory as it is, \`.git/\` included.
 
 ## Hermes compatibility
 
-- \`hermes_requires: ${HERMES_REQUIRES}\` — the earliest version the build was verified against.
-- No symlinks anywhere (Hermes rejects them from v0.15.0).
+- \`hermes_requires: ${HERMES_REQUIRES}\` — the earliest version the build was verified against;
+  upstream main (2026-09-02) installs it too.
+- No symlinks anywhere. v0.13.0 dereferences them; upstream main rejects a distribution that
+  contains one.
 - No directory at any depth named \`cache\`, \`bin\`, \`logs\`, \`memories\` or any other name in
-  Hermes's user-owned list, which versions before v0.17.0 filtered at every depth on install.
+  Hermes's user-owned list, which v0.13.0 filters at every depth on install.
 - Exactly one \`SKILL.md\` per skill, at \`skills/<id>/SKILL.md\`, so the install preview's skill
   count equals the registry's at every Hermes version.
 
@@ -394,9 +450,23 @@ export function emit(inputs, outDir) {
 }
 
 /**
- * Make `outDir` safe to emit into: create it, or — if it exists and holds only entries this
- * generator owns (plus `.git`) — remove those entries. Anything else is a BuildError, because
- * deleting a stranger's files to make room is not this script's call.
+ * Refuse an `--out` that would write into the source: the repository root itself, or anywhere
+ * under its `skills/` tree (copying a skill into a directory beneath it is a self-feeding walk).
+ */
+export function assertOutDirSafe(outDir, inputs) {
+  const skillsRoot = join(inputs.root, 'skills');
+  if (outDir === inputs.root) throw new BuildError(`--out ${outDir} is the repository root`);
+  if (within(outDir, skillsRoot)) throw new BuildError(`--out ${outDir} is inside the source skills tree ${skillsRoot}`);
+  for (const e of inputs.entries) {
+    if (within(e.sourceDir, outDir)) throw new BuildError(`--out ${outDir} contains the source skill ${e.sourceDir}`);
+  }
+}
+
+/**
+ * Make `outDir` safe to emit into: create it, or — if it exists and its ROOT holds only entries
+ * this generator owns (plus `.git`) — remove those entries. Anything else at the root is a
+ * BuildError, because deleting a stranger's files to make room is not this script's call. The
+ * check is root-level by design; see the header.
  */
 export function prepareOutDir(outDir) {
   if (!existsSync(outDir)) {
@@ -418,9 +488,8 @@ export function prepareOutDir(outDir) {
 // ── Gates ──────────────────────────────────────────────────────────────────────────────────
 
 /**
- * Run every gate over the emitted tree. Returns `{ findings, measured }` — `measured` carries the
- * numbers a caller may want to print, and is also what makes a vacuous run visible: a gate that
- * scanned zero files has not checked anything.
+ * Run every gate over the emitted tree. Returns `{ findings, measured }`. A run that scanned no
+ * files is itself a finding, so `measured` is not merely reported: a vacuous run is red.
  */
 export function checkOutput(outDir, inputs) {
   const findings = [];
@@ -438,7 +507,9 @@ export function checkOutput(outDir, inputs) {
     for (const part of p.parts) {
       if (USER_OWNED_EXCLUDE.includes(part)) add('user-owned', p.rel, `component '${part}' is in Hermes USER_OWNED_EXCLUDE; dropped silently on install at v0.13.0`);
       if (EXCLUDED_SKILL_DIRS.includes(part)) add('hermes-excluded', p.rel, `component '${part}' is in Hermes EXCLUDED_SKILL_DIRS; invisible to the skill scanner`);
-      if (part.startsWith('_') || part.startsWith('.')) add('hidden', p.rel, `component '${part}' is underscore- or dot-prefixed`);
+    }
+    if (p.stat.isDirectory() && (basename(p.rel).startsWith('_') || basename(p.rel).startsWith('.'))) {
+      add('hidden', p.rel, `directory '${basename(p.rel)}' is underscore- or dot-prefixed`);
     }
   }
 
@@ -460,7 +531,7 @@ export function checkOutput(outDir, inputs) {
   const skillMdCount = paths.filter((p) => p.parts[0] === 'skills' && basename(p.rel) === 'SKILL.md').length;
   if (skillMdCount !== inputs.totalSkills) add('count', 'skills', `${skillMdCount} SKILL.md files emitted, registry total_skills is ${inputs.totalSkills}`);
 
-  // manifest: re-parsed from disk, never from memory.
+  // manifest: re-parsed from disk, never from memory, every field.
   let manifest = null;
   let manifestParsed = false;
   const manifestPath = join(outDir, MANIFEST_FILENAME);
@@ -482,10 +553,16 @@ export function checkOutput(outDir, inputs) {
     if (typeof manifest.name !== 'string' || !PROFILE_ID_RE.test(manifest.name)) add('manifest', `${MANIFEST_FILENAME}:name`, 'does not match Hermes _PROFILE_ID_RE ^[a-z0-9][a-z0-9_-]{0,63}$');
     if (RESERVED_PROFILE_NAMES.includes(manifest.name)) add('manifest', `${MANIFEST_FILENAME}:name`, 'is a reserved Hermes profile name');
     if (String(manifest.version) !== inputs.version) add('manifest', `${MANIFEST_FILENAME}:version`, `'${manifest.version}' does not mirror package.json '${inputs.version}'`);
-    if (typeof manifest.description !== 'string' || !manifest.description.includes(`${inputs.totalSkills} skills`)) {
+    // A whole number, not a substring: "1371 skills" must not satisfy "371 skills".
+    const stated = new RegExp(`(?<![0-9])${inputs.totalSkills} skills(?![0-9])`);
+    if (typeof manifest.description !== 'string' || !stated.test(manifest.description)) {
       add('manifest', `${MANIFEST_FILENAME}:description`, `does not state '${inputs.totalSkills} skills'`);
     }
     if (manifest.hermes_requires !== HERMES_REQUIRES) add('manifest', `${MANIFEST_FILENAME}:hermes_requires`, `'${manifest.hermes_requires}' is not '${HERMES_REQUIRES}'`);
+    for (const field of ['author', 'license']) {
+      const expected = inputs[field] || undefined;
+      if (manifest[field] !== expected) add('manifest', `${MANIFEST_FILENAME}:${field}`, `'${manifest[field]}' does not mirror package.json ${expected === undefined ? '(absent)' : `'${expected}'`}`);
+    }
   } else if (manifestParsed) {
     add('manifest', MANIFEST_FILENAME, 'is not a mapping');
   }
@@ -506,6 +583,7 @@ export function checkOutput(outDir, inputs) {
       if (text.includes(lit)) add('banned-literal', p.rel, `contains '${lit}'`);
     }
   }
+  if (filesScanned === 0) add('count', '.', 'no files scanned — this run checked nothing');
 
   return {
     findings,
@@ -515,7 +593,7 @@ export function checkOutput(outDir, inputs) {
 
 // ── Drift against a checkout ───────────────────────────────────────────────────────────────
 
-/** Byte-compare two trees (ignoring root `.git`). Returns findings for every difference. */
+/** Byte-compare two trees (ignoring root `.git`), executable bit included. */
 export function diffTrees(freshDir, againstDir) {
   const findings = [];
   const index = (dir) => new Map(walk(dir, { skipRoot: ['.git'] }).map((p) => [p.rel, p]));
@@ -528,7 +606,10 @@ export function diffTrees(freshDir, againstDir) {
     // otherwise compare equal through readFileSync, and Hermes rejects the symlink regardless.
     if (q.stat.isSymbolicLink()) { findings.push({ gate: 'drift', path: rel, detail: 'symlink in the checkout' }); continue; }
     if (p.stat.isDirectory() !== q.stat.isDirectory()) { findings.push({ gate: 'drift', path: rel, detail: 'file/directory mismatch' }); continue; }
-    if (p.stat.isFile() && !readFileSync(p.abs).equals(readFileSync(q.abs))) findings.push({ gate: 'drift', path: rel, detail: 'content differs' });
+    if (p.stat.isFile()) {
+      if (!readFileSync(p.abs).equals(readFileSync(q.abs))) findings.push({ gate: 'drift', path: rel, detail: 'content differs' });
+      else if ((p.stat.mode & 0o111) !== (q.stat.mode & 0o111)) findings.push({ gate: 'drift', path: rel, detail: 'executable bit differs' });
+    }
   }
   for (const rel of against.keys()) {
     if (!fresh.has(rel)) findings.push({ gate: 'drift', path: rel, detail: 'present in the checkout but not generated' });
@@ -539,22 +620,28 @@ export function diffTrees(freshDir, againstDir) {
 // ── Orchestration ──────────────────────────────────────────────────────────────────────────
 
 /**
- * Build and gate. `outDir` null means a temp dir (removed afterwards). Returns the summary a
- * caller prints or JSON-encodes; never exits.
+ * Build into a temp dir, gate there, and only on a clean build copy into `outDir` (if given).
+ * Returns the summary a caller prints or JSON-encodes; never exits.
  */
 export function build({ root, outDir = null, against = null }) {
   const inputs = loadInputs(root);
-  const tempDir = outDir ? null : mkdtempSync(join(tmpdir(), 'hermes-dist-'));
-  const target = outDir ?? tempDir;
+  if (outDir) assertOutDirSafe(outDir, inputs);
+  const tempDir = mkdtempSync(join(tmpdir(), 'hermes-dist-'));
   try {
-    if (outDir) prepareOutDir(outDir);
-    const copyFindings = emit(inputs, target);
-    const { findings: gateFindings, measured } = checkOutput(target, inputs);
-    const driftFindings = against ? diffTrees(target, against) : [];
+    const copyFindings = emit(inputs, tempDir);
+    const { findings: gateFindings, measured } = checkOutput(tempDir, inputs);
+    const driftFindings = against ? diffTrees(tempDir, against) : [];
     const findings = [...copyFindings, ...gateFindings, ...driftFindings];
+    let written = false;
+    if (outDir && findings.length === 0) {
+      prepareOutDir(outDir);
+      cpSync(tempDir, outDir, { recursive: true });
+      written = true;
+    }
     return {
       root,
       out: outDir,
+      written,
       against,
       version: inputs.version,
       skills: inputs.totalSkills,
@@ -565,7 +652,7 @@ export function build({ root, outDir = null, against = null }) {
       ok: findings.length === 0,
     };
   } finally {
-    if (tempDir) rmSync(tempDir, { recursive: true, force: true });
+    rmSync(tempDir, { recursive: true, force: true });
   }
 }
 
@@ -586,8 +673,8 @@ function main(argv) {
   }
   const root = resolve(args.root ?? DEFAULT_ROOT);
   const against = args.against ? resolve(args.against) : null;
-  if (against && !existsSync(against)) {
-    console.error(`--against ${against} does not exist`);
+  if (against && !(existsSync(against) && lstatSync(against).isDirectory())) {
+    console.error(`--against ${against} is not a directory`);
     return 2;
   }
 
@@ -597,15 +684,17 @@ function main(argv) {
   } catch (err) {
     if (err instanceof BuildError) {
       console.error(`build-hermes-distribution: cannot build — ${err.message}`);
-      return 2;
+    } else {
+      // Anything else is a crash, and a crash is "could not measure" — never a finding.
+      console.error(`build-hermes-distribution: unexpected failure — ${err?.stack ?? err}`);
     }
-    throw err;
+    return 2;
   }
 
   if (args.json) {
     console.log(JSON.stringify(summary, null, 2));
   } else {
-    const where = summary.out ? `written to ${summary.out}` : 'built in a temp dir';
+    const where = summary.out ? (summary.written ? `written to ${summary.out}` : `NOT written to ${summary.out} (red build)`) : 'built in a temp dir';
     console.log(`hermes distribution ${summary.version}: ${summary.skills} skills (${summary.agents} agents, ${summary.teams} teams in the catalog), ${where}; `
       + `${summary.measured.pathsWalked} paths walked, ${summary.measured.filesScanned} files scanned`
       + (summary.against ? `, diffed against ${summary.against}` : ''));
@@ -615,6 +704,9 @@ function main(argv) {
   return summary.ok ? 0 : 1;
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+// realpath on both sides: a path-string identity would silently skip main() — and exit 0 —
+// when the script is reached through a symlink or a differently spelled path.
+const invokedAs = process.argv[1] ? (() => { try { return realpathSync(process.argv[1]); } catch { return null; } })() : null;
+if (invokedAs && invokedAs === realpathSync(fileURLToPath(import.meta.url))) {
   process.exitCode = main(process.argv.slice(2));
 }
