@@ -107,7 +107,7 @@ if [ "$CONTENT_TYPE" = "skills" ]; then
   source_locale: en\\
   source_commit: $SOURCE_COMMIT\\
   fence_basis_commit: $SOURCE_COMMIT\\
-  translator: \"Claude + human review\"\\
+  translator: \"(untranslated stub)\"\\
   translation_date: \"$TODAY\"" "$TARGET_FILE"
 else
   # For agents/teams/guides, fields go at top-level of frontmatter (no indent)
@@ -116,7 +116,7 @@ locale: $LOCALE\\
 source_locale: en\\
 source_commit: $SOURCE_COMMIT\\
 fence_basis_commit: $SOURCE_COMMIT\\
-translator: \"Claude + human review\"\\
+translator: \"(untranslated stub)\"\\
 translation_date: \"$TODAY\"" "$TARGET_FILE"
 fi
 
