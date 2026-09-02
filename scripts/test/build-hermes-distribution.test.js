@@ -239,10 +239,19 @@ test('--out: a foreign entry at the root is refused with exit 2 and nothing is d
 test('--out: the repository root, anywhere under its skills/ tree, or a parent of a source skill is refused with exit 2', () => {
   const root = fixture();
   try {
-    for (const out of [root, join(root, 'skills'), join(root, 'skills', 'alpha'), join(root, 'skills', 'alpha', 'out')]) {
+    const cases = [
+      [root, /is the repository root/],
+      [join(root, 'skills'), /is inside the source skills tree/],
+      [join(root, 'skills', 'alpha'), /is inside the source skills tree/],
+      [join(root, 'skills', 'alpha', 'out'), /is inside the source skills tree/],
+      // An ancestor of the repository: prepareOutDir would also refuse it (the root is a foreign
+      // entry there), so the MESSAGE is what pins this arm — both refusals share exit 2.
+      [dirname(root), /contains the source skill/],
+    ];
+    for (const [out, message] of cases) {
       const r = run(root, ['--out', out]);
       assert.equal(r.status, 2, `${out}: ${r.stdout}${r.stderr}`);
-      assert.match(r.stderr, /is the repository root|is inside the source skills tree|contains the source skill/);
+      assert.match(r.stderr, message, out);
     }
     assert.deepEqual(readdirSync(join(root, 'skills', 'alpha')), ['SKILL.md'], 'the source skill is untouched');
   } finally { rmSync(root, { recursive: true, force: true }); }
