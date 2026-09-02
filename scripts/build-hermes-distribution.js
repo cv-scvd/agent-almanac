@@ -76,6 +76,9 @@
  *   --root <dir>              repository root to build from (default: this checkout). Tests use it.
  *   --json                    print the summary as JSON on stdout.
  *
+ * Needs `npm ci` first (js-yaml) — a fresh worktree without node_modules dies on the import,
+ * which is how the companion session's first run of this file ended.
+ *
  * Exit codes follow the repository contract: 0 clean, 1 a finding, 2 usage or could-not-build
  * (a registry entry with no directory, a count the registry disagrees with itself about, an
  * `--out` holding foreign entries). Exit 2 is never a pass.

@@ -88,6 +88,20 @@ const LIST = process.argv.includes('--list');
 const HEALER_WORKFLOWS = ['.github/workflows/update-readmes.yml'];
 
 /**
+ * Workflows that push, but to ANOTHER repository — so they carry the healer signal and are not
+ * healers: nothing they commit lands here, and there is no trigger coverage to check.
+ *
+ * Declared, then CHECKED, like the healer list: each entry must exist, must still carry a commit
+ * signal (a stale declaration is a refusal, as a vanished healer is), must not also be a healer,
+ * and must grant the workflow token `contents: read` at every `contents:` line and never leave
+ * it unstated — so `github.token` cannot commit to this repository, and the only credential
+ * that could is one a human put in a secret, which is the human decision this list records.
+ * What that does NOT prove: that the secret is for the other repository. The declaration is the
+ * claim; the permission is the part of it a check can hold to.
+ */
+const EXTERNAL_PUBLISHERS = ['.github/workflows/publish-hermes-profile.yml'];
+
+/**
  * Actions that write back to the repository, matched anywhere in the (comment-stripped) file.
  *
  * Enumerated rather than pattern-matched, and scoped the way the rest of this file is scoped:
@@ -384,11 +398,48 @@ let undeclaredHealers = 0;
 // `--warn` must not swallow them -- see the exit logic at the bottom.
 let refusals = 0;
 
-for (const { workflowPath, signal } of assertHealersDeclared(join(ROOT, '.github', 'workflows'), HEALER_WORKFLOWS)) {
+for (const { workflowPath, signal } of assertHealersDeclared(join(ROOT, '.github', 'workflows'), [...HEALER_WORKFLOWS, ...EXTERNAL_PUBLISHERS])) {
   console.error(`${WARN_ONLY ? 'WARN' : 'FAIL'}: ${workflowPath} uses ${signal} but is not in HEALER_WORKFLOWS.`);
-  console.error('      Add it, or state why its committed output has no generator inputs.');
+  console.error('      Add it, or state why its committed output has no generator inputs — a workflow that');
+  console.error('      pushes to ANOTHER repository belongs in EXTERNAL_PUBLISHERS with a read-only token.');
   undeclaredHealers++;
   findings++;
+}
+
+// An external publisher is skipped by the healer accusation above on the strength of its
+// declaration, so the declaration is held to what a check can verify. Every failure here is a
+// REFUSAL, not a finding: `--warn` must not turn "this workflow could write here" into a warning.
+for (const workflow of EXTERNAL_PUBLISHERS) {
+  const absolute = join(ROOT, workflow);
+  if (HEALER_WORKFLOWS.includes(workflow)) {
+    console.error(`FAIL: ${workflow} is listed as both a healer and an external publisher; it can be one.`);
+    refusals++;
+    continue;
+  }
+  if (!existsSync(absolute)) {
+    console.error(`FAIL: external publisher workflow not found: ${workflow}`);
+    refusals++;
+    continue;
+  }
+  const text = readFileSync(absolute, 'utf8');
+  const stripped = text.split(/\r?\n/).filter((line) => !/^\s*#/.test(line)).join('\n');
+  const commits = COMMIT_ACTIONS.some(({ pattern }) => pattern.test(stripped))
+    || COMMIT_COMMANDS.some(({ pattern }) => runSteps(text).some((cmd) => pattern.test(cmd)));
+  if (!commits) {
+    console.error(`FAIL: ${workflow} is declared an external publisher but carries no commit signal.`);
+    console.error('      If it stopped pushing deliberately, remove it from EXTERNAL_PUBLISHERS as well.');
+    refusals++;
+    continue;
+  }
+  // Every `contents:` grant in the file, at workflow or job level. Unstated is not read-only:
+  // the default token permission is a repository setting this check cannot see.
+  const grants = [...stripped.matchAll(/^\s*contents:\s*(\S+)/gm)].map((m) => m[1]);
+  if (grants.length === 0 || grants.some((grant) => grant !== 'read')) {
+    console.error(`FAIL: ${workflow} is declared an external publisher but its token permission is `
+      + `${grants.length ? `contents: ${grants.join(', ')}` : 'unstated'} — it must grant contents: read `
+      + 'and nothing more, so github.token cannot commit to this repository.');
+    refusals++;
+  }
 }
 
 for (const workflow of HEALER_WORKFLOWS) {
