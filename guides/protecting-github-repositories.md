@@ -33,7 +33,7 @@ The running example throughout is the concrete case that trips most people up: a
 The order matters. Hardening blind is how you break the bot or lock yourself out.
 
 1. **Assess** — inventory the current state with [`assess-github-repo-security`](../skills/assess-github-repo-security/SKILL.md): existing rules, token defaults, enabled security features, and how CI pushes.
-2. **Apply the zero-downside baseline** — the essential tier below hardens the repo *without* touching anything the bot depends on.
+2. **Apply the no-regret baseline** — the essential tier below hardens the repo *without* touching anything the bot depends on.
 3. **Decide on required checks / required PR** — this is the fork in the road. It is the single control most in tension with a direct-push bot; if you want it, you must first provision a bypass identity for the bot (see the bypass matrix).
 4. **Harden the automation path** — swap the bot to a GitHub App token and add the App as a ruleset bypass actor, or route it through a pull request.
 5. **Verify** — re-run the assessment; confirm the bot still pushes and humans/forks are still gated.
@@ -106,9 +106,9 @@ Inspect what exists before and after: `gh api /repos/OWNER/REPO/rulesets` and `g
 
 ## The Tiered Hardening Checklist
 
-Apply top to bottom. The **essential** tier is zero-downside and does not break the auto-commit bot; **recommended** introduces the bot-bypass decision; **advanced** is high-friction or niche.
+Apply top to bottom. The **essential** tier is no-regret — every bullet is either free to apply or a decision that costs nothing to make deliberately — and does not break the auto-commit bot; **recommended** introduces the bot-bypass decision; **advanced** is high-friction or niche.
 
-### Essential (zero-downside baseline)
+### Essential (no-regret baseline)
 
 - **Force-push + deletion protection** via a default-branch ruleset (`non_fast_forward` + `deletion`). The cheapest, no-downside hardening; safe for a direct-push bot.
 - **Set the default `GITHUB_TOKEN` to read-only** and disable token PR approval. This is a *default*, not a hard cap, for same-repo push events — so it does not break the bot **provided the committing job grants `contents: write` back** (the next bullet). If your workflow has no explicit `permissions:` block and relied on the ambient write default, add that grant *first* or the `git-auto-commit-action` push `403`s.
