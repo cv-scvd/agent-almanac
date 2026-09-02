@@ -11,7 +11,7 @@ Workflows are the **fifth content type** in agent-almanac — code-driven orches
 | [`batch-generate-waves.mjs`](batch-generate-waves.mjs) | Resumable scout → generate → audit waves over a large item pool; artifacts are disk-durable and validator-gated, so an interrupted run salvages and resumes. |
 | [`verify-handoff.mjs`](verify-handoff.mjs) | Adversarially verifies a `CONTINUE_HERE.md` draft against a facts file and its sources — traceability, completeness, actionability — three lenses per draft in parallel. Read-only; findings are structured so the author applies them and re-runs. |
 
-This directory ships **two** reviewed seeds (Phase 1). A larger seed library, a `workflows/_registry.yml`, CLI install, and registry-sync validation are deliberately deferred behind a promotion gate (see [#288](https://github.com/pjt222/agent-almanac/issues/288)) — the `create-workflow` meta-skill is the one Phase-2 piece already shipped.
+This directory ships **three** reviewed seeds (Phase 1). A larger seed library, a `workflows/_registry.yml`, CLI install, and registry-sync validation are deliberately deferred behind a promotion gate (see [#288](https://github.com/pjt222/agent-almanac/issues/288)) — the `create-workflow` meta-skill is the one Phase-2 piece already shipped.
 
 ## Authoring convention
 
@@ -60,7 +60,13 @@ Workflow({ name: 'verify-handoff', args: { drafts: [{
 }], round: 1 } })
 ```
 
-Apply the findings, then re-run with `round: 2`; the round number varies the prompts and labels so a re-run is never served from cache.
+Apply the findings, then re-run with `round: 2`, adding the round-1 findings file to `sources` so the
+re-run can see what was applied instead of re-deriving from scratch. The round number varies the prompts
+and labels, so a *resumed* run (`resumeFromRunId`) cannot return round-1 results from cache; a fresh
+`Workflow()` call runs live regardless. Say in `context` which repositories the agents must not read —
+the restriction is an instruction, not a capability — so claims about files there that the facts file does
+not cover are reported as untraceable-by-construction rather than as false. A draft with no `sources` runs
+traceability and actionability only; the completeness lens is skipped and logged, never reported clean.
 
 ## Validating a workflow script
 

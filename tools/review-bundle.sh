@@ -13,94 +13,113 @@
 # Building that by hand each time is the calculation this tool replaces.
 #
 # A mirror-heavy change (165 one-line i18n hunks) drowns the review in noise, so paths matching
-# a --summarise glob are reported as a stat plus a small sample instead of expanded hunks.
+# a --summarise pathspec are reported as a stat plus a small sample instead of expanded hunks.
+# ONE matcher decides what is summarised — git's own pathspec — for the diff and for the copies
+# alike; the first draft re-implemented it with a bash `case` and the two disagreed on a bare
+# directory name.
+#
+# Copies come from HEAD (`git show HEAD:path`), never from the working tree, and the bundle
+# refuses (exit 2) rather than shipping a silent zero-byte stand-in when a copy fails. Paths are
+# read with core.quotePath off, so a non-ASCII filename is a filename, not a C-quoted string.
 #
 # USAGE
-#     tools/review-bundle.sh [--base REF] [--out DIR] [--summarise GLOB]... [--body FILE] [--sample N]
+#     tools/review-bundle.sh [--base REF] [--out DIR] [--summarise PATHSPEC]... [--body FILE] [--sample N]
 #     tools/review-bundle.sh --verify        self-test in a throwaway repo; exit non-zero if the bundle
 #                                            would omit a changed file or expand a summarised one
 #
-#   --base REF        diff base (default origin/main). The diff is REF...HEAD (merge-base form).
-#   --out DIR         bundle directory (default: a fresh mktemp -d). Printed on the last line.
-#   --summarise GLOB  git pathspec whose hunks are summarised, not expanded (repeatable).
-#   --body FILE       PR body to include as pr-body.md.
-#   --sample N        how many summarised files get their diff shown as a sample (default 3).
+#   --base REF          diff base (default origin/main). The diff is REF...HEAD (merge-base form).
+#   --out DIR           bundle directory (default: a fresh mktemp -d). Must not already contain a bundle.
+#   --summarise SPEC    git pathspec whose hunks are summarised, not expanded (repeatable; `i18n/*`, `i18n`).
+#   --body FILE         PR body to include as pr-body.md.
+#   --sample N          how many summarised files get their diff shown as a sample (default 3).
 #
-# EXIT: 0 bundle written; 1 --verify failed; 2 could not run (not a git repo, base unknown,
-# no changes). 2 is never a pass.
+# Runs from anywhere inside the repository; the bundle is always repo-wide.
+#
+# EXIT: 0 bundle written; 1 --verify failed; 2 could not run (not a git repo, base unknown, bad
+# arguments, no changes, a copy failed, --out already holds a bundle). 2 is never a pass.
 set -uo pipefail
 
 SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 
 die() { printf 'review-bundle: %s\n' "$*" >&2; exit 2; }
+abspath() { case "$1" in /*) printf '%s' "$1" ;; *) printf '%s/%s' "$PWD" "$1" ;; esac; }
 
 build() {
   local base="origin/main" out="" body="" sample=3
   local -a summarise=()
   while [ $# -gt 0 ]; do
     case "$1" in
-      --base) base="$2"; shift 2 ;;
-      --out) out="$2"; shift 2 ;;
-      --summarise) summarise+=("$2"); shift 2 ;;
-      --body) body="$2"; shift 2 ;;
-      --sample) sample="$2"; shift 2 ;;
+      --base) [ $# -ge 2 ] || die "--base needs a value"; base="$2"; shift 2 ;;
+      --out) [ $# -ge 2 ] || die "--out needs a value"; out="$(abspath "$2")"; shift 2 ;;
+      --summarise) [ $# -ge 2 ] || die "--summarise needs a value"; summarise+=("$2"); shift 2 ;;
+      --body) [ $# -ge 2 ] || die "--body needs a value"; body="$(abspath "$2")"; shift 2 ;;
+      --sample) [ $# -ge 2 ] || die "--sample needs a value"; sample="$2"; shift 2 ;;
       *) die "unknown argument: $1" ;;
     esac
   done
-  git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "not inside a git repository"
+  [[ "$sample" =~ ^[0-9]+$ ]] || die "--sample must be a non-negative integer"
+  local top
+  top="$(git rev-parse --show-toplevel 2>/dev/null)" || die "not inside a git repository"
+  cd "$top" || die "cannot cd to $top"
   git rev-parse --verify --quiet "$base^{commit}" >/dev/null || die "base ref not found: $base"
-  [ -z "$out" ] && out="$(mktemp -d)"
-  mkdir -p "$out" || die "cannot create $out"
+  [ -n "$body" ] && { [ -r "$body" ] || die "body not readable: $body"; }
+  if [ -z "$out" ]; then out="$(mktemp -d)"; else
+    mkdir -p "$out" || die "cannot create $out"
+    [ -e "$out/diff.md" ] || [ -e "$out/files" ] && die "$out already holds a bundle; pass a fresh --out"
+  fi
 
   local -a excl=()
   local g
   for g in "${summarise[@]+"${summarise[@]}"}"; do excl+=(":(exclude)$g"); done
+  local -a Q=(-c core.quotePath=false)
 
   local range="$base...HEAD"
-  local changed
-  changed="$(git diff --name-status "$range" -- .)"
+  local changed expanded stat summarised_list
+  changed="$(git "${Q[@]}" diff --name-status "$range" -- .)" || die "git diff failed"
   [ -n "$changed" ] || die "no changes between $base and HEAD"
+  expanded="$(git "${Q[@]}" diff "$range" -- . "${excl[@]+"${excl[@]}"}")" || die "git diff (expanded) failed"
+  summarised_list=""
+  if [ ${#summarise[@]} -gt 0 ]; then
+    summarised_list="$(git "${Q[@]}" diff --name-only "$range" -- "${summarise[@]}")" || die "git diff (summarised) failed"
+    stat="$(git "${Q[@]}" diff --stat "$range" -- "${summarise[@]}")" || die "git diff --stat failed"
+  fi
 
   {
     printf '# Review bundle — diff %s\n\n' "$range"
     printf 'Generated by tools/review-bundle.sh. Source files in full; summarised paths as stat + sample.\n\n'
     printf '## Changed files (name-status)\n\n```\n%s\n```\n\n' "$changed"
-    printf '## Diff of expanded paths\n\n```diff\n'
-    git diff "$range" -- . "${excl[@]+"${excl[@]}"}"
-    printf '```\n'
+    printf '## Diff of expanded paths\n\n```diff\n%s\n```\n' "$expanded"
     if [ ${#summarise[@]} -gt 0 ]; then
       printf '\n## Summarised paths (%s)\n\n' "${summarise[*]}"
-      printf '### stat\n\n```\n'
-      git diff --stat "$range" -- "${summarise[@]}"
-      printf '```\n\n### sample of %s file(s)\n\n```diff\n' "$sample"
-      git diff --name-only "$range" -- "${summarise[@]}" | head -n "$sample" | while IFS= read -r f; do
-        git diff "$range" -- "$f"
+      printf '### stat\n\n```\n%s\n```\n\n' "$stat"
+      printf '### sample of %s file(s)\n\n```diff\n' "$sample"
+      printf '%s\n' "$summarised_list" | head -n "$sample" | while IFS= read -r f; do
+        [ -n "$f" ] && git "${Q[@]}" diff "$range" -- "$f"
       done
       printf '```\n'
     fi
   } > "$out/diff.md"
 
-  # Full copies: every added or modified file that is NOT summarised, at its post-change content.
+  # Full copies from HEAD of every added, modified, renamed, copied or type-changed file that is
+  # NOT summarised. The summarised set is what git said it was, never a re-implementation.
   local status path
   mkdir -p "$out/files"
   while IFS=$'\t' read -r status path; do
     [ -n "$path" ] || continue
-    case "$status" in A*|M*|R*|C*) ;; *) continue ;; esac
-    for g in "${summarise[@]+"${summarise[@]}"}"; do
-      case "$path" in $g) continue 2 ;; esac
-    done
+    case "$status" in A*|M*|R*|C*|T*) ;; *) continue ;; esac
+    if [ -n "$summarised_list" ] && printf '%s\n' "$summarised_list" | grep -qxF -- "$path"; then continue; fi
     mkdir -p "$out/files/$(dirname "$path")"
-    git show "HEAD:$path" > "$out/files/$path" 2>/dev/null || cp "$path" "$out/files/$path"
-  done <<< "$(git diff --name-status "$range" -- . | awk -F'\t' '{print $1 "\t" $NF}')"
+    git show "HEAD:$path" > "$out/files/$path" 2>/dev/null || die "cannot copy HEAD:$path"
+  done <<< "$(printf '%s\n' "$changed" | awk -F'\t' '{print $1 "\t" $NF}')"
 
-  [ -n "$body" ] && cp "$body" "$out/pr-body.md"
+  [ -n "$body" ] && { cp "$body" "$out/pr-body.md" || die "cannot copy $body"; }
 
   {
     printf '# Review bundle\n\n'
     printf 'Everything the reviewer needs is under this directory. **Do NOT read the repository working tree**'
     printf ' — it may be checked out on another branch while you work; anything read there can be pre-change or unrelated.\n\n'
     printf -- '- `diff.md` — the change (`%s`), expanded except for summarised paths\n' "$range"
-    printf -- '- `files/<path>` — full post-change content of every added or modified source file\n'
+    printf -- '- `files/<path>` — full post-change content (from HEAD) of every added or modified source file\n'
     [ -n "$body" ] && printf -- '- `pr-body.md` — the PR body and its evidence claims\n'
     printf -- '- write your findings to `findings.md` in this directory (the file is the deliverable)\n\n'
     printf '## Files in this bundle\n\n```\n'
@@ -115,33 +134,54 @@ build() {
 
 verify() {
   local tmp; tmp="$(mktemp -d)"
-  local repo="$tmp/repo" out="$tmp/bundle" rc=0
-  mkdir -p "$repo/i18n/de" "$repo/src"
+  local repo="$tmp/repo" out="$tmp/bundle" rc=0 rc2
+  export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
+  mkdir -p "$repo/i18n/de" "$repo/i18n/fr" "$repo/src" "$repo/docs"
   (
     cd "$repo" || exit 2
     git init -q && git config user.email t@t && git config user.name t
-    printf 'one\ntwo\n' > src/a.txt; printf 'mirror\n' > i18n/de/x.md
+    printf 'one\ntwo\n' > src/a.txt; printf 'mirror\n' > i18n/de/x.md; printf 'miroir\n' > i18n/fr/y.md
+    printf 'to be renamed\n' > src/old.txt; printf 'grün\n' > "docs/grün ä.md"
     git add -A && git commit -qm base
     git branch -q base
-    printf 'one\nTWO\n' > src/a.txt; printf 'new\n' > src/b.txt; printf 'mirror-changed\n' > i18n/de/x.md
+    printf 'one\nTWO\n' > src/a.txt; printf 'new\n' > src/b.txt
+    printf 'mirror-changed\n' > i18n/de/x.md; printf 'miroir-changé\n' > i18n/fr/y.md
+    git mv src/old.txt src/renamed.txt; printf 'grün changed\n' > "docs/grün ä.md"
+    printf 'sentinel-body-7f3\n' > "$tmp/body.md"
     git add -A && git commit -qm change
-    bash "$SELF" --base base --out "$out" --summarise 'i18n/*' >/dev/null
+    # The working tree now DIFFERS from HEAD: copies must come from HEAD, not from here.
+    printf 'WORKTREE-ONLY\n' > src/a.txt
+    # Run from a subdirectory: the bundle must still be repo-wide.
+    cd src && bash "$SELF" --base base --out "$out" --summarise 'i18n' --sample 1 --body "$tmp/body.md" >/dev/null
   ) || rc=$?
   [ "$rc" -eq 0 ] || { printf 'verify: build exited %s\n' "$rc"; rm -rf "$tmp"; exit 1; }
 
   check() { if eval "$2"; then printf '  ok   %s\n' "$1"; else printf '  FAIL %s\n' "$1"; rc=1; fi; }
-  check "added file copied in full"            "[ \"\$(cat '$out/files/src/b.txt')\" = new ]"
-  check "modified file copied post-change"     "grep -q TWO '$out/files/src/a.txt'"
-  check "summarised file NOT copied"           "[ ! -e '$out/files/i18n/de/x.md' ]"
-  check "expanded hunk present in diff.md"     "grep -q '^+TWO' '$out/diff.md'"
-  check "summarised path in stat"              "grep -q 'i18n/de/x.md' '$out/diff.md'"
-  check "summarised hunk only in the sample"   "[ \"\$(grep -c '^+mirror-changed' '$out/diff.md')\" = 1 ]"
-  check "README forbids reading the tree"      "grep -q 'Do NOT read the repository working tree' '$out/README.md'"
-  check "README lists the bundle"              "grep -q './files/src/b.txt' '$out/README.md'"
-  # negative control: the tool must refuse, with exit 2, when there is nothing to bundle
-  local rc2
-  (cd "$repo" && git checkout -q base && bash "$SELF" --base base --out "$tmp/empty" >/dev/null 2>&1); rc2=$?
-  check "no changes → exit 2, never a pass"    "[ $rc2 -eq 2 ]"
+  check "added file copied in full"                  "[ \"\$(cat '$out/files/src/b.txt')\" = new ]"
+  check "modified file copied from HEAD, not tree"   "grep -q TWO '$out/files/src/a.txt' && ! grep -q WORKTREE-ONLY '$out/files/src/a.txt'"
+  check "renamed file copied under its new name"     "[ -f '$out/files/src/renamed.txt' ]"
+  check "non-ASCII path with a space copied"         "grep -q 'grün changed' '$out/files/docs/grün ä.md'"
+  check "bare-directory summarise: nothing copied"   "[ ! -e '$out/files/i18n' ]"
+  check "copy set == expanded changed set"           "diff <(cd '$repo' && git -c core.quotePath=false diff --name-only base...HEAD -- . ':(exclude)i18n' | sort) <(cd '$out/files' && find . -type f | sed 's|^\./||' | sort) >/dev/null"
+  check "expanded hunk present in diff.md"           "grep -q '^+TWO' '$out/diff.md'"
+  check "summarised paths in the STAT section"       "grep -qE '^ i18n/de/x\.md +\|' '$out/diff.md' && grep -qE '^ i18n/fr/y\.md +\|' '$out/diff.md'"
+  check "--sample 1: exactly one summarised hunk"    "[ \"\$(grep -c '^diff --git a/i18n' '$out/diff.md')\" = 1 ]"
+  check "body copied as pr-body.md and listed"       "grep -q sentinel-body-7f3 '$out/pr-body.md' && grep -q './pr-body.md' '$out/README.md'"
+  check "README forbids reading the tree"            "grep -q 'Do NOT read the repository working tree' '$out/README.md'"
+  check "every copied file is non-empty"             "! find '$out/files' -type f -empty | grep -q ."
+  # negative controls: the tool must refuse, with exit 2, rather than ship a partial bundle
+  (cd "$repo" && bash "$SELF" --base does-not-exist --out "$tmp/e1" >/dev/null 2>&1); rc2=$?
+  check "unknown base → exit 2"                      "[ $rc2 -eq 2 ]"
+  (cd "$repo" && bash "$SELF" --base base --out "$tmp/e2" --body "$tmp/missing.md" >/dev/null 2>&1); rc2=$?
+  check "unreadable --body → exit 2"                 "[ $rc2 -eq 2 ]"
+  (cd "$repo" && bash "$SELF" --base >/dev/null 2>&1); rc2=$?
+  check "missing option value → exit 2"              "[ $rc2 -eq 2 ]"
+  (cd "$repo" && bash "$SELF" --base base --out "$out" >/dev/null 2>&1); rc2=$?
+  check "--out already holds a bundle → exit 2"      "[ $rc2 -eq 2 ]"
+  (cd "$repo" && git checkout -q -f base && bash "$SELF" --base base --out "$tmp/e3" >/dev/null 2>&1); rc2=$?
+  check "no changes → exit 2, never a pass"          "[ $rc2 -eq 2 ]"
+  (cd "$tmp" && bash "$SELF" --base base --out "$tmp/e4" >/dev/null 2>&1); rc2=$?
+  check "outside a repo → exit 2"                    "[ $rc2 -eq 2 ]"
   rm -rf "$tmp"
   [ "$rc" -eq 0 ] && printf 'verify: all checks passed\n'
   exit "$rc"
@@ -149,6 +189,6 @@ verify() {
 
 case "${1:-}" in
   --verify) verify ;;
-  -h|--help) sed -n '2,30p' "$SELF"; exit 0 ;;
+  -h|--help) sed -n '2,38p' "$SELF"; exit 0 ;;
   *) build "$@" ;;
 esac

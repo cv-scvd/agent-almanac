@@ -49,13 +49,15 @@ git diff --stat
 
 Review the conversation context: what was the objective, what was completed, what is partially done, what was tried and failed, what decisions were made.
 
-**Expected:** Clear understanding of current task state — completed items, in-progress items, and planned next steps.
+Record every measurement you will cite in a **facts file** (`handoff-facts.md`, outside the repository or ignored by it): one line per fact, each naming the command that produced it and quoting its output verbatim — the range you actually read, not the range you meant. A claim in the handoff that traces to no line here is an assertion; an output paraphrased here is an extrapolation the verifier cannot see.
+
+**Expected:** Clear understanding of current task state — completed items, in-progress items, and planned next steps — and a facts file behind every number, sha, quoted output and status line you intend to write.
 
 **On failure:** If not in a git repository, skip git commands. The continuation file can still capture conversational context and task state.
 
 ### Step 2: Write CONTINUE_HERE.md
 
-Write the file to the project root using the structure below. Every section must contain actionable content, not placeholders.
+Write the file as `CONTINUE_HERE.draft.md` at the project root — it becomes `CONTINUE_HERE.md` only after Step 3 — using the structure below. Every section must contain actionable content, not placeholders. Where a claim is not measured, tag it in place as `inferred`, `not re-measured`, `by-construction`, or `the operator's call`; a tag is allowed only where the facts file records why the measurement was not taken, and never on a sha, count, or status line a reader would act on.
 
 ```markdown
 # Continue Here
@@ -95,18 +97,32 @@ Guidelines:
 
 **On failure:** If Write fails, check file permissions. The file should be created in the project root (same directory as `.git/`). Verify `.gitignore` contains `CONTINUE_HERE.md` — if not, add it.
 
-### Step 3: Verify the File
+### Step 3: Verify the Draft, Then Install It
 
-Read back CONTINUE_HERE.md and confirm:
+Read back `CONTINUE_HERE.draft.md` and confirm:
 - Timestamp is current (within the last few minutes)
 - Branch name matches `git branch --show-current`
 - All 5 sections contain real content (no template placeholders)
 - Next Steps are numbered and actionable
 - In Progress items describe current state specifically enough to resume
 
-**Expected:** The file reads as a clear, actionable handoff that a fresh session could use to immediately resume work.
+Then verify it adversarially. Copy `workflows/verify-handoff.mjs` from agent-almanac into `.claude/workflows/` (workflows are not auto-installed) and run:
 
-**On failure:** Edit sections that contain placeholder text or are too vague. Each section should pass the test: "Could a fresh session act on this without asking clarifying questions?"
+```js
+Workflow({ name: 'verify-handoff', args: { drafts: [{
+  key: 'this-repo',
+  draft: '/abs/path/CONTINUE_HERE.draft.md',
+  facts: '/abs/path/handoff-facts.md',
+  sources: ['/abs/path/previous CONTINUE_HERE.md if one survives, or the plan the work follows'],
+  context: 'what the file is, who consumes it, which repositories the agents must not read',
+}], round: 1 } })
+```
+
+Apply its findings, pass the round's findings file among `sources`, and re-run with the next `round` until the run reports **0 blocking** findings. Only then install: `mv CONTINUE_HERE.draft.md CONTINUE_HERE.md`. If the workflow is not available, say so in the file's header rather than skipping the step silently.
+
+**Expected:** The installed file reads as a clear, actionable handoff that a fresh session could use to immediately resume work, and every claim in it survived a verifier that could see the facts file.
+
+**On failure:** Edit sections that contain placeholder text or are too vague. Each section should pass the test: "Could a fresh session act on this without asking clarifying questions?" A verifier finding you disagree with is answered in the file (tag the claim, cite the fact), never by deleting the finding.
 
 ## Validation
 
@@ -116,8 +132,8 @@ Read back CONTINUE_HERE.md and confirm:
 - [ ] `.gitignore` includes `CONTINUE_HERE.md`
 - [ ] Next Steps are numbered and actionable
 - [ ] In Progress items specify enough detail to resume without questions
-- [ ] Every number, sha, quoted output and status claim traces to a **facts file** that names the command which produced it, or is tagged in the file as inferred, not re-measured, or the user's call
-- [ ] The draft was verified adversarially before install — `workflows/verify-handoff.mjs` runs traceability, completeness and actionability lenses against the facts file and the previous edition; apply its findings, then re-run once
+- [ ] Every number, sha, quoted output and status claim traces to a line of the facts file from Step 1 that names the command which produced it, or is tagged in place as `inferred`, `not re-measured`, `by-construction`, or `the operator's call` — and no sha, count, or status line a reader would act on carries a tag
+- [ ] The draft was verified adversarially in Step 3 (`verify-handoff`, traceability + completeness + actionability, against the facts file and the previous edition if one survives, else the plan) and the last run reported 0 blocking findings before the draft was renamed to `CONTINUE_HERE.md`
 
 ## Common Pitfalls
 
@@ -126,8 +142,8 @@ Read back CONTINUE_HERE.md and confirm:
 - **Forgetting the Context section**: Failed approaches are the most valuable thing to record. Without them, the next session will retry the same dead ends.
 - **Overwriting without reading**: If CONTINUE_HERE.md already exists from a prior session, read it first — it may contain unfinished work from an earlier handoff.
 - **Leaving stale files**: CONTINUE_HERE.md is ephemeral. After the next session consumes it, delete it. Stale files cause confusion.
-- **Extrapolating a measurement**: "every heartbeat since the 20th" written from a `tail -6` that showed three days is an assertion, not a measurement. Quote the command that ran, and if the claim needs more days, read them — the verification workflow flags exactly this.
-- **Carrying a section "verbatim" that has a rewritten subsection**: a Context section can be byte-identical through its last paragraph and still contain a Links block re-derived today. Scope the claim to what was compared.
+- **Extrapolating a measurement**: "every run since the 20th" written from a `tail -6` that showed three days is an assertion, not a measurement. Quote the command that ran, and if the claim needs more days, read them. The verification workflow flags this only when the facts file records the command that actually ran — paste real output, never a paraphrased range.
+- **Claiming a section is unchanged when part of it was regenerated**: a section can be byte-identical through its last paragraph and still contain a subsection rewritten today. Scope the claim to what you compared.
 - **Pinning the absence of the last bad value**: a status line that says "not X" passes when the value drifts to Y. State the value.
 
 ## Related Skills
