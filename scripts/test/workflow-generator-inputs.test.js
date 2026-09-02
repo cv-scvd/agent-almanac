@@ -716,7 +716,7 @@ test('a declared external publisher whose token can write here is refused, even 
   for (const warn of [false, true]) {
     const { status, output } = run({ ...EXTERNAL_BASE, warn, extraWorkflows: { 'publish-hermes-profile.yml': externalPublisher('permissions:\n  contents: write\n') } });
     assert.equal(status, 1, output);
-    assert.match(output, /publish-hermes-profile\.yml is declared an external publisher but its token permission is contents: write/);
+    assert.match(output, /publish-hermes-profile\.yml is declared an external publisher but a permissions block grants contents: write/);
   }
 });
 
@@ -726,11 +726,38 @@ test('a declared external publisher with an unstated token permission is refused
   assert.match(output, /token permission is unstated/);
 });
 
-test('a job-level write grant beside a workflow-level read is refused — every contents: line counts', () => {
+test('a job-level write grant beside a workflow-level read is refused — every permissions block counts', () => {
   const body = externalPublisher(READ_ONLY).replace('    runs-on: ubuntu-latest\n', '    runs-on: ubuntu-latest\n    permissions:\n      contents: write\n');
   const { status, output } = run({ ...EXTERNAL_BASE, extraWorkflows: { 'publish-hermes-profile.yml': body } });
   assert.equal(status, 1, output);
-  assert.match(output, /token permission is contents: read, write/);
+  assert.match(output, /a permissions block grants contents: write/);
+});
+
+test('the permissions are read structurally: write-all, a flow mapping, and a contents: line inside a run block', () => {
+  // `permissions: write-all` at job level beside a workflow-level read — a line grep for
+  // `contents:` sees only the read.
+  let body = externalPublisher(READ_ONLY).replace('    runs-on: ubuntu-latest\n', '    runs-on: ubuntu-latest\n    permissions: write-all\n');
+  let r = run({ ...EXTERNAL_BASE, extraWorkflows: { 'publish-hermes-profile.yml': body } });
+  assert.equal(r.status, 1, r.output);
+  assert.match(r.output, /the scalar or flow form 'permissions: write-all', which this check does not parse/);
+
+  // A flow mapping is refused rather than parsed.
+  body = externalPublisher(READ_ONLY).replace('    runs-on: ubuntu-latest\n', '    runs-on: ubuntu-latest\n    permissions: { contents: write }\n');
+  r = run({ ...EXTERNAL_BASE, extraWorkflows: { 'publish-hermes-profile.yml': body } });
+  assert.equal(r.status, 1, r.output);
+  assert.match(r.output, /the scalar or flow form 'permissions: \{ contents: write \}'/);
+
+  // A `contents: read` line inside a run block, with no permissions key anywhere, is unstated.
+  body = externalPublisher('').replace('          git push origin HEAD:main\n', '          echo "contents: read"\n          git push origin HEAD:main\n');
+  r = run({ ...EXTERNAL_BASE, extraWorkflows: { 'publish-hermes-profile.yml': body } });
+  assert.equal(r.status, 1, r.output);
+  assert.match(r.output, /token permission is unstated/);
+
+  // A block that names other scopes but not contents is refused too.
+  body = externalPublisher('permissions:\n  actions: read\n');
+  r = run({ ...EXTERNAL_BASE, extraWorkflows: { 'publish-hermes-profile.yml': body } });
+  assert.equal(r.status, 1, r.output);
+  assert.match(r.output, /a permissions block states no contents: grant/);
 });
 
 test('a declared external publisher that no longer pushes is a stale declaration and is refused', () => {

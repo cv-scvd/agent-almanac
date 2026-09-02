@@ -431,15 +431,50 @@ for (const workflow of EXTERNAL_PUBLISHERS) {
     refusals++;
     continue;
   }
-  // Every `contents:` grant in the file, at workflow or job level. Unstated is not read-only:
-  // the default token permission is a repository setting this check cannot see.
-  const grants = [...stripped.matchAll(/^\s*contents:\s*(\S+)/gm)].map((m) => m[1]);
-  if (grants.length === 0 || grants.some((grant) => grant !== 'read')) {
-    console.error(`FAIL: ${workflow} is declared an external publisher but its token permission is `
-      + `${grants.length ? `contents: ${grants.join(', ')}` : 'unstated'} — it must grant contents: read `
-      + 'and nothing more, so github.token cannot commit to this repository.');
+  // Every `permissions:` block, at workflow or job level, read STRUCTURALLY: a line grep for
+  // `contents:` would be satisfied by one inside a `run: |` block and blind to a job-level
+  // `permissions: write-all` beside a workflow-level read. Unstated is not read-only: the
+  // default token permission is a repository setting this check cannot see.
+  const verdict = tokenGrants(stripped);
+  if (!verdict.ok) {
+    console.error(`FAIL: ${workflow} is declared an external publisher but ${verdict.why} — every permissions block `
+      + 'must grant contents: read and nothing broader, so github.token cannot commit to this repository.');
     refusals++;
   }
+}
+
+/**
+ * Read every `permissions:` block of a (comment-stripped) workflow and decide whether each grants
+ * `contents: read`. A scalar value (`write-all`, `read-all`) or a flow mapping is refused rather
+ * than parsed — an unrecognised form is a human decision, not a pass. No block at all is
+ * "unstated", which is also a refusal.
+ */
+function tokenGrants(stripped) {
+  const lines = stripped.split(/\r?\n/);
+  const blocks = [];
+  for (let i = 0; i < lines.length; i++) {
+    const head = lines[i].match(/^(\s*)permissions:\s*(.*?)\s*$/);
+    if (!head) continue;
+    const indent = head[1].length;
+    const inlineValue = head[2];
+    if (inlineValue !== '') return { ok: false, why: `its token permission is the scalar or flow form 'permissions: ${inlineValue}', which this check does not parse` };
+    const grants = {};
+    for (let j = i + 1; j < lines.length; j++) {
+      const line = lines[j];
+      if (line.trim() === '') continue;
+      const lineIndent = line.match(/^\s*/)[0].length;
+      if (lineIndent <= indent) break;
+      const pair = line.match(/^\s*([A-Za-z_-]+):\s*(\S*)\s*$/);
+      if (pair) grants[pair[1]] = pair[2];
+    }
+    blocks.push(grants);
+  }
+  if (blocks.length === 0) return { ok: false, why: 'its token permission is unstated' };
+  for (const grants of blocks) {
+    if (!('contents' in grants)) return { ok: false, why: 'a permissions block states no contents: grant' };
+    if (grants.contents !== 'read') return { ok: false, why: `a permissions block grants contents: ${grants.contents}` };
+  }
+  return { ok: true, why: '' };
 }
 
 for (const workflow of HEALER_WORKFLOWS) {

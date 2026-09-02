@@ -31,8 +31,8 @@ const {
 } = await import(SCRIPT);
 
 /** Write a minimal almanac: two skills, one with a references/ file. Returns its root. */
-function fixture({ ids = ['alpha', 'beta'], total = null, version = '1.2.3', soul = '# Soul\n\nText.\n', registryPatch = null } = {}) {
-  const root = mkdtempSync(join(tmpdir(), 'hermes-dist-fixture-'));
+function fixture({ ids = ['alpha', 'beta'], total = null, version = '1.2.3', soul = '# Soul\n\nText.\n', registryPatch = null, base = tmpdir() } = {}) {
+  const root = mkdtempSync(join(base, 'hermes-dist-fixture-'));
   writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'agent-almanac', version, author: 'A. Author', license: 'MIT' }));
   writeFileSync(join(root, 'SOUL.md'), soul);
   writeFileSync(join(root, 'LICENSE'), 'MIT License\n');
@@ -90,6 +90,20 @@ test('USER_OWNED_EXCLUDE and EXCLUDED_SKILL_DIRS are the full Hermes sets, not a
   ]);
 });
 
+test('the harness\'s pinned copies of both sets equal the generator\'s — the two in-repo copies cannot drift', () => {
+  // tools/validate-hermes-distribution.py carries its own frozenset literals for --verify (it
+  // reads the generator through node when given --almanac, but --verify has no almanac). This
+  // is the check that keeps those literals equal to the arrays above, in the required job.
+  const harness = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'tools', 'validate-hermes-distribution.py'), 'utf8');
+  const literal = (name) => {
+    const m = harness.match(new RegExp(`^${name} = frozenset\\(\\{?\\(?([\\s\\S]*?)\\)?\\}?\\)\\n`, 'm'));
+    assert.ok(m, `${name} literal not found in the harness`);
+    return [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]).sort();
+  };
+  assert.deepEqual(literal('EXPECTED_USER_OWNED'), [...USER_OWNED_EXCLUDE].sort());
+  assert.deepEqual(literal('EXPECTED_EXCLUDED_SKILL_DIRS'), [...EXCLUDED_SKILL_DIRS].sort());
+});
+
 // ── the clean build ───────────────────────────────────────────────────────────────────────
 
 test('clean tree: exit 0, exact root set, one directory per registry id, _template never emitted', () => {
@@ -114,7 +128,9 @@ test('human-readable output (the branch CI prints): the counts line and the verd
   try {
     const r = run(root, ['--check'], { json: false });
     assert.equal(r.status, 0, r.stderr + r.stdout);
-    assert.match(r.stdout, /^hermes distribution 1\.2\.3: 2 skills \(2 agents, 1 teams in the catalog\), built in a temp dir; \d+ paths walked, 7 files scanned$/m);
+    // 11 paths: four root files, skills/, alpha/, alpha/SKILL.md, beta/, beta/SKILL.md,
+    // beta/references/, beta/references/notes.md — pinned, so a mis-derived count is a failure.
+    assert.match(r.stdout, /^hermes distribution 1\.2\.3: 2 skills \(2 agents, 1 teams in the catalog\), built in a temp dir; 11 paths walked, 7 files scanned$/m);
     assert.match(r.stdout, /^OK: every gate passed$/m);
     mkdirSync(join(root, 'skills', 'alpha', 'cache'));
     writeFileSync(join(root, 'skills', 'alpha', 'cache', 'x'), 'x');
@@ -237,16 +253,21 @@ test('--out: a foreign entry at the root is refused with exit 2 and nothing is d
 });
 
 test('--out: the repository root, anywhere under its skills/ tree, or a parent of a source skill is refused with exit 2', () => {
-  const root = fixture();
+  // The fixture lives under a test-owned parent so the ancestor case points --out at a directory
+  // this test created — never at the shared system temp dir, where the only thing standing
+  // between the suite and a recursive delete would be the code under test.
+  const parent = mkdtempSync(join(tmpdir(), 'hermes-dist-parent-'));
+  const root = fixture({ base: parent });
   try {
+    // All three containment arms are shadowed by another refusal at exit 2 (prepareOutDir would
+    // refuse the root and any ancestor as holding foreign entries), so each arm is pinned by its
+    // MESSAGE; drop an assertion below and that arm's mutant silently survives.
     const cases = [
       [root, /is the repository root/],
       [join(root, 'skills'), /is inside the source skills tree/],
       [join(root, 'skills', 'alpha'), /is inside the source skills tree/],
       [join(root, 'skills', 'alpha', 'out'), /is inside the source skills tree/],
-      // An ancestor of the repository: prepareOutDir would also refuse it (the root is a foreign
-      // entry there), so the MESSAGE is what pins this arm — both refusals share exit 2.
-      [dirname(root), /contains the source skill/],
+      [parent, /contains the source skill/],
     ];
     for (const [out, message] of cases) {
       const r = run(root, ['--out', out]);
@@ -254,7 +275,8 @@ test('--out: the repository root, anywhere under its skills/ tree, or a parent o
       assert.match(r.stderr, message, out);
     }
     assert.deepEqual(readdirSync(join(root, 'skills', 'alpha')), ['SKILL.md'], 'the source skill is untouched');
-  } finally { rmSync(root, { recursive: true, force: true }); }
+    assert.deepEqual(readdirSync(parent).length, 1, 'the parent still holds exactly the fixture');
+  } finally { rmSync(parent, { recursive: true, force: true }); }
 });
 
 test('--out: a red build writes nothing — the target is neither created nor touched', () => {
@@ -328,6 +350,14 @@ test('symlink: a symlink in a skill is reported, never copied, and the build wri
     assert.deepEqual(gates(r.summary), ['symlink']);
     assert.equal(r.summary.findings[0].path, 'skills/alpha/link.md');
     assert.ok(!existsSync(out), 'a red build writes nothing');
+    // "never copied" is observable only where the emitted tree is: through emit() directly.
+    const inputs = loadInputs(root);
+    const emitted = join(root, 'emitted');
+    mkdirSync(emitted);
+    const copyFindings = emit(inputs, emitted);
+    assert.deepEqual(copyFindings.map((f) => `${f.gate}:${f.path}`), ['symlink:skills/alpha/link.md']);
+    assert.ok(!existsSync(join(emitted, 'skills', 'alpha', 'link.md')), 'not dereferenced into a copy');
+    assert.ok(existsSync(join(emitted, 'skills', 'alpha', 'SKILL.md')), 'the rest of the skill is emitted');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -473,14 +503,32 @@ test('usage: unknown flag, both modes, neither mode, --against without --check, 
       assert.equal(r.status, 2, `${args.join(' ')}: ${r.stdout}${r.stderr}`);
     }
     assert.equal(spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8' }).status, 0);
+    // The accept side of the --against guard: a checkout reached through a symlinked path is a
+    // directory to the walk that diffs it, so it must be one to the guard (stat, not lstat).
+    const out = join(root, 'out');
+    assert.equal(run(root, ['--out', out]).status, 0);
+    symlinkSync(out, join(root, 'out-link'));
+    const viaLink = run(root, ['--check', '--against', join(root, 'out-link')]);
+    assert.equal(viaLink.status, 0, viaLink.stdout + viaLink.stderr);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-test('an unreadable input is exit 2, never exit 1 — could-not-build must not read as a finding', () => {
-  // Every input-side failure reachable from a subprocess is caught into BuildError (a missing
-  // root, a directory where a file should be); the catch-all for anything else shares the same
-  // exit. Both spellings are accepted here so the contract, not the message, is what is pinned.
-  const r = spawnSync(process.execPath, [SCRIPT, '--root', join(tmpdir(), 'does-not-exist-' + process.pid), '--check'], { encoding: 'utf8' });
-  assert.equal(r.status, 2, r.stdout + r.stderr);
-  assert.match(r.stderr, /cannot build|unexpected failure/);
+test('could-not-build is exit 2 on both arms: a BuildError, and a crash the catch-all reports with its stack', () => {
+  // Arm 1, BuildError: a missing root is caught by readJson into "cannot build".
+  const missing = spawnSync(process.execPath, [SCRIPT, '--root', join(tmpdir(), 'does-not-exist-' + process.pid), '--check'], { encoding: 'utf8' });
+  assert.equal(missing.status, 2, missing.stdout + missing.stderr);
+  assert.match(missing.stderr, /cannot build/);
+  assert.doesNotMatch(missing.stderr, /unexpected failure/);
+  // Arm 2, a genuine crash: --out beneath a regular file passes assertOutDirSafe (not the root,
+  // not under skills/, contains no source skill), the temp build gates clean, and then
+  // prepareOutDir's mkdirSync throws ENOTDIR — not a BuildError. It must be exit 2 with the
+  // stack, never exit 1, which the contract reserves for a finding.
+  const root = fixture();
+  try {
+    const r = run(root, ['--out', join(root, 'SOUL.md', 'x')]);
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.match(r.stderr, /unexpected failure/);
+    assert.match(r.stderr, /ENOTDIR/);
+    assert.doesNotMatch(r.stderr, /cannot build/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

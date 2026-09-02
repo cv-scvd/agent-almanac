@@ -35,15 +35,19 @@ Usage:
 `--almanac ROOT` derives the expectations (version from package.json, skill count from
 skills/_registry.yml, SOUL.md bytes); `--expect-version`, `--expect-skills` and `--expect-soul`
 set or override them one by one (`--expect-skills 0` is refused: it would make check (b)
-vacuous). `--hermes-version` (default 0.13.0, the operator's pin) is what the stubbed
-`hermes_cli.__version__` reports, so `hermes_requires` is checked against it. A `--dist` that is
+vacuous). `--hermes-version` (default 0.13.0, the pin the operator's VPS ran until 2026-09-02; it now runs
+v2026.8.31, so pass that when handing in that module) is what the stubbed `hermes_cli.__version__`
+reports, so `hermes_requires` is checked against it. A `--dist` that is
 a local directory is staged AS IS by Hermes — a clone's `.git/` would be copied into the profile
 too — so hand it the generator's output, not a clone.
 
-The fifteen checks, lettered as in the companion's done-criteria for #78:
+The sixteen checks, lettered as in the companion's done-criteria for #78:
 
-  install              plan_install and _copy_dist_payload ran. A refusal here is exit 2 on the
-                       --dist path (could not measure), not a finding.
+  install              plan_install and _copy_dist_payload ran. Once the source has resolved
+                       (a git URL by the module's own rule, or an existing directory — checked
+                       first, exit 2 otherwise), a refusal here is Hermes rejecting the
+                       distribution: a finding, exit 1, the same verdict --verify gives the two
+                       plants that depend on it.
   a.version            manifest version == expected, through the module's own DistributionManifest.
   a.env_requires       empty.        a.distribution_owned  empty.        a.name  the expected id.
   a.hermes_requires    non-empty AND re-checked with the module's own check_hermes_requires
@@ -54,10 +58,15 @@ The fifteen checks, lettered as in the companion's done-criteria for #78:
   c.soul               the installed SOUL.md is byte-identical to the expected one.
   d.root               the profile root holds only distribution content: a subset of the five
                        entries the generator emits (plus `.env.EXAMPLE`, which Hermes may add),
-                       AND exactly the staged root minus Hermes's user-owned names — so an extra
-                       or a missing root entry is red whatever it is called.
-  d.user_owned_set     the module's USER_OWNED_EXCLUDE is the 37-name set the generator gates on;
-                       a module with a different set would be measuring with a different ruler.
+                       AND nothing of the staged root minus Hermes's user-owned names is missing.
+                       (An entry beyond the staged root is also refused, but _copy_dist_payload
+                       writes none, so that arm is unreachable through it — stated, not claimed.)
+  d.user_owned_set     the module's USER_OWNED_EXCLUDE equals the generator's: read from
+                       scripts/build-hermes-distribution.js through node when --almanac is given,
+                       from this file's own pinned copy otherwise — the detail says which. A
+                       module with a different set would be measuring with a different ruler.
+  d.excluded_set       the stubbed EXCLUDED_SKILL_DIRS equals the generator's, the same way; it is
+                       what decides upstream's _count_skills, so the stub and the gate must agree.
   d.user_owned_nested  zero directories below the profile root named in USER_OWNED_EXCLUDE.
   d.symlinks           zero symlinks in the staged tree or the profile.
   e.nothing_dropped    every regular file under the staged tree reached the profile with equal
@@ -67,20 +76,23 @@ The fifteen checks, lettered as in the companion's done-criteria for #78:
 
 `--verify` runs the checks against a synthetic distribution that must pass — and stops, exit 1,
 if it does not, so a module refusing every install for an unrelated reason cannot read as a
-row of detections — then plants thirteen defects, each required to redden one of ITS named
+row of detections — then plants fourteen defects, each required to redden one of ITS named
 checks: a nested `cache/x.md` (dropped by the pin's depth filter, a name collision upstream),
 a root-level `cache/x.md` (skipped at the root by every version), a `cache/SKILL.md` that only
 the count sees, a preserved `references/SKILL.md`, a symlink (dereferenced by the pin, refused
 outright upstream), an edited SOUL.md, a wrong version, a `distribution_owned:` block, an
-`env_requires:` block, a wrong expected name, a root `package.json`, a root `agents/`, and a
-`hermes_requires` the module must refuse. That covers twelve of the fifteen checks; the three it
-cannot plant are stated rather than hidden — `d.user_owned_set` asserts the module's constant,
-`e.manifest_stamped` asserts the module's own write, and `a.hermes_requires`'s red path IS the
-install refusal — so a module that changes those turns something red without a plant.
+`env_requires:` block, a wrong expected name, a root `package.json`, a root `agents/`, an empty
+`hermes_requires`, and a `hermes_requires` the module must refuse. That covers thirteen of the
+sixteen checks; the three it cannot plant are stated rather than hidden — `d.user_owned_set`
+and `d.excluded_set` assert constants (the module's and the stub's against the generator's),
+and `e.manifest_stamped` asserts the module's own write — so a module that changes those turns
+something red without a plant. Under `--verify` the two set checks run against this file's
+pinned copies, since there is no `--almanac` to read the generator from.
 
-Exit codes: 0 every check passed; 1 at least one failed; 2 usage, unreadable module, a stub the
-module did not actually import, a profile directory outside the sandbox, or an install that
-raised before any check could run.
+Exit codes: 0 every check passed; 1 at least one failed, including Hermes refusing the
+distribution at install; 2 usage, a `--dist` that is neither a git URL nor a directory, an
+unreadable module, a stub the module did not actually import, a profile directory outside the
+sandbox, or PyYAML absent.
 """
 
 from __future__ import annotations
@@ -228,6 +240,44 @@ def atomic_yaml_write(path, data, sort_keys=False, default_flow_style=False, cre
         os.chmod(path, create_mode)
 '''
 
+# agent/skill_utils.py EXCLUDED_SKILL_DIRS, pinned here for --verify; with --almanac the generator's
+# own export is read instead, so the stub above and the gate cannot drift apart unnoticed.
+EXPECTED_EXCLUDED_SKILL_DIRS = frozenset((
+    ".git", ".github", ".hub", ".archive", ".venv", "venv", "node_modules", "site-packages",
+    "__pycache__", ".tox", ".nox", ".pytest_cache", ".mypy_cache", ".ruff_cache",
+))
+
+
+def generator_sets(almanac_root):
+    """The two Hermes name sets as the GENERATOR exports them, read through node.
+
+    Returns {"user_owned": frozenset, "excluded": frozenset, "source": str}. With no almanac root,
+    or when node cannot run the generator, the harness's pinned copies are returned and `source`
+    says so — the check detail names which ruler was used, so a fallback is never silent.
+    """
+    if almanac_root is None:
+        return {"user_owned": EXPECTED_USER_OWNED, "excluded": EXPECTED_EXCLUDED_SKILL_DIRS, "source": "the harness's pinned copies (no --almanac)"}
+    script = Path(almanac_root) / "scripts" / "build-hermes-distribution.js"
+    # The path travels in the environment, not argv: with `node -e`, an extra argument becomes
+    # process.argv[1], which the generator's own entry guard would take as "run main()".
+    probe = (
+        "import(require('node:url').pathToFileURL(process.env.HERMES_GENERATOR).href)"
+        ".then(m => console.log(JSON.stringify({u: m.USER_OWNED_EXCLUDE, e: m.EXCLUDED_SKILL_DIRS})))"
+        ".catch(e => { console.error(String(e)); process.exit(3); })"
+    )
+    try:
+        import subprocess  # noqa: PLC0415
+
+        out = subprocess.run(["node", "-e", probe], capture_output=True, text=True, timeout=60, check=False,
+                             env={**os.environ, "HERMES_GENERATOR": str(script.resolve())})
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise Usage(f"could not run node to read the generator's constants from {script}: {exc}") from exc
+    if out.returncode != 0:
+        raise Usage(f"reading the generator's constants failed (exit {out.returncode}): {out.stderr.strip()} — run npm ci in {almanac_root}?")
+    data = json.loads(out.stdout)
+    return {"user_owned": frozenset(data["u"]), "excluded": frozenset(data["e"]), "source": f"the generator at {script}"}
+
+
 REQUIRED_MODULE_ATTRS = (
     "plan_install", "_copy_dist_payload", "_count_skills", "USER_OWNED_EXCLUDE", "read_manifest",
     "MANIFEST_FILENAME", "check_hermes_requires",
@@ -275,12 +325,18 @@ def load_module(module_path: Path, stub_dir: Path, hermes_version: str):
         if not hasattr(mod, required):
             raise Usage(f"{module_path} has no {required}; is this hermes_cli/profile_distribution.py?")
     # The positive control behind "nothing here touches ~/.hermes" and "as Hermes <version>":
-    # the hermes_cli the module will import must be OUR stub, and say what we told it to say.
-    import hermes_cli  # noqa: PLC0415 — resolved through sys.path, deliberately after the insert
-
-    stub_file = Path(hermes_cli.__file__).resolve()
-    if not stub_file.is_relative_to(stub_dir.resolve()):
-        raise Usage(f"hermes_cli resolved to {stub_file}, not to the harness stub — a real installation shadows it; refusing to run")
+    # every stub the module can import must be OURS — hermes_cli (and through its __path__,
+    # profiles and _subprocess_compat), agent.skill_utils (which decides upstream's count) and
+    # utils — and the version stub must say what we told it to say.
+    for stub_name in ("hermes_cli", "agent.skill_utils", "utils"):
+        try:
+            stub = importlib.import_module(stub_name)
+        except ImportError as exc:
+            raise Usage(f"stub {stub_name} did not import: {exc}") from exc
+        stub_file = Path(stub.__file__).resolve()
+        if not stub_file.is_relative_to(stub_dir.resolve()):
+            raise Usage(f"{stub_name} resolved to {stub_file}, not to the harness stub — a real installation shadows it; refusing to run")
+    hermes_cli = sys.modules["hermes_cli"]
     if getattr(hermes_cli, "__version__", None) != hermes_version:
         raise Usage(f"stub hermes_cli reports version {getattr(hermes_cli, '__version__', None)!r}, expected {hermes_version!r}")
     return mod
@@ -316,8 +372,9 @@ def _walk(base: Path, *, skip_git: bool):
         yield p
 
 
-def run_checks(mod, dist_source: str, expect: dict, hermes_version: str, sandbox: Path, name: str = DEFAULT_NAME) -> dict:
-    """Install `dist_source` with the module into `sandbox` and evaluate the fifteen checks."""
+def run_checks(mod, dist_source: str, expect: dict, hermes_version: str, sandbox: Path, name: str = DEFAULT_NAME, rulers: dict | None = None) -> dict:
+    """Install `dist_source` with the module into `sandbox` and evaluate the sixteen checks."""
+    rulers = rulers or generator_sets(None)
     sandbox = sandbox.resolve()
     profiles_root = sandbox / "profiles"
     profiles_root.mkdir(parents=True, exist_ok=True)
@@ -393,8 +450,11 @@ def run_checks(mod, dist_source: str, expect: dict, hermes_version: str, sandbox
     record("d.root", not not_allowed and not extra and not missing,
            f"profile root {sorted(root_entries)}; not distribution content: {not_allowed or 'none'}; "
            f"beyond the staged root minus user-owned names: {extra or 'none'}; missing from it: {missing or 'none'}")
-    ruler_diff = sorted((user_owned ^ EXPECTED_USER_OWNED))
-    record("d.user_owned_set", not ruler_diff, f"module USER_OWNED_EXCLUDE has {len(user_owned)} names; symmetric difference with the generator's 37: {ruler_diff or 'none'}")
+    ruler_diff = sorted(user_owned ^ rulers["user_owned"])
+    record("d.user_owned_set", not ruler_diff, f"module USER_OWNED_EXCLUDE has {len(user_owned)} names; symmetric difference with {rulers['source']} ({len(rulers['user_owned'])}): {ruler_diff or 'none'}")
+    stub_excluded = frozenset(sys.modules["agent.skill_utils"].EXCLUDED_SKILL_DIRS)
+    excluded_diff = sorted(stub_excluded ^ rulers["excluded"])
+    record("d.excluded_set", not excluded_diff, f"stub EXCLUDED_SKILL_DIRS has {len(stub_excluded)} names; symmetric difference with {rulers['source']} ({len(rulers['excluded'])}): {excluded_diff or 'none'}")
     nested = sorted(str(p.relative_to(target)) for p in _walk(target, skip_git=True) if p.is_dir() and p.name in user_owned and len(p.relative_to(target).parts) > 1)
     record("d.user_owned_nested", not nested, f"nested user-owned directory names: {nested or 'none'}")
     staged_links = sorted(str(p.relative_to(staged)) for p in _walk(staged, skip_git=True) if p.is_symlink())
@@ -535,6 +595,13 @@ def verify(mod, hermes_version: str, tmp: Path) -> int:
     (d / "agents" / "x.md").write_text("x\n", encoding="utf-8")
     outcome("planted root agents/ (an entry the generator never emits)", run_checks(mod, str(d), expect, hermes_version, sandbox()), ("d.root",))
 
+    # An EMPTY floor installs anywhere and states nothing — the check's own red path, distinct
+    # from the module refusing a floor it cannot satisfy (next plant).
+    d = synthetic_distribution(tmp / "no-requires")
+    text = (d / "distribution.yaml").read_text(encoding="utf-8").replace('hermes_requires: ">=0.13.0"\n', "")
+    (d / "distribution.yaml").write_text(text, encoding="utf-8")
+    outcome("planted empty hermes_requires (no floor stated)", run_checks(mod, str(d), expect, hermes_version, sandbox()), ("a.hermes_requires",))
+
     # Five digits, because upstream versions are date-based (2026.8.18 satisfies >=99.0.0) and a
     # plant the module accepts is not a plant.
     d = synthetic_distribution(tmp / "requires")
@@ -542,7 +609,7 @@ def verify(mod, hermes_version: str, tmp: Path) -> int:
     (d / "distribution.yaml").write_text(text, encoding="utf-8")
     outcome("planted hermes_requires >=99999.0.0 (install must refuse)", run_checks(mod, str(d), expect, hermes_version, sandbox()), ("install",))
 
-    print(f"verify: {failures} failure(s) across 13 plants")
+    print(f"verify: {failures} failure(s) across 14 plants")
     return 1 if failures else 0
 
 
@@ -564,6 +631,10 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
 
     try:
+        try:
+            import yaml  # noqa: F401,PLC0415 — the module and the utils stub both need it
+        except ImportError as exc:
+            raise Usage("PyYAML is not installed; the Hermes module imports it (pip install pyyaml)") from exc
         with tempfile.TemporaryDirectory(prefix="validate-hermes-dist-") as tmp_str:
             tmp = Path(tmp_str)
             stub_dir = tmp / "stubs"
@@ -577,7 +648,14 @@ def main(argv=None) -> int:
 
             if not args.dist:
                 raise Usage("--dist is required (or --verify)")
-            expect = expectations_from_almanac(Path(args.almanac).expanduser().resolve()) if args.almanac else {}
+            # The source must resolve BEFORE anything is a finding: validated with the module's own
+            # predicate (a git URL by its rule, or an existing directory), never a proxy for it.
+            looks_like_url = getattr(mod, "_looks_like_git_url", None)
+            is_url = bool(looks_like_url(args.dist)) if callable(looks_like_url) else False
+            if not is_url and not Path(args.dist).expanduser().is_dir():
+                raise Usage(f"--dist {args.dist!r} is neither a git URL by the module's own rule nor an existing directory")
+            almanac_root = Path(args.almanac).expanduser().resolve() if args.almanac else None
+            expect = expectations_from_almanac(almanac_root) if almanac_root else {}
             if args.expect_version:
                 expect["version"] = args.expect_version
             if args.expect_skills is not None:
@@ -590,7 +668,7 @@ def main(argv=None) -> int:
             if expect["skills"] <= 0:
                 raise Usage("an expected skill count of 0 would make check (b) vacuous; refusing")
 
-            report = run_checks(mod, args.dist, expect, args.hermes_version, tmp / "sandbox", name=args.name)
+            report = run_checks(mod, args.dist, expect, args.hermes_version, tmp / "sandbox", name=args.name, rulers=generator_sets(almanac_root))
             report["module"] = str(Path(args.module).resolve())
             report["dist"] = args.dist
             failed = [r for r in report["results"] if not r["ok"]]
@@ -601,12 +679,13 @@ def main(argv=None) -> int:
                 for r in report["results"]:
                     print(f"  {'ok  ' if r['ok'] else 'FAIL'} {r['check']}: {r['detail']}")
                 if not report["installed"]:
-                    print("COULD NOT MEASURE: the install itself raised; no check ran")
+                    print("FAIL: Hermes refused the distribution — the install itself raised; no further check ran")
                 else:
                     print("OK: every check passed" if not failed else f"FAIL: {len(failed)} check(s) failed")
-            if not report["installed"]:
-                return 2
-            return 1 if failed else 0
+            # The source resolved above, so an install that raises here is Hermes refusing the
+            # distribution — a finding about the distribution, exit 1, the same verdict --verify
+            # gives the two plants that depend on it. Exit 2 is for what could not be measured.
+            return 1 if (failed or not report["installed"]) else 0
     except Usage as exc:
         print(f"validate-hermes-distribution: {exc}", file=sys.stderr)
         return 2

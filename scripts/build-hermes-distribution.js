@@ -83,12 +83,16 @@
  *                             distribution cannot carry (a symlink, a `bin/`, a secret).
  *   --check --against <dir>   additionally diff the fresh build against <dir> (a checkout of the
  *                             distribution repository): any added, removed or changed file, or a
- *                             changed executable bit, is a finding. Output is deterministic — no
- *                             timestamps, no commit shas in any emitted file — so this diff needs
- *                             no content exclusions. Two things it cannot see, stated: mode bits
+ *                             changed executable bit, is a finding. Output is deterministic on an
+ *                             LF checkout — no timestamps, no commit shas in any emitted file, and
+ *                             skill files are byte copies whose line endings are the checkout's,
+ *                             which `validate-line-endings` keeps LF — so this diff needs no
+ *                             content exclusions. Two things it cannot see, stated: mode bits
  *                             other than the executable bit, and empty directories, which git
  *                             cannot store and a git-sourced build therefore never emits.
- *   --root <dir>              repository root to build from (default: this checkout). Tests use it.
+ *   --root <dir>              repository root to build from (default: this checkout). Tests use
+ *                             it, and so does the first publish, which runs THIS script against a
+ *                             worktree of the release tag that predates it.
  *   --json                    print the summary as JSON on stdout.
  *
  * Needs `npm ci` first (js-yaml) — a fresh worktree without node_modules dies on the import,
@@ -112,7 +116,7 @@
  */
 
 import {
-  readFileSync, writeFileSync, mkdirSync, readdirSync, lstatSync, rmSync, existsSync,
+  readFileSync, writeFileSync, mkdirSync, readdirSync, lstatSync, statSync, rmSync, existsSync,
   copyFileSync, cpSync, mkdtempSync, realpathSync,
 } from 'node:fs';
 import { resolve, dirname, join, basename, relative, sep } from 'node:path';
@@ -123,8 +127,9 @@ import { parseArgs, usageExit } from './lib/parse-args.js';
 
 // ── Hermes constants, copied verbatim from the pin and re-checked against upstream ──────────
 //
-// `USER_OWNED_EXCLUDE`: hermes_cli/profile_distribution.py, identical at v0.13.0 (the operator's
-// deployed pin, 702 lines) and at upstream main on 2026-09-02 (782 lines) — 37 names. The test
+// `USER_OWNED_EXCLUDE`: hermes_cli/profile_distribution.py, identical at v0.13.0 (the pin the
+// operator's VPS ran until 2026-09-02, 702 lines; it now runs v2026.8.31) and at upstream main
+// on 2026-09-02 (782 lines) — 37 names. The test
 // suite pins the full set, and tools/validate-hermes-distribution.py compares it against the
 // module it is handed, so a substituted name cannot silently re-scope the gate.
 export const USER_OWNED_EXCLUDE = Object.freeze([
@@ -417,7 +422,7 @@ function copyTree(src, dest, srcRoot, findings) {
     const to = join(dest, name);
     const st = lstatSync(from);
     if (st.isSymbolicLink()) {
-      findings.push({ gate: 'symlink', path: relative(srcRoot, from), detail: 'symlink in the source tree; not copied' });
+      findings.push({ gate: 'symlink', path: relative(srcRoot, from).split(sep).join('/'), detail: 'symlink in the source tree; not copied' });
       continue;
     }
     if (st.isDirectory()) {
@@ -425,7 +430,7 @@ function copyTree(src, dest, srcRoot, findings) {
     } else if (st.isFile()) {
       copyFileSync(from, to);
     } else {
-      findings.push({ gate: 'symlink', path: relative(srcRoot, from), detail: 'neither a regular file nor a directory; not copied' });
+      findings.push({ gate: 'symlink', path: relative(srcRoot, from).split(sep).join('/'), detail: 'neither a regular file nor a directory; not copied' });
     }
   }
 }
@@ -673,7 +678,9 @@ function main(argv) {
   }
   const root = resolve(args.root ?? DEFAULT_ROOT);
   const against = args.against ? resolve(args.against) : null;
-  if (against && !(existsSync(against) && lstatSync(against).isDirectory())) {
+  // statSync, not lstat: a checkout reached through a symlinked path is a directory to the walk
+  // that diffs it, so it must be one to the guard — guard by the consumer's rule, not a proxy.
+  if (against && !(existsSync(against) && statSync(against).isDirectory())) {
     console.error(`--against ${against} is not a directory`);
     return 2;
   }
@@ -705,8 +712,9 @@ function main(argv) {
 }
 
 // realpath on both sides: a path-string identity would silently skip main() — and exit 0 —
-// when the script is reached through a symlink or a differently spelled path.
-const invokedAs = process.argv[1] ? (() => { try { return realpathSync(process.argv[1]); } catch { return null; } })() : null;
+// when the script is reached through a symlink or a differently spelled path. No try/catch: a
+// realpath failure must throw (exit 1, with a stack), never fall through to a silent exit 0.
+const invokedAs = process.argv[1] ? realpathSync(process.argv[1]) : null;
 if (invokedAs && invokedAs === realpathSync(fileURLToPath(import.meta.url))) {
   process.exitCode = main(process.argv.slice(2));
 }
