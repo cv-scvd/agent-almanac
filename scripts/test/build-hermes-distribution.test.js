@@ -323,6 +323,8 @@ test('checkOutput re-reads the tree it is given: each manifest field, the root s
   tamper((out) => rewriteManifest(out, (m) => { m.version = '0.0.0'; }), ['manifest:distribution.yaml:version']);
   tamper((out) => rewriteManifest(out, (m) => { m.name = 'Agent Almanac'; }),
     ['manifest:distribution.yaml:name', 'manifest:distribution.yaml:name']); // not the expected name, and not a valid Hermes id
+  tamper((out) => rewriteManifest(out, (m) => { m.name = 'test'; }),
+    ['manifest:distribution.yaml:name', 'manifest:distribution.yaml:name']); // not the expected name, and reserved by Hermes
   tamper((out) => rewriteManifest(out, (m) => { m.env_requires = [{ name: 'X' }]; }),
     ['manifest:distribution.yaml:env_requires', 'manifest:distribution.yaml:env_requires']); // present, and not an allowed key
   tamper((out) => rewriteManifest(out, (m) => { m.distribution_owned = ['skills']; }),
