@@ -88,6 +88,20 @@ const LIST = process.argv.includes('--list');
 const HEALER_WORKFLOWS = ['.github/workflows/update-readmes.yml'];
 
 /**
+ * Workflows that push, but to ANOTHER repository — so they carry the healer signal and are not
+ * healers: nothing they commit lands here, and there is no trigger coverage to check.
+ *
+ * Declared, then CHECKED, like the healer list: each entry must exist, must still carry a commit
+ * signal (a stale declaration is a refusal, as a vanished healer is), must not also be a healer,
+ * and must grant the workflow token `contents: read` at every `contents:` line and never leave
+ * it unstated — so `github.token` cannot commit to this repository, and the only credential
+ * that could is one a human put in a secret, which is the human decision this list records.
+ * What that does NOT prove: that the secret is for the other repository. The declaration is the
+ * claim; the permission is the part of it a check can hold to.
+ */
+const EXTERNAL_PUBLISHERS = ['.github/workflows/publish-hermes-profile.yml'];
+
+/**
  * Actions that write back to the repository, matched anywhere in the (comment-stripped) file.
  *
  * Enumerated rather than pattern-matched, and scoped the way the rest of this file is scoped:
@@ -384,11 +398,83 @@ let undeclaredHealers = 0;
 // `--warn` must not swallow them -- see the exit logic at the bottom.
 let refusals = 0;
 
-for (const { workflowPath, signal } of assertHealersDeclared(join(ROOT, '.github', 'workflows'), HEALER_WORKFLOWS)) {
+for (const { workflowPath, signal } of assertHealersDeclared(join(ROOT, '.github', 'workflows'), [...HEALER_WORKFLOWS, ...EXTERNAL_PUBLISHERS])) {
   console.error(`${WARN_ONLY ? 'WARN' : 'FAIL'}: ${workflowPath} uses ${signal} but is not in HEALER_WORKFLOWS.`);
-  console.error('      Add it, or state why its committed output has no generator inputs.');
+  console.error('      Add it, or state why its committed output has no generator inputs — a workflow that');
+  console.error('      pushes to ANOTHER repository belongs in EXTERNAL_PUBLISHERS with a read-only token.');
   undeclaredHealers++;
   findings++;
+}
+
+// An external publisher is skipped by the healer accusation above on the strength of its
+// declaration, so the declaration is held to what a check can verify. Every failure here is a
+// REFUSAL, not a finding: `--warn` must not turn "this workflow could write here" into a warning.
+for (const workflow of EXTERNAL_PUBLISHERS) {
+  const absolute = join(ROOT, workflow);
+  if (HEALER_WORKFLOWS.includes(workflow)) {
+    console.error(`FAIL: ${workflow} is listed as both a healer and an external publisher; it can be one.`);
+    refusals++;
+    continue;
+  }
+  if (!existsSync(absolute)) {
+    console.error(`FAIL: external publisher workflow not found: ${workflow}`);
+    refusals++;
+    continue;
+  }
+  const text = readFileSync(absolute, 'utf8');
+  const stripped = text.split(/\r?\n/).filter((line) => !/^\s*#/.test(line)).join('\n');
+  const commits = COMMIT_ACTIONS.some(({ pattern }) => pattern.test(stripped))
+    || COMMIT_COMMANDS.some(({ pattern }) => runSteps(text).some((cmd) => pattern.test(cmd)));
+  if (!commits) {
+    console.error(`FAIL: ${workflow} is declared an external publisher but carries no commit signal.`);
+    console.error('      If it stopped pushing deliberately, remove it from EXTERNAL_PUBLISHERS as well.');
+    refusals++;
+    continue;
+  }
+  // Every `permissions:` block, at workflow or job level, read STRUCTURALLY: a line grep for
+  // `contents:` would be satisfied by one inside a `run: |` block and blind to a job-level
+  // `permissions: write-all` beside a workflow-level read. Unstated is not read-only: the
+  // default token permission is a repository setting this check cannot see.
+  const verdict = tokenGrants(stripped);
+  if (!verdict.ok) {
+    console.error(`FAIL: ${workflow} is declared an external publisher but ${verdict.why} — every permissions block `
+      + 'must grant contents: read and nothing broader, so github.token cannot commit to this repository.');
+    refusals++;
+  }
+}
+
+/**
+ * Read every `permissions:` block of a (comment-stripped) workflow and decide whether each grants
+ * `contents: read`. A scalar value (`write-all`, `read-all`) or a flow mapping is refused rather
+ * than parsed — an unrecognised form is a human decision, not a pass. No block at all is
+ * "unstated", which is also a refusal.
+ */
+function tokenGrants(stripped) {
+  const lines = stripped.split(/\r?\n/);
+  const blocks = [];
+  for (let i = 0; i < lines.length; i++) {
+    const head = lines[i].match(/^(\s*)permissions:\s*(.*?)\s*$/);
+    if (!head) continue;
+    const indent = head[1].length;
+    const inlineValue = head[2];
+    if (inlineValue !== '') return { ok: false, why: `its token permission is the scalar or flow form 'permissions: ${inlineValue}', which this check does not parse` };
+    const grants = {};
+    for (let j = i + 1; j < lines.length; j++) {
+      const line = lines[j];
+      if (line.trim() === '') continue;
+      const lineIndent = line.match(/^\s*/)[0].length;
+      if (lineIndent <= indent) break;
+      const pair = line.match(/^\s*([A-Za-z_-]+):\s*(\S*)\s*$/);
+      if (pair) grants[pair[1]] = pair[2];
+    }
+    blocks.push(grants);
+  }
+  if (blocks.length === 0) return { ok: false, why: 'its token permission is unstated' };
+  for (const grants of blocks) {
+    if (!('contents' in grants)) return { ok: false, why: 'a permissions block states no contents: grant' };
+    if (grants.contents !== 'read') return { ok: false, why: `a permissions block grants contents: ${grants.contents}` };
+  }
+  return { ok: true, why: '' };
 }
 
 for (const workflow of HEALER_WORKFLOWS) {

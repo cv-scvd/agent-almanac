@@ -9,7 +9,7 @@ locale: es
 source_locale: en
 source_commit: 33b561c9
 fence_basis_commit: 33b561c9
-translator: "Claude + human review"
+translator: "(untranslated stub)"
 translation_date: "2026-04-13"
 ---
 

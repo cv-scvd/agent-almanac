@@ -179,6 +179,30 @@ jobs:
       - name: Check generated-artifact inventory (#590)
         run: npm run check:generated-artifacts
 
+      # Hermes profile distribution build-gates (companion #78).
+      #
+      # `hermes profile install <git-url>` copies every top-level entry of a cloned repository
+      # into a consumer's profile, filters any directory at ANY depth named `cache`, `bin`,
+      # `logs`, `memories` (37 names) silently before v0.17.0, rejects symlinks from v0.15.0, and
+      # counts skills by `rglob("SKILL.md")`. So the distribution is a separate, generated
+      # repository, and THIS step builds it into a temp dir from the current tree and runs every
+      # output gate — user-owned and Hermes-excluded names at any depth, `_`/`.`-prefixed
+      # DIRECTORIES (a dot-file inside a skill is not gated: that is a repository matter, not a
+      # Hermes one), symlinks, one SKILL.md per skill at its root, count == registry ==
+      # description, the four secret literals and the fabricated constant in every emitted file,
+      # and the manifest re-parsed from disk, every field.
+      #
+      # BLOCKING, in this required job, and deliberately NOT warn-only + ratcheted as the
+      # 2026-08-19 thread first decided: that decision was for an in-place layout where the
+      # count could not be made exact until `skills/_template/` moved. Built from registry ids,
+      # the count is exact by construction, the gate is green today, and any red is a real fact
+      # about this tree (a stray `bin/`, a symlink, a secret) that the same PR can fix.
+      #
+      # Negative evidence: scripts/test/build-hermes-distribution.test.js breaks each gate once
+      # on a synthetic tree. HERE for the same reason as the two steps above: `js-yaml`.
+      - name: Check the Hermes distribution builds clean from this tree (#78)
+        run: npm run check:hermes-distribution
+
       - name: Check translation freshness (warn only)
         run: node scripts/check-translation-freshness.js --warn
 
