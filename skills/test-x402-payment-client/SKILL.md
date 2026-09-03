@@ -69,7 +69,7 @@ human-oriented and must not be the client's source of truth.
 ```bash
 curl -sD challenge.txt -o /dev/null https://x402.example.testnet/resource
 # base64-decode the PAYMENT-REQUIRED header value into terms.json
-grep -i '^payment-required:' challenge.txt | cut -d' ' -f2- | tr -d '\r' | base64 -d | jq . > terms.json
+grep -i '^payment-required:' challenge.txt | sed 's/^[^:]*:[[:space:]]*//' | tr -d '\r' | base64 -d | jq . > terms.json
 ```
 
 The decoded `PaymentRequired` object carries `x402Version` (must be `2`), one
@@ -102,14 +102,15 @@ Avalanche Fuji `eip155:43113`, Solana Devnet
 testnet-first a procedure rather than a preference.
 
 ```bash
-# fail loudly if no offered scheme/network pair is supported
-jq -e '.accepts[] | select(.scheme=="exact" and (.network|startswith("eip155:")))' terms.json
-# refuse a mainnet network unless the operator opted in; write the selected entry
+# pick the first `exact` entry on a network the client implements ($supported: edit to
+# match the client), then gate it: a mainnet network passes only with MAINNET_OPTIN=true
 jq -e --arg optin "${MAINNET_OPTIN:-false}" '
   ["eip155:84532","eip155:43113","solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"] as $testnets
-  | [.accepts[] | select(.scheme=="exact" and (.network|startswith("eip155:")))
-     | select((.network|IN($testnets[])) or $optin=="true")][0]
-  // error("no supported entry on a permitted network")' terms.json > selected.json
+  | ["eip155:","solana:"] as $supported
+  | [.accepts[] | select(.scheme=="exact" and (.network as $n | any($supported[]; . as $p | $n|startswith($p))))] as $ok
+  | if ($ok|length)==0 then error("unsupported-scheme: " + ([.accepts[] | .scheme+"@"+.network]|join(",")))
+    else ([$ok[] | select((.network|IN($testnets[])) or $optin=="true")][0]
+          // error("mainnet-not-opted-in: " + $ok[0].network)) end' terms.json > selected.json
 ```
 
 **Expected:** Exactly one supported `accepts` entry in `selected.json`; its
